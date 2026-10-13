@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MERGE_BY_AUTHOR = ROOT / ".github" / "workflows" / "merge-by-author.yml"
+MERGE_BY_OWNER = ROOT / ".github" / "workflows" / "merge-by-owner.yml"
 CI = ROOT / ".github" / "workflows" / "ci.yml"
 
 
@@ -29,16 +29,15 @@ def test_ci_server_side_checks_are_in_the_required_checks_job() -> None:
     assert "Commits written by the PR author" in checks_job
 
 
-def test_merge_by_author_runs_on_merged_prs() -> None:
-    text = MERGE_BY_AUTHOR.read_text(encoding="utf-8")
+def test_merge_by_owner_runs_on_merged_prs() -> None:
+    text = MERGE_BY_OWNER.read_text(encoding="utf-8")
     assert "types: [closed]" in text
     assert "github.event.pull_request.merged == true" in text
 
 
-def test_merge_by_author_compares_author_with_merger_and_fails_on_mismatch() -> None:
-    text = MERGE_BY_AUTHOR.read_text(encoding="utf-8")
-    assert "github.event.pull_request.user.login" in text
+def test_merge_by_owner_checks_merger_against_codeowners_and_fails_on_mismatch() -> None:
+    text = MERGE_BY_OWNER.read_text(encoding="utf-8")
     assert "github.event.pull_request.merged_by.login" in text
-    assert '[ "$AUTHOR" = "$MERGER" ]' in text
-    assert "merged-by-non-author" in text
+    assert "scripts/github/merge_owner.py" in text
+    assert "merged-by-non-owner" in text
     assert "exit 1" in text

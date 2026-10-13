@@ -919,7 +919,7 @@ Setup is a one-time job for the release lead (A); the step-by-step guide is **§
 - CI must be green: `ruff check .`, `scripts/scan_secrets.py`, and `pytest` run on every PR.
 - **One approving review** from your assigned reviewer (§3 ring; `/finish-session` requests them automatically). If you touched another lane's files, that lane's owner reviews too.
   - Reviewers use `/review-pr <n>` and **run the branch locally** for anything touching playback or a service call.
-- **Someone else approves; the author merges.** Every PR needs an approval from a teammate other than the author (GitHub enforces this: the last person to push can't approve). Once approved and CI is green, **only the person who wrote the code merges it** (squash merge). Reviewers approve but never click Merge. GitHub can't restrict who merges, so the `Merged by author` workflow labels and flags any PR merged by someone else. Claude Code is blocked from merging.
+- **Someone else approves; the owner of the changed files merges.** Every PR needs an approval from a teammate other than the author (GitHub enforces this: the last person to push can't approve). Once it's approved and CI is green, **the owner of the files it changes merges it** (squash merge). Owners are listed in `.github/CODEOWNERS`, which matches each lane's "You own" list. Usually the owner is the author. If a PR changes another lane's files, that lane's owner may merge it too. Tests don't count toward ownership. Reviewers who don't own the files approve but never click Merge. GitHub can't restrict who merges, so the `Merged by owner` workflow labels and flags any PR merged by a non-owner. Claude Code is blocked from merging.
 - Stuck more than ~2 hours? Comment on your lane issue with the task key, tag who you're waiting on, add `blocked`, and post in the team chat.
 
 **Review turnaround:** within 12 hours. Check your queue at the start of every session (`/start-session` does this).
@@ -1456,7 +1456,7 @@ Built-in commands worth knowing:
 | Only the four class models | `check_models.py` (`/check`, CI) + Bash guard + Claude can't edit `model_policy.json` | Banned AI packages can't be installed by Claude; any other model, provider, browser speech, or wrong feature→model wiring fails CI |
 | No PR merges by Claude | Bash guard + permissions | Humans merge after review |
 | Every push is checked against who wrote the code | Pre-push gate (`scripts/check_authors.py`) | Each commit being pushed must be authored by the pusher (`git config user.email`). If any were written by someone else, the push stops and lists them; the pusher must validate in their own terminal that the author agreed (type `yes`). With no person to answer, e.g. when Claude runs the push, it's blocked. |
-| Someone else approves, the author merges | GitHub branch protection + `Merged by author` workflow | Authors can't approve their own PR; a PR merged by anyone other than its author is labeled `merged-by-non-author` and flagged to A |
+| Someone else approves, the owner merges | GitHub branch protection + `.github/CODEOWNERS` + `Merged by owner` workflow | Authors can't approve their own PR; a PR merged by anyone who doesn't own its changed files is labeled `merged-by-non-owner` and flagged to A |
 | Secret scan | `/check`, CI, release | Key-like strings, your actual `.env` values, forbidden files, port 9000 |
 | CI | GitHub Actions on every PR | Lint, secret scan, tests must pass before merge (with branch protection) |
 

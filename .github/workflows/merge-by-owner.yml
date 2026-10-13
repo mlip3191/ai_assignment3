@@ -1,0 +1,46 @@
+name: Merged by owner
+
+# Team rule (PROJECT.md section 9): someone else approves, then the OWNER of the changed files
+# (.github/CODEOWNERS) merges. GitHub can't restrict who clicks Merge, so this flags any PR
+# merged by someone who doesn't own its files.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  check:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check who merged
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          MERGER: ${{ github.event.pull_request.merged_by.login }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          gh pr view "$PR" --repo "$REPO" --json files --jq '.files[].path' > changed.txt
+          set +e
+          result=$(python scripts/github/merge_owner.py --author "$AUTHOR" --merger "$MERGER" --files changed.txt)
+          code=$?
+          set -e
+          echo "$result"
+          if [ $code -eq 0 ]; then exit 0; fi
+          gh label create merged-by-non-owner --repo "$REPO" --color B60205 \
+            --description "Team rule broken: only the owner of the changed files merges" 2>/dev/null || true
+          gh pr edit "$PR" --repo "$REPO" --add-label merged-by-non-owner
+          gh pr comment "$PR" --repo "$REPO" --body "Team rule: the owner of the changed files merges the PR after someone else approves it (PROJECT.md §9, .github/CODEOWNERS). $result @$OWNER please follow up."
+          echo "::error::$result"
+          exit 1

@@ -42,7 +42,7 @@ Write, for the human:
 - **Manual test steps** the human reviewer should do in the browser (exact clicks and expected results), especially for audio, covers, and the DJ.
 
 ## 5. Post only with permission
-Ask the user whether to post the draft as a comment. If yes: write it to `runtime/tmp/review.md` and run `gh pr review $ARGUMENTS --comment --body-file runtime/tmp/review.md`. The approve/request-changes decision is the human's, made in GitHub after their own manual test. Remind the reviewer: **approve, but never merge**. Only the PR's author merges their own PR.
+Ask the user whether to post the draft as a comment. If yes: write it to `runtime/tmp/review.md` and run `gh pr review $ARGUMENTS --comment --body-file runtime/tmp/review.md`. The approve/request-changes decision is the human's, made in GitHub after their own manual test. Remind the reviewer: **approve, but don't merge unless you own the changed files**. The owner of the changed files (`.github/CODEOWNERS`) merges.
 
 ## 6. Clean up
 Switch back to the branch the user was on before step 2.
