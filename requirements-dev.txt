@@ -1,0 +1,4 @@
+# Developer and CI tools. Pin exact versions once the team settles them (issue: pinned requirements).
+pytest
+respx
+ruff

@@ -1,0 +1,41 @@
+{
+  "_comment": "Fill in name, github handle, and os (\"macos\" or \"windows\") for each role at kickoff. 'reviewer' is the role letter that reviews this member's PRs (the review ring from PROJECT.md section 3). 'os' decides who runs the Windows and macOS deploy tests. No secrets in this file.",
+  "members": {
+    "A": {
+      "role": "Platform & Release",
+      "name": "Michael Lippert",
+      "github": "mlip3191",
+      "os": "windows",
+      "reviewer": "E"
+    },
+    "B": {
+      "role": "Song Generation",
+      "name": "Gunnar O'Connor",
+      "github": "gunnaroc",
+      "os": "",
+      "reviewer": "D"
+    },
+    "C": {
+      "role": "Cover Art, Samples & Evidence",
+      "name": "Felipe",
+      "github": "felcervino",
+      "os": "",
+      "reviewer": "B"
+    },
+    "D": {
+      "role": "AI DJ & Launchers",
+      "name": "Dillon Smart",
+      "github": "dilloncsmart",
+      "os": "",
+      "reviewer": "C"
+    },
+    "E": {
+      "role": "Player, UX & QA",
+      "name": "Adam",
+      "github": "afondale",
+      "os": "",
+      "reviewer": "A"
+    }
+  },
+  "professor_github": ""
+}

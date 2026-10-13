@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Git runs this before every push, from any terminal or from Claude Code, on macOS and Windows.
+# It runs the team quality gate (scripts/prepush.py) with the project .venv. A failure blocks the push.
+# Turned on by scripts/setup_dev.py (git config core.hooksPath .githooks); doctor.py checks it.
+
+ROOT="$(git rev-parse --show-toplevel)"
+
+for PY in "$ROOT/.venv/Scripts/python.exe" "$ROOT/.venv/bin/python"; do
+  if [ -x "$PY" ]; then
+    exec "$PY" "$ROOT/scripts/prepush.py"
+  fi
+done
+
+echo "Push blocked: the project .venv is missing, so the team checks can't run." >&2
+echo "Run setup first:  macOS: python3 scripts/setup_dev.py   Windows: py scripts\\setup_dev.py" >&2
+exit 1

@@ -1,0 +1,36 @@
+name: Merged by author
+
+# Team rule (PROJECT.md section 9): someone else approves, and the PR's author merges it.
+# GitHub can't restrict who clicks Merge, so this flags any PR merged by someone else.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  check:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check who merged
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          MERGER: ${{ github.event.pull_request.merged_by.login }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "$AUTHOR" = "$MERGER" ]; then
+            echo "OK: merged by its author, $AUTHOR"
+            exit 0
+          fi
+          gh label create merged-by-non-author --repo "$REPO" --color B60205 \
+            --description "Team rule broken: only the PR's author merges" 2>/dev/null || true
+          gh pr edit "$PR" --repo "$REPO" --add-label merged-by-non-author
+          gh pr comment "$PR" --repo "$REPO" --body "Team rule: the author merges their own PR after someone else approves it (PROJECT.md §9). This PR was written by @$AUTHOR but merged by @$MERGER. @mlip3191 please follow up."
+          echo "::error::PR #$PR was merged by $MERGER, not its author $AUTHOR"
+          exit 1

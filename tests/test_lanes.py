@@ -1,0 +1,80 @@
+"""Tests for the lane-issue tooling: backlog consistency, issue rendering, and auto-ticking."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts" / "github"))
+
+from lanes import load, render_body, task_index  # noqa: E402
+from tick_task import find_lane_issue, find_task, tick  # noqa: E402
+
+
+def test_five_lanes_one_per_role() -> None:
+    spec, team = load()
+    assert [lane["role"] for lane in spec["lanes"]] == list("ABCDE")
+    assert set(team["members"]) == set("ABCDE")
+
+
+def test_task_keys_unique_and_dependencies_exist() -> None:
+    spec, _ = load()
+    keys = [t["key"] for lane in spec["lanes"] for t in lane["tasks"]]
+    assert len(keys) == len(set(keys))
+    for lane in spec["lanes"]:
+        for t in lane["tasks"]:
+            assert t["key"].startswith(lane["role"]), t["key"]
+            for dep in t["depends"]:
+                assert dep in keys, f"{t['key']} needs unknown {dep}"
+
+
+def test_no_dependency_cycles() -> None:
+    spec, _ = load()
+    deps = {t["key"]: t["depends"] for lane in spec["lanes"] for t in lane["tasks"]}
+    done: set[str] = set()
+
+    def visit(k: str, path: tuple[str, ...]) -> None:
+        assert k not in path, f"cycle: {' -> '.join((*path, k))}"
+        if k in done:
+            return
+        for d in deps[k]:
+            visit(d, (*path, k))
+        done.add(k)
+
+    for k in deps:
+        visit(k, ())
+
+
+def test_render_has_checkbox_per_task_and_links() -> None:
+    spec, team = load()
+    numbers = {r: n for n, r in enumerate("ABCDE", 1)}
+    owner = task_index(spec)
+    for lane in spec["lanes"]:
+        body = render_body(lane, spec, team, numbers, assign=False)
+        for t in lane["tasks"]:
+            assert f"- [ ] **{t['key']}** " in body
+            for d in t["depends"]:
+                if owner[d] != lane["role"]:
+                    assert f"{d} (#{numbers[owner[d]]})" in body
+        assert f"Lane key: {lane['role']}" in body
+        assert len(body) < 60000  # GitHub issue body limit is 65536
+
+
+def test_find_task_and_issue_from_pr() -> None:
+    body = "## Summary\nPart of #2\nTask: B4\n"
+    assert find_task("feat(songs): client", body) == "B4"
+    assert find_lane_issue(body) == 2
+    assert find_task("feat(songs): add ACE-Step client (b4)", "") == "B4"
+    assert find_task("no key here", "Task: <!-- task key, e.g. B4 -->") is None
+    assert find_lane_issue("Closes #2") is None
+
+
+def test_tick_only_touches_the_task_line() -> None:
+    body = "- [ ] **B4** ACE-Step client\n  - **Done when:**\n    - [ ] not a task\n- [ ] **B5** prompts\n"
+    new, changed = tick(body, "B4")
+    assert changed
+    assert new.startswith("- [x] **B4**")
+    assert "- [ ] **B5**" in new
+    assert tick(new, "B4") == (new, False)  # already ticked
+    assert tick(body, "B40")[1] is False

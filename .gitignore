@@ -1,0 +1,28 @@
+# Secrets: never commit
+.env
+.env.*
+!.env.example
+
+# Generated at runtime: songs, covers, DJ clips, voice uploads
+runtime/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Gradio
+.gradio/
+flagged/
+
+# Personal Claude Code settings (team settings in .claude/settings.json ARE committed)
+.claude/settings.local.json
+
+# Misc
+*.log
+*.zip
+.DS_Store
+Thumbs.db

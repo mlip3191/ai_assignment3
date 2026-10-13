@@ -1,0 +1,225 @@
+{
+  "_comment": "Single source of truth for which AI models the app may use. Read by scripts/check_models.py (CI, /check) and .claude/hooks/pre_bash_guard.py. PROJECT.md section 7.0 mirrors this file. Change only by PR with the whole team's approval.",
+  "services": {
+    "qwen": {
+      "model": "Qwen3.6-35B-A3B",
+      "port": 9001,
+      "purpose": "All text: song titles, lyrics, cover-art prompts, DJ commentary scripts",
+      "env_url": "QWEN_BASE_URL",
+      "env_model": "QWEN_MODEL",
+      "client": "jukebox/clients/qwen.py"
+    },
+    "flux": {
+      "model": "FLUX.2 klein 4B",
+      "port": 9006,
+      "purpose": "Cover art images (every generated song, and the 3 samples)",
+      "env_url": "FLUX_BASE_URL",
+      "env_model": "FLUX_MODEL",
+      "client": "jukebox/clients/flux.py"
+    },
+    "acestep": {
+      "model": "ACE-Step 1.5 XL Turbo",
+      "port": 9007,
+      "purpose": "Music audio (instrumental and vocal tracks, and the 3 samples)",
+      "env_url": "ACESTEP_BASE_URL",
+      "env_model": "ACESTEP_MODEL",
+      "client": "jukebox/clients/acestep.py"
+    },
+    "chatterbox": {
+      "model": "Chatterbox Multilingual V3",
+      "port": 9008,
+      "purpose": "DJ speech audio (default voice or uploaded MP3/WAV reference)",
+      "env_url": "CHATTERBOX_BASE_URL",
+      "env_model": "CHATTERBOX_MODEL",
+      "client": "jukebox/clients/chatterbox.py"
+    }
+  },
+  "forbidden_ports": [
+    9000
+  ],
+  "app_port": 7860,
+  "service_aliases": {
+    "qwen": [
+      "qwen"
+    ],
+    "flux": [
+      "flux"
+    ],
+    "acestep": [
+      "acestep",
+      "ace_step",
+      "ace-step"
+    ],
+    "chatterbox": [
+      "chatterbox"
+    ]
+  },
+  "feature_clients": {
+    "_comment": "Which clients each feature module may import. Anything not listed may import no clients at all.",
+    "jukebox/services/songs.py": [
+      "qwen",
+      "acestep"
+    ],
+    "jukebox/services/art.py": [
+      "qwen",
+      "flux"
+    ],
+    "jukebox/services/dj.py": [
+      "qwen",
+      "chatterbox"
+    ],
+    "jukebox/services/player.py": [],
+    "scripts/check_endpoints.py": [
+      "qwen",
+      "flux",
+      "acestep",
+      "chatterbox"
+    ]
+  },
+  "network_allowed_files": [
+    "jukebox/clients/",
+    "scripts/check_endpoints.py"
+  ],
+  "banned_packages": [
+    "openai",
+    "anthropic",
+    "google-generativeai",
+    "google-genai",
+    "vertexai",
+    "google-cloud-aiplatform",
+    "cohere",
+    "mistralai",
+    "groq",
+    "together",
+    "replicate",
+    "ollama",
+    "litellm",
+    "langchain",
+    "langchain-core",
+    "langchain-community",
+    "langchain-openai",
+    "llama-index",
+    "llama-cpp-python",
+    "huggingface-hub",
+    "gradio-client",
+    "transformers",
+    "torch",
+    "torchaudio",
+    "torchvision",
+    "diffusers",
+    "accelerate",
+    "sentence-transformers",
+    "onnxruntime",
+    "tensorflow",
+    "keras",
+    "jax",
+    "gtts",
+    "pyttsx3",
+    "edge-tts",
+    "elevenlabs",
+    "openai-whisper",
+    "faster-whisper",
+    "tts",
+    "coqui-tts",
+    "bark",
+    "audiocraft",
+    "chatterbox-tts",
+    "boto3",
+    "azure-ai-inference",
+    "azure-cognitiveservices-speech",
+    "ibm-watson",
+    "deepgram-sdk",
+    "assemblyai",
+    "stability-sdk",
+    "fal-client"
+  ],
+  "banned_imports": [
+    "openai",
+    "anthropic",
+    "google.generativeai",
+    "google.genai",
+    "vertexai",
+    "google.cloud.aiplatform",
+    "cohere",
+    "mistralai",
+    "groq",
+    "together",
+    "replicate",
+    "ollama",
+    "litellm",
+    "langchain",
+    "langchain_core",
+    "langchain_community",
+    "langchain_openai",
+    "llama_index",
+    "llama_cpp",
+    "huggingface_hub",
+    "gradio_client",
+    "transformers",
+    "torch",
+    "torchaudio",
+    "torchvision",
+    "diffusers",
+    "accelerate",
+    "sentence_transformers",
+    "onnxruntime",
+    "tensorflow",
+    "keras",
+    "jax",
+    "gtts",
+    "pyttsx3",
+    "edge_tts",
+    "elevenlabs",
+    "whisper",
+    "faster_whisper",
+    "TTS",
+    "bark",
+    "audiocraft",
+    "chatterbox",
+    "boto3",
+    "azure.ai",
+    "azure.cognitiveservices",
+    "ibm_watson",
+    "deepgram",
+    "assemblyai",
+    "stability_sdk",
+    "fal_client"
+  ],
+  "banned_hosts": [
+    "api.openai.com",
+    "api.anthropic.com",
+    "generativelanguage.googleapis.com",
+    "aiplatform.googleapis.com",
+    "api-inference.huggingface.co",
+    "router.huggingface.co",
+    "huggingface.co",
+    "hf.space",
+    "api.replicate.com",
+    "replicate.com",
+    "api.elevenlabs.io",
+    "api.groq.com",
+    "api.together.xyz",
+    "api.mistral.ai",
+    "api.cohere.ai",
+    "api.cohere.com",
+    "openrouter.ai",
+    "api.deepseek.com",
+    "bedrock-runtime",
+    "cognitiveservices.azure.com",
+    "openai.azure.com",
+    "api.stability.ai",
+    "fal.run",
+    "api.deepgram.com",
+    "api.assemblyai.com",
+    "translate.google.com",
+    "localhost:11434"
+  ],
+  "banned_code_patterns": {
+    "\\bgr(?:adio)?\\.load\\s*\\(": "Gradio's gr.load pulls models or Spaces from Hugging Face",
+    "\\bspeechSynthesis\\b": "browser text-to-speech is a different speech model; DJ speech must come from Chatterbox",
+    "\\bSpeechSynthesisUtterance\\b": "browser text-to-speech is a different speech model; DJ speech must come from Chatterbox",
+    "\\bwebkitSpeech\\w*": "browser speech APIs are a different model",
+    "\\bpipeline\\s*\\(\\s*['\\\"]": "transformers-style local model pipelines are not allowed"
+  },
+  "_comment_patterns": "banned_code_patterns keys are Python regular expressions."
+}
