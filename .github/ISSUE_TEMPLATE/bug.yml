@@ -1,0 +1,36 @@
+name: Bug
+description: Something doesn't work as PROJECT.md or the README says it should
+labels: ["bug"]
+body:
+  - type: input
+    id: test
+    attributes:
+      label: Test case ID (if any)
+      placeholder: "TC-05"
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+      description: Error text, timings, screenshots. NEVER paste credentials or .env contents.
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Machine / OS / browser / commit
+      placeholder: "Windows 11, Chrome, abc1234"

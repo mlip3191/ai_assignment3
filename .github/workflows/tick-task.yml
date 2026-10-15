@@ -1,0 +1,23 @@
+name: Tick lane task
+
+# When a PR is merged, tick its task's checkbox in the owner's lane issue.
+# The PR body must contain "Part of #<lane issue>" and "Task: <key>" (the PR template asks for both).
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  issues: write
+  pull-requests: read
+  contents: read
+
+jobs:
+  tick:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tick the task checkbox
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/github/tick_task.py

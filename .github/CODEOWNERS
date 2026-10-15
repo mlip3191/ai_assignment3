@@ -1,0 +1,41 @@
+# Who owns which files (from each lane's "You own" list, PROJECT.md section 19).
+# Team rule: someone else approves a PR, then the OWNER of the changed files merges it.
+# The "Merged by owner" workflow checks this. Later lines win over earlier ones.
+
+# Lane A (Platform & Release) owns everything not listed below
+*                               @mlip3191
+
+# Tests belong to whoever owns the code they test, so they don't decide who merges
+/tests/
+
+# Lane E: Player, UX & QA
+/app.py                         @afondale
+/jukebox/ui/                    @afondale
+/jukebox/services/player.py     @afondale
+/docs/TEST_EVIDENCE.md          @afondale
+
+# Lane B: Song Generation
+/jukebox/clients/qwen.py        @gunnaroc
+/jukebox/clients/acestep.py     @gunnaroc
+/jukebox/services/songs.py      @gunnaroc
+/jukebox/prompts/title.md       @gunnaroc
+/jukebox/prompts/lyrics.md      @gunnaroc
+/jukebox/ui/generate_tab.py     @gunnaroc
+
+# Lane C: Cover Art, Samples & Evidence
+/jukebox/clients/flux.py        @felcervino
+/jukebox/services/art.py        @felcervino
+/jukebox/prompts/cover_art.md   @felcervino
+/scripts/generate_samples.py    @felcervino
+/samples/                       @felcervino
+/docs/STARTER_PROMPT.md         @felcervino
+/docs/screenshots/              @felcervino
+
+# Lane D: AI DJ & Launchers
+/jukebox/clients/chatterbox.py  @dilloncsmart
+/jukebox/services/dj.py         @dilloncsmart
+/jukebox/prompts/dj.md          @dilloncsmart
+/jukebox/ui/dj_settings.py      @dilloncsmart
+/run.sh                         @dilloncsmart
+/run.bat                        @dilloncsmart
+/requirements.txt               @dilloncsmart

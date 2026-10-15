@@ -1,0 +1,48 @@
+name: Extra task proposal
+description: Propose work that isn't in any lane yet. The release lead adds it to the right lane issue (issues.json + bootstrap --refresh) and closes this.
+labels: []
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: One or two sentences on what this achieves.
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: Acceptance criteria
+      description: Checklist that a reviewer can verify.
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+  - type: input
+    id: reqs
+    attributes:
+      label: Requirement IDs
+      description: From PROJECT.md §1 (e.g. F1a, R6). Leave blank if none.
+  - type: input
+    id: refs
+    attributes:
+      label: PROJECT.md sections
+      placeholder: "§8.1, §7.3"
+  - type: input
+    id: depends
+    attributes:
+      label: Depends on
+      placeholder: "task keys, e.g. A3, B6"
+  - type: dropdown
+    id: role
+    attributes:
+      label: Which lane should own it?
+      options:
+        - A — Platform & Release
+        - B — Song Generation
+        - C — Cover Art, Samples & Evidence
+        - D — AI DJ & Launchers
+        - E — Player, UX & QA
+    validations:
+      required: true

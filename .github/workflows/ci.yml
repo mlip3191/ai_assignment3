@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # Required check for merging (branch protection uses this job name: "checks").
+  checks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Server-side copies of the pre-push gate checks, so skipping them locally (--no-verify,
+      # edited hooks) can't get code into main. Only the repo owner can override.
+      - name: Code changes include test cases
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE"...HEAD)
+          echo "$changed"
+          if echo "$changed" | grep -q '^tests/'; then echo "Tests changed: OK"; exit 0; fi
+          code=$(echo "$changed" | grep -E '^(jukebox/|scripts/|\.claude/hooks/|\.githooks/|app\.py$)' || true)
+          if [ -n "$code" ]; then
+            echo "::error::Code changed without any new or updated test in tests/:"; echo "$code"; exit 1
+          fi
+      - name: Commits written by the PR author
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.repository }}
+        run: |
+          others=$(gh api "repos/$REPO/pulls/$PR/commits" --paginate \
+            --jq ".[] | select((.author.login // \"unknown\") != \"$AUTHOR\") | \"\(.sha[0:7]) \(.commit.author.name) (\(.author.login // \"no GitHub account\"))\"")
+          if [ -z "$others" ]; then echo "All commits written by @$AUTHOR"; exit 0; fi
+          echo "Commits not written by the PR author @$AUTHOR:"; echo "$others"
+          # Validation step: only the repo owner can approve this, by adding the 'authors-validated' label.
+          validated_by=$(gh api "repos/$REPO/issues/$PR/events" --paginate \
+            --jq '[.[] | select(.event == "labeled" and .label.name == "authors-validated")] | last | .actor.login // ""')
+          if [ "$validated_by" = "$OWNER" ]; then echo "Validated by the repo owner @$OWNER"; exit 0; fi
+          echo "::error::Some commits weren't written by @$AUTHOR. The repo owner (@$OWNER) must validate them by adding the 'authors-validated' label, then re-run this check."
+          exit 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install -r requirements-dev.txt
+      - name: Lint
+        run: ruff check .
+      - name: Secret and safeguard scan
+        run: python scripts/scan_secrets.py
+      - name: Only the four class models are used
+        run: python scripts/check_models.py
+      - name: Tests (mocked services only; no class credentials in CI)
+        run: |
+          set +e
+          pytest -q
+          code=$?
+          if [ $code -eq 5 ]; then echo "No tests collected yet"; exit 0; fi
+          exit $code
+
+  # Same tests on the two OSes the team (and the grader) use. Runs after merges to main
+  # and on demand (Actions tab > CI > Run workflow), to save Windows/macOS minutes.
+  cross-platform:
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash   # Git Bash on Windows, same as Claude Code's hooks
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install -r requirements-dev.txt
+      - name: Line endings survived checkout
+        run: |
+          if grep -q $'\r' .claude/hooks/run_py.sh; then echo "run_py.sh has CRLF endings"; exit 1; fi
+      - name: Secret and safeguard scan
+        run: python scripts/scan_secrets.py
+      - name: Tests (includes hook guardrail tests through bash)
+        run: |
+          set +e
+          pytest -q
+          code=$?
+          if [ $code -eq 5 ]; then echo "No tests collected yet"; exit 0; fi
+          exit $code

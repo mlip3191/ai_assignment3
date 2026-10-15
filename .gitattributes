@@ -1,0 +1,24 @@
+# Keep line endings consistent between macOS and Windows teammates.
+# Everything is stored with LF; Windows-only scripts get CRLF on checkout and in
+# GitHub's "Download ZIP" (git archive applies these rules), so run.bat works for the grader.
+* text=auto eol=lf
+
+# Windows scripts need CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Shell scripts must stay LF or bash fails on them (including the Claude Code hook launcher)
+*.sh text eol=lf
+
+# Binary assets: never touch
+*.mp3 binary
+*.wav binary
+*.flac binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.zip binary
+*.pdf binary

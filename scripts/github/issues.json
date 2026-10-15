@@ -1,0 +1,1324 @@
+{
+  "milestone": {
+    "title": "v1.0 submission",
+    "due": "2026-10-22",
+    "description": "Everything for the graded submission: all 5 lane issues closed, v1.0 tagged, Canvas submitted. Internal checkpoints M0–M4 are listed inside each lane issue."
+  },
+  "checkpoints": [
+    {
+      "title": "M0 Foundations & spikes",
+      "due": "2026-10-14",
+      "description": "Repo, config, shared client base, one live call per service, playback spike. Exit: all 4 services answer; player approach decided; client base merged."
+    },
+    {
+      "title": "M1 Vertical slices",
+      "due": "2026-10-18",
+      "description": "Each feature works on its own branch against live services, with unit tests."
+    },
+    {
+      "title": "M2 Integration & samples",
+      "due": "2026-10-20",
+      "description": "Features wired together, 3 sample songs generated, error/recovery pass. Feature freeze Tue 10/20 9 pm."
+    },
+    {
+      "title": "M3 Independent deploy test",
+      "due": "2026-10-21",
+      "description": "Install from the GitHub ZIP on a clean machine using only the README; run the full test matrix."
+    },
+    {
+      "title": "M4 Docs, evidence, submit",
+      "due": "2026-10-22",
+      "description": "README, screenshots, test evidence, docs verification, tag v1.0, submit on Canvas."
+    }
+  ],
+  "labels": [
+    {
+      "name": "platform",
+      "color": "5319e7",
+      "description": "Config, clients base, library, run scripts, release"
+    },
+    {
+      "name": "feature:songs",
+      "color": "1f77b4",
+      "description": "F1 song generation"
+    },
+    {
+      "name": "feature:cover",
+      "color": "ff7f0e",
+      "description": "F2 cover art and sample assets"
+    },
+    {
+      "name": "feature:dj",
+      "color": "2ca02c",
+      "description": "F3 AI DJ"
+    },
+    {
+      "name": "feature:player",
+      "color": "d62728",
+      "description": "Queue, playback, UI shell"
+    },
+    {
+      "name": "spike",
+      "color": "c5def5",
+      "description": "Time-boxed investigation; output is findings, not product code"
+    },
+    {
+      "name": "docs",
+      "color": "0075ca",
+      "description": "README and documentation"
+    },
+    {
+      "name": "test",
+      "color": "fbca04",
+      "description": "Testing and evidence"
+    },
+    {
+      "name": "bug",
+      "color": "b60205",
+      "description": "Something is broken"
+    },
+    {
+      "name": "blocked",
+      "color": "000000",
+      "description": "Waiting on something outside the issue"
+    },
+    {
+      "name": "priority:high",
+      "color": "e99695",
+      "description": "Others depend on this; do it first"
+    },
+    {
+      "name": "os:windows",
+      "color": "0e8a16",
+      "description": "Only happens on Windows"
+    },
+    {
+      "name": "os:macos",
+      "color": "bfd4f2",
+      "description": "Only happens on macOS"
+    },
+    {
+      "name": "lane",
+      "color": "6f42c1",
+      "description": "One person's lane of work (5 total)"
+    }
+  ],
+  "lanes": [
+    {
+      "role": "A",
+      "title": "Platform & Release",
+      "label": "platform",
+      "mission": "Make it possible for everyone else to build, and make sure what we submit installs, passes, and arrives on Canvas correctly. You own the foundation (config, shared HTTP client, error model, data model, library), integration on main, and the release.",
+      "owns": [
+        "`.github/` (others may edit their own row in `team.json`)",
+        "`scripts/` except `generate_samples.py`",
+        "`jukebox/config.py`, `errors.py`, `models.py`, `library.py`, `jobs.py`",
+        "`jukebox/clients/base.py`",
+        "`.env.example`",
+        "PROJECT.md §0.1 status and §7 endpoint table",
+        "README.md assembly",
+        "Tags, releases, and the Canvas submission"
+      ],
+      "provides": [
+        "Config + ServiceError + shared client base to B, C, D (by Wed 10/14; everyone is blocked on this)",
+        "Track/Job models + library to B, C, D, E (early M1)",
+        "Filled-in §7.1 endpoint table to everyone",
+        "Integrated main branch (A7) and release candidates"
+      ],
+      "needs": [
+        "Spike findings from B, C, D to finish §7.1",
+        "Every lane's features for integration (A7)"
+      ],
+      "tasks": [
+        {
+          "key": "A1",
+          "title": "Set up repo: scaffold, labels, milestone, the 5 lane issues, templates, CI",
+          "milestone": "M0",
+          "goal": "Create the shared repo from the starter scaffold so everyone can clone it and start work.",
+          "criteria": [
+            "Repo created; all 5 teammates added as collaborators and have accepted",
+            "Scaffold pushed to main (PROJECT.md, CLAUDE.md, .claude/, .github/, scripts/, .gitignore, .env.example)",
+            "scripts/github/bootstrap.py run: labels, milestone, and 5 lane issues created, linked, and assigned",
+            "Branch protection on main (1 approving review + CI) enabled, or limitation documented in §2",
+            "CI workflow runs green on a test PR",
+            ".gitattributes committed before any other code, so line endings are right from the first clone",
+            "After the first merge, the cross-platform CI job passes on windows-latest and macos-latest",
+            "At least one Windows and one macOS teammate have completed PROJECT.md section 16.1 with 0 doctor FAILs",
+            "CI runs `scripts/check_models.py` on every PR and it passes on main"
+          ],
+          "reqs": [
+            "DL3",
+            "DL5"
+          ],
+          "refs": [
+            "§9",
+            "§18"
+          ],
+          "depends": []
+        },
+        {
+          "key": "A2",
+          "title": "Config loader, .env.example, and scripts/check_config.py",
+          "milestone": "M0",
+          "goal": "Load and validate settings from .env so no one hard-codes URLs or keys.",
+          "criteria": [
+            "jukebox/config.py loads all §7.4 variables and fails fast with a clear message if one is missing",
+            "Startup refuses any service URL on port 9000 (H5)",
+            "Key values never appear in repr, logs, or error messages (shown as **** / missing)",
+            "scripts/check_config.py prints a per-variable OK/missing table without values",
+            "tests/test_config.py covers missing var, port 9000, and redaction",
+            "Each *_BASE_URL must use its own port (Qwen 9001, FLUX 9006, ACE-Step 9007, Chatterbox 9008) or startup fails with a clear message; unknown *_BASE_URL variables are rejected (§7.0)",
+            "QWEN_MODEL / FLUX_MODEL / ACESTEP_MODEL / CHATTERBOX_MODEL loaded when the service format needs a model field"
+          ],
+          "reqs": [
+            "H5",
+            "H8"
+          ],
+          "refs": [
+            "§7.0",
+            "§7.4",
+            "§12.1"
+          ],
+          "depends": [
+            "A1",
+            "C0"
+          ]
+        },
+        {
+          "key": "A3",
+          "title": "Shared HTTP client base + ServiceError and user-facing error messages",
+          "milestone": "M0",
+          "goal": "One place that handles auth headers, timeouts, retries, redacted logging, and error mapping for all four services.",
+          "criteria": [
+            "jukebox/clients/base.py: per-service timeouts, one retry with backoff on timeout/connection/502/503/504, no retry on 4xx",
+            "jukebox/errors.py: ServiceError(service, kind, detail) and the §7.3 user message table",
+            "Authorization header and key-like values are redacted in logs",
+            "tests/test_clients.py (respx) covers success, timeout, 401, 500, malformed body",
+            "The base client only calls the four configured base URLs; any other URL raises ServiceError(kind='config')",
+            "Logs one line per request: service → host:port, status, duration (never headers or bodies), used as TC-15 evidence"
+          ],
+          "reqs": [
+            "R6",
+            "H8"
+          ],
+          "refs": [
+            "§7.0",
+            "§7.2",
+            "§7.3"
+          ],
+          "depends": [
+            "A2"
+          ]
+        },
+        {
+          "key": "A4",
+          "title": "Fill §7.1 endpoint contracts from class-endpoints.txt + scripts/check_endpoints.py",
+          "milestone": "M0",
+          "goal": "Record each service's real request/response format so nobody guesses (H11).",
+          "criteria": [
+            "PROJECT.md §7.1 has method, path, auth, request and response fields for all 4 services (no secrets)",
+            "Feature owners B, C, D confirm their service's row in a PR review",
+            "scripts/check_endpoints.py sends one tiny request per service and prints PASS/FAIL + latency",
+            "§14 Q3/Q4 answered",
+            "check_endpoints.py confirms each port answers as its expected model (where the API reports a model name) and FAILS if a port reports a different model",
+            "§7.1 records the exact model identifier each service expects"
+          ],
+          "reqs": [
+            "H1",
+            "H2",
+            "H3",
+            "H4",
+            "H11"
+          ],
+          "refs": [
+            "§7.0",
+            "§7.1",
+            "§14"
+          ],
+          "depends": [
+            "A2"
+          ]
+        },
+        {
+          "key": "A5",
+          "title": "Ask the professor/team the section 14 open questions (Hermes, due date, repo access, network, Claude access)",
+          "milestone": "M0",
+          "goal": "Remove the biggest unknowns: Claude Code vs Hermes, due date, repo visibility, grader environment.",
+          "criteria": [
+            "Q1, Q2, Q5, Q6, Q7, Q9 sent to the professor; Q8 (Claude Code access per teammate) answered at kickoff",
+            "Answers recorded in section 14; schedule in section 10 and section 0.1 status updated if the due date differs",
+            "If Hermes is required, the Hermes contingency in section 2 is activated and the team is told how the workflow changes"
+          ],
+          "reqs": [],
+          "refs": [
+            "§14"
+          ],
+          "depends": []
+        },
+        {
+          "key": "A6",
+          "title": "Track/Job models, thread-safe library, sample manifest loader, job store",
+          "milestone": "M1",
+          "goal": "The shared state every feature reads and writes.",
+          "criteria": [
+            "jukebox/models.py matches section 6.1/6.2 exactly (including the theme field)",
+            "jukebox/library.py loads samples/manifest.json at startup and adds generated tracks under a lock",
+            "A track is added only after its audio exists; cover can be attached later",
+            "jukebox/jobs.py tracks stage/status/error per job",
+            "Unit tests for add/get/list and concurrent adds"
+          ],
+          "reqs": [
+            "R2",
+            "R5"
+          ],
+          "refs": [
+            "§6"
+          ],
+          "depends": [
+            "A2"
+          ]
+        },
+        {
+          "key": "A7",
+          "title": "Integration: song → cover → library → queue → DJ prefetch",
+          "milestone": "M2",
+          "goal": "Wire the features into one working app.",
+          "criteria": [
+            "A newly generated song appears in the library and can be queued and played",
+            "Its cover appears when ready without a page reload",
+            "DJ clips play between queued songs",
+            "Smoke test of all 3 core features on main after merge"
+          ],
+          "reqs": [
+            "F1",
+            "F2",
+            "F3",
+            "R2",
+            "R4"
+          ],
+          "refs": [
+            "§8"
+          ],
+          "depends": [
+            "B7",
+            "C4",
+            "D3",
+            "E4"
+          ]
+        },
+        {
+          "key": "A8",
+          "title": "Tag release candidate rc1 and fix deploy findings",
+          "milestone": "M3",
+          "goal": "A version that installs cleanly from the GitHub ZIP.",
+          "criteria": [
+            "Tag rc1 pushed; ZIP downloaded from GitHub for that tag",
+            "scripts/scan_secrets.py --zip passes on the downloaded ZIP",
+            "All issues from E6 fixed or documented as known issues; rc2 tagged if code changed"
+          ],
+          "reqs": [
+            "DL3",
+            "H8",
+            "H9"
+          ],
+          "refs": [
+            "§10"
+          ],
+          "depends": [
+            "A7",
+            "C6",
+            "D6"
+          ]
+        },
+        {
+          "key": "A9",
+          "title": "README assembly: setup, architecture, safeguards, contributions",
+          "milestone": "M4",
+          "goal": "The graded README, built from everyone's sections.",
+          "criteria": [
+            "All §11 sections present; config examples contain placeholders only",
+            "Contribution table: member → PRs authored → PRs reviewed",
+            "Every claim in README matches the app (see docs verification tasks B10 and D9)"
+          ],
+          "reqs": [
+            "DL1"
+          ],
+          "refs": [
+            "§11"
+          ],
+          "depends": [
+            "E7"
+          ]
+        },
+        {
+          "key": "A10",
+          "title": "Final release: secret scan, tag v1.0, ZIP, submit on Canvas",
+          "milestone": "M4",
+          "goal": "Submit exactly one verified version.",
+          "criteria": [
+            "scan_secrets.py passes on the tagged commit",
+            "Final ZIP passes TC-10a (Windows) and TC-10b (macOS) smoke runs, or the last full runs were on an identical commit",
+            "Tag v1.0 pushed. ZIP downloaded from that tag's page (Tags → v1.0 → Source code (zip)), NOT the green Code → Download ZIP button on main",
+            "`python scripts/scan_secrets.py --zip <downloaded zip>` passes; the ZIP contains samples/audio and samples/covers files",
+            "Full 40-character commit ID recorded (git rev-list -n 1 v1.0) and matches the tag",
+            "Professor has repo access (accepted invite or public repo)",
+            "Canvas submission: repo link + full commit ID + that exact ZIP",
+            "Team told: no deleting, renaming, privatizing, force-pushing, or moving the v1.0 tag until grades are posted (DL12)",
+            "check_models.py passes on the tagged release commit"
+          ],
+          "reqs": [
+            "DL3",
+            "H8",
+            "H9"
+          ],
+          "refs": [
+            "§10",
+            "§17"
+          ],
+          "depends": [
+            "B10",
+            "D9"
+          ]
+        }
+      ]
+    },
+    {
+      "role": "B",
+      "title": "Song Generation",
+      "label": "feature:songs",
+      "mission": "Turn a user's style, mood, duration, and theme into a playable song in the library: instrumental, or vocal with original AI-written lyrics. You also own the Qwen client that C and D depend on.",
+      "owns": [
+        "`jukebox/clients/qwen.py`, `jukebox/clients/acestep.py`",
+        "`jukebox/services/songs.py`",
+        "`jukebox/prompts/title.md`, `lyrics.md`",
+        "`jukebox/ui/generate_tab.py`",
+        "Tests for the above"
+      ],
+      "provides": [
+        "Qwen client chat() to C (cover prompts) and D (DJ scripts): **highest priority in M1**",
+        "Song pipeline that adds tracks to the library and triggers the cover job (C)",
+        "The README's design-choice write-up"
+      ],
+      "needs": [
+        "A: config, client base, models/library",
+        "E: app shell to mount the Generate tab",
+        "C: cover service for the post-generation hook"
+      ],
+      "tasks": [
+        {
+          "key": "B1",
+          "title": "Spike: Qwen (port 9001) live call, thinking-mode check, latency",
+          "milestone": "M0",
+          "goal": "Prove we can get clean text from Qwen and learn its quirks.",
+          "criteria": [
+            "Uses class-endpoints.txt directly (no app code needed yet); key kept in your local .env, never pasted into issues or chat",
+            "One successful chat call from a teammate's machine",
+            "Determined whether <think> content appears and how to disable it per the docs",
+            "Determined whether JSON-only output is reliable for {title, lyrics}",
+            "Latency for a ~200-token reply recorded in §7.1",
+            "Findings posted as a comment on your lane issue",
+            "Confirmed the model name the service reports is Qwen3.6-35B-A3B"
+          ],
+          "reqs": [
+            "H1"
+          ],
+          "refs": [
+            "§7.1",
+            "§8.1"
+          ],
+          "depends": []
+        },
+        {
+          "key": "B2",
+          "title": "Spike: ACE-Step (port 9007) instrumental + vocal calls, limits, latency",
+          "milestone": "M0",
+          "goal": "Learn how ACE-Step takes tags, lyrics, and duration, and how long it takes.",
+          "criteria": [
+            "Uses class-endpoints.txt directly (no app code needed yet); key kept in your local .env, never pasted into issues or chat",
+            "One instrumental and one vocal generation succeed",
+            "Documented: instrumental mode/marker, lyric section format, duration min/max, output format",
+            "Latency at 30 s and 60 s durations recorded in §7.1",
+            "Findings posted as a comment on your lane issue",
+            "Confirmed the service on 9007 is ACE-Step 1.5 XL Turbo"
+          ],
+          "reqs": [
+            "H3",
+            "F1",
+            "F1a"
+          ],
+          "refs": [
+            "§7.1",
+            "§8.1"
+          ],
+          "depends": []
+        },
+        {
+          "key": "B3",
+          "title": "Qwen client: chat(), think-stripping, JSON helper",
+          "milestone": "M1",
+          "goal": "The text-generation client that songs, covers, and the DJ all use.",
+          "criteria": [
+            "jukebox/clients/qwen.py implements chat() per §7.2 using the base client",
+            "Thinking output disabled per docs and <think> blocks stripped defensively",
+            "Helper parses JSON replies with a plain-text fallback",
+            "respx tests: success, think-stripping, malformed JSON, each error kind",
+            "Talks only to Qwen3.6-35B-A3B on QWEN_BASE_URL (port 9001); no other model or SDK (check_models.py passes)"
+          ],
+          "reqs": [
+            "H1",
+            "R6",
+            "H15"
+          ],
+          "refs": [
+            "§7.0",
+            "§7.2"
+          ],
+          "depends": [
+            "A3",
+            "B1"
+          ]
+        },
+        {
+          "key": "B4",
+          "title": "ACE-Step client: generate_music()",
+          "milestone": "M1",
+          "goal": "Wrap the music service behind the §7.2 interface.",
+          "criteria": [
+            "jukebox/clients/acestep.py implements generate_music() and returns (bytes, ext)",
+            "Instrumental and vocal requests follow the documented format from B2",
+            "respx tests for success and each error kind",
+            "Talks only to ACE-Step 1.5 XL Turbo on ACESTEP_BASE_URL (port 9007)"
+          ],
+          "reqs": [
+            "H3",
+            "F1a",
+            "H15"
+          ],
+          "refs": [
+            "§7.0",
+            "§7.2"
+          ],
+          "depends": [
+            "A3",
+            "B2"
+          ]
+        },
+        {
+          "key": "B5",
+          "title": "Lyrics and title prompts (jukebox/prompts/) with parser",
+          "milestone": "M1",
+          "goal": "Original, mood-matched titles and lyrics in a format ACE-Step accepts.",
+          "criteria": [
+            "prompts/title.md and prompts/lyrics.md follow the §8.1 rules (original only, no real artists)",
+            "Lyrics length scales with duration; section tags match ACE-Step format",
+            "Parser tests with sample good and bad model outputs"
+          ],
+          "reqs": [
+            "F1b",
+            "H10"
+          ],
+          "refs": [
+            "§8.1"
+          ],
+          "depends": [
+            "B3"
+          ]
+        },
+        {
+          "key": "B6",
+          "title": "Song generation service pipeline with staged status",
+          "milestone": "M1",
+          "goal": "Inputs → title/lyrics → music → saved file → library → cover job.",
+          "criteria": [
+            "jukebox/services/songs.py is a generator yielding stage messages",
+            "Saves to runtime/generated/{track_id}.{ext} and adds the Track to the library",
+            "Triggers the cover job without waiting for it",
+            "Every failure becomes a ServiceError message; no partial track left in the library",
+            "Uses only the qwen and acestep clients; a failure never falls back to another model or non-AI stand-in audio/lyrics"
+          ],
+          "reqs": [
+            "F1",
+            "F1a",
+            "F1b",
+            "R2",
+            "R5",
+            "R6",
+            "H15"
+          ],
+          "refs": [
+            "§7.0",
+            "§8.1"
+          ],
+          "depends": [
+            "A6",
+            "B4",
+            "B5"
+          ]
+        },
+        {
+          "key": "B7",
+          "title": "Generate tab UI: style, mood, duration, instrumental/vocal, theme",
+          "milestone": "M1",
+          "goal": "The user-facing form for F1.",
+          "criteria": [
+            "Controls per §8.1; duration bounds from B2 findings",
+            "Generate button disabled while running, re-enabled on success or failure",
+            "Status line shows each stage; errors show §7.3 messages; inputs preserved",
+            "Result card shows title, lyrics (vocal), cover when ready, Play now / Add to queue",
+            "Status line shows elapsed time and a 'usually takes about N s' hint based on the B2 measurements, so users don't think it froze",
+            "Short help text on the tab explains each control in plain language (usability, R7)"
+          ],
+          "reqs": [
+            "F1",
+            "R5",
+            "R6"
+          ],
+          "refs": [
+            "§8.1"
+          ],
+          "depends": [
+            "B6",
+            "E2"
+          ]
+        },
+        {
+          "key": "B8",
+          "title": "Input safeguard: strip/warn on real artist names in style tags",
+          "milestone": "M2",
+          "goal": "Avoid producing work that imitates real artists.",
+          "criteria": [
+            "'in the style of <name>' style input is stripped or warned about",
+            "Lyrics and title prompts re-checked for originality instructions",
+            "Tests for a few example inputs"
+          ],
+          "reqs": [
+            "H10"
+          ],
+          "refs": [
+            "§8.1"
+          ],
+          "depends": [
+            "B6"
+          ]
+        },
+        {
+          "key": "B9",
+          "title": "README: song generation walkthrough + design-choice write-up",
+          "milestone": "M4",
+          "goal": "Explain F1 and one important design choice backed by test evidence.",
+          "criteria": [
+            "Step-by-step usage with screenshots for instrumental and vocal",
+            "Design choice section cites measured evidence (e.g. song-before-cover, prefetch timing)"
+          ],
+          "reqs": [
+            "DL1"
+          ],
+          "refs": [
+            "§11"
+          ],
+          "depends": [
+            "E7"
+          ]
+        },
+        {
+          "key": "B10",
+          "title": "Docs-vs-app verification (on your OS): follow the README sections you didn't write",
+          "milestone": "M4",
+          "goal": "Two people who didn't write a README section follow it literally and report mismatches.",
+          "criteria": [
+            "Follow every README section you didn't write, step by step, on the release candidate",
+            "Mismatches filed as bugs and fixed",
+            "Your findings paragraph (own words) added to README 'Documentation verification'"
+          ],
+          "reqs": [
+            "DL6"
+          ],
+          "refs": [
+            "§11"
+          ],
+          "depends": [
+            "A9",
+            "B9",
+            "C7",
+            "D7",
+            "E8"
+          ]
+        }
+      ]
+    },
+    {
+      "role": "C",
+      "title": "Cover Art, Samples & Evidence",
+      "label": "feature:cover",
+      "mission": "Give every song its own matching FLUX cover, produce the three bundled sample songs and their generation log, and own the evidence the grader sees: starter prompt, screenshots, and the non-technical usability run.",
+      "owns": [
+        "`jukebox/clients/flux.py`",
+        "`jukebox/services/art.py`",
+        "`jukebox/prompts/cover_art.md`",
+        "The placeholder cover image (team-made)",
+        "`scripts/generate_samples.py` and everything in `samples/` (audio, covers, manifest, `GENERATION_LOG.md`)",
+        "`docs/STARTER_PROMPT.md`",
+        "`docs/screenshots/`"
+      ],
+      "provides": [
+        "Cover service by track_id to B and E",
+        "3 sample songs to D and E for testing (by Mon 10/19)",
+        "Starter prompt (before the build starts) and screenshots for the README"
+      ],
+      "needs": [
+        "B: Qwen client (cover prompts) and song pipeline (samples)",
+        "A: models/library"
+      ],
+      "tasks": [
+        {
+          "key": "C1",
+          "title": "Spike: FLUX (port 9006) live call, output format, latency",
+          "milestone": "M0",
+          "goal": "Prove cover generation works and learn the image format and timing.",
+          "criteria": [
+            "Uses class-endpoints.txt directly (no app code needed yet); key kept in your local .env, never pasted into issues or chat",
+            "One successful image generation",
+            "Documented: size options, output format (bytes/base64/URL), seed support",
+            "Checked that the 'no text, no logos, no real people' prompt suffix behaves",
+            "Latency recorded in §7.1; findings posted as a comment on your lane issue",
+            "Confirmed the service on 9006 is FLUX.2 klein 4B"
+          ],
+          "reqs": [
+            "H2",
+            "F2"
+          ],
+          "refs": [
+            "§7.1",
+            "§8.2"
+          ],
+          "depends": []
+        },
+        {
+          "key": "C0",
+          "title": "Write docs/STARTER_PROMPT.md (verbatim prompt + team additions) and get team review BEFORE any app code",
+          "milestone": "M0",
+          "goal": "Satisfy the assignment's 'retain all existing language, add instructions' requirement.",
+          "criteria": [
+            "Merged before any app-code task starts (the assignment says to add instructions before beginning the build); best done in the kickoff call on day 1",
+            "Original starter prompt included word-for-word (diff against the assignment PDF)",
+            "Team additions updated with anything learned in the spikes",
+            "At least 3 teammates approve the PR"
+          ],
+          "reqs": [],
+          "refs": [
+            "§15"
+          ],
+          "depends": []
+        },
+        {
+          "key": "C2",
+          "title": "FLUX client: generate_image()",
+          "milestone": "M1",
+          "goal": "Wrap the image service behind the §7.2 interface.",
+          "criteria": [
+            "jukebox/clients/flux.py implements generate_image() returning PNG bytes",
+            "Request follows the documented format from C1",
+            "respx tests for success and each error kind",
+            "Talks only to FLUX.2 klein 4B on FLUX_BASE_URL (port 9006)"
+          ],
+          "reqs": [
+            "H2",
+            "H15"
+          ],
+          "refs": [
+            "§7.0",
+            "§7.2"
+          ],
+          "depends": [
+            "A3",
+            "C1"
+          ]
+        },
+        {
+          "key": "C3",
+          "title": "Cover-art prompt builder (Qwen → FLUX prompt) with safety suffixes",
+          "milestone": "M1",
+          "goal": "Covers that visibly reflect each song's theme, style, and mood.",
+          "criteria": [
+            "prompts/cover_art.md turns title/style/mood/theme (+lyrics summary) into an image prompt",
+            "Fixed suffix: square album cover, no text/letters/logos/real people",
+            "Tests with 3 contrasting songs show distinct prompts",
+            "Image prompts are written by Qwen (qwen client) only"
+          ],
+          "reqs": [
+            "F2",
+            "H10"
+          ],
+          "refs": [
+            "§8.2"
+          ],
+          "depends": [
+            "B3"
+          ]
+        },
+        {
+          "key": "C4",
+          "title": "Cover service, display by track_id, placeholder, and Retry cover",
+          "milestone": "M1",
+          "goal": "Every song shows its own cover, and a failed cover is recoverable.",
+          "criteria": [
+            "jukebox/services/art.py saves runtime/generated/{track_id}.png and sets cover_path + cover_prompt",
+            "Library, now-playing, and queue look up covers by track_id",
+            "Team-made placeholder image committed; Retry cover button works",
+            "Song stays playable when the cover fails",
+            "Uses only the qwen and flux clients; the placeholder is a static team-made image, never generated by another model"
+          ],
+          "reqs": [
+            "F2",
+            "R5",
+            "R6",
+            "H15"
+          ],
+          "refs": [
+            "§7.0",
+            "§8.2"
+          ],
+          "depends": [
+            "A6",
+            "C2",
+            "C3"
+          ]
+        },
+        {
+          "key": "C5",
+          "title": "scripts/generate_samples.py using the app's own services",
+          "milestone": "M2",
+          "goal": "Reproducible sample generation through the same code path as the app.",
+          "criteria": [
+            "Generates title, lyrics (vocal), audio, and cover for a list of 3 sample specs with fixed seeds",
+            "Writes samples/audio/, samples/covers/, samples/manifest.json",
+            "Writes samples/GENERATION_LOG.md with date, operator, inputs, prompts, full lyrics, seeds, timings",
+            "Generates every title, lyric, cover, and audio file through the app's own Qwen, FLUX, and ACE-Step clients; GENERATION_LOG.md records model name and port for each call"
+          ],
+          "reqs": [
+            "R1",
+            "DL2"
+          ],
+          "refs": [
+            "§8.5"
+          ],
+          "depends": [
+            "B6",
+            "C4"
+          ]
+        },
+        {
+          "key": "C6",
+          "title": "Generate and commit the 3 sample songs",
+          "milestone": "M2",
+          "goal": "Ready-to-play samples with titles and covers bundled with the app.",
+          "criteria": [
+            "1 instrumental + 2 vocal samples, each ~60 s, each file ≤ ~5 MB, no Git LFS",
+            "All lyrics AI-generated; GENERATION_LOG.md complete",
+            "App loads and plays all 3 on a fresh start"
+          ],
+          "reqs": [
+            "R1",
+            "H10"
+          ],
+          "refs": [
+            "§8.5"
+          ],
+          "depends": [
+            "C5"
+          ]
+        },
+        {
+          "key": "C8",
+          "title": "Non-technical usability run of the app from the README alone (TC-13)",
+          "milestone": "M3",
+          "goal": "Prove a first-time, non-technical user can install and use all three features without help (usability is graded).",
+          "criteria": [
+            "Someone who didn't build the app follows only README Setup / PROJECT.md section 0.4 on their own OS, timed, with no help",
+            "Every point of confusion recorded (step, what they expected, what happened)",
+            "Each confusion fixed in the app/launchers/README, or listed under Known issues",
+            "Result logged with /log-test TC-13"
+          ],
+          "reqs": [
+            "R7",
+            "DL4"
+          ],
+          "refs": [
+            "§0.4",
+            "§12.2"
+          ],
+          "depends": [
+            "A8"
+          ]
+        },
+        {
+          "key": "C7",
+          "title": "Screenshots + README sample-songs section",
+          "milestone": "M4",
+          "goal": "Visual evidence and the 'how samples were generated' explanation.",
+          "criteria": [
+            "Screenshots in docs/screenshots/ for each core feature and one error state",
+            "README explains how sample songs, lyrics, and covers were generated, linking GENERATION_LOG.md",
+            "Every screenshot checked: no .env, keys, terminals with secrets, or devtools request headers visible (DL10)"
+          ],
+          "reqs": [
+            "DL1",
+            "DL2"
+          ],
+          "refs": [
+            "§11"
+          ],
+          "depends": [
+            "C6"
+          ]
+        }
+      ]
+    },
+    {
+      "role": "D",
+      "title": "AI DJ & Launchers",
+      "label": "feature:dj",
+      "mission": "Make the DJ talk: a short, song-specific intro written by Qwen and spoken by Chatterbox before each queued song, with an optional uploaded MP3/WAV voice. You also own the one-click launchers the grader uses and the reliability pass.",
+      "owns": [
+        "`jukebox/clients/chatterbox.py`",
+        "`jukebox/services/dj.py`",
+        "`jukebox/prompts/dj.md`",
+        "`jukebox/ui/dj_settings.py` (voice upload)",
+        "`run.sh`, `run.bat`, `requirements.txt` (pins)"
+      ],
+      "provides": [
+        "DJ clip for any track, prefetchable, to E (player)",
+        "Launchers that match PROJECT.md §0.4 to everyone and the grader",
+        "The README's limitation write-up"
+      ],
+      "needs": [
+        "B: Qwen client",
+        "E: app shell and player hooks for prefetch",
+        "A: client base"
+      ],
+      "tasks": [
+        {
+          "key": "D1",
+          "title": "Spike: Chatterbox (port 9008) default voice + WAV and MP3 reference voices",
+          "milestone": "M0",
+          "goal": "Prove DJ speech works with and without a voice reference.",
+          "criteria": [
+            "Uses class-endpoints.txt directly (no app code needed yet); key kept in your local .env, never pasted into issues or chat",
+            "Default voice call succeeds",
+            "Calls with a team-recorded WAV and MP3 reference succeed (recordings NOT committed)",
+            "Documented: voice reference field, accepted formats, length limits, output format",
+            "Latency for ~40 words recorded in §7.1; findings posted as a comment on your lane issue",
+            "Confirmed the service on 9008 is Chatterbox Multilingual V3; the default voice is the service's own (no other TTS)"
+          ],
+          "reqs": [
+            "H4",
+            "F3a",
+            "F3b"
+          ],
+          "refs": [
+            "§7.1",
+            "§8.3"
+          ],
+          "depends": []
+        },
+        {
+          "key": "D2",
+          "title": "Chatterbox client: speak()",
+          "milestone": "M1",
+          "goal": "Wrap the speech service behind the §7.2 interface.",
+          "criteria": [
+            "jukebox/clients/chatterbox.py implements speak() with optional voice_ref_path",
+            "Request follows the documented format from D1",
+            "respx tests for default voice, reference voice, and each error kind",
+            "Talks only to Chatterbox Multilingual V3 on CHATTERBOX_BASE_URL (port 9008); no other TTS library or browser speech"
+          ],
+          "reqs": [
+            "H4",
+            "F3a",
+            "F3b",
+            "H15"
+          ],
+          "refs": [
+            "§7.0",
+            "§7.2"
+          ],
+          "depends": [
+            "A3",
+            "D1"
+          ]
+        },
+        {
+          "key": "D3",
+          "title": "DJ commentary prompt + service (song-specific, 30–50 words)",
+          "milestone": "M1",
+          "goal": "A short spoken intro for each song that clearly refers to that song.",
+          "criteria": [
+            "prompts/dj.md follows §8.3: references title/style/mood/theme, plain text, no emojis or stage directions",
+            "jukebox/services/dj.py: commentary → TTS → clip saved under runtime/generated/",
+            "Tests confirm the script mentions the track title and stays under the word limit",
+            "Uses only the qwen and chatterbox clients"
+          ],
+          "reqs": [
+            "F3",
+            "H15"
+          ],
+          "refs": [
+            "§7.0",
+            "§8.3"
+          ],
+          "depends": [
+            "B3",
+            "D2"
+          ]
+        },
+        {
+          "key": "D4",
+          "title": "Voice reference upload: validation, storage, reset to default",
+          "milestone": "M1",
+          "goal": "Let users customize the DJ voice safely with MP3 or WAV.",
+          "criteria": [
+            "Only .mp3/.wav accepted; must decode with soundfile; size and duration limits from D1",
+            "Stored in runtime/uploads/ with a random filename; never in the repo",
+            "UI shows 'Custom voice active' and a Reset to default button",
+            "Rejections show a plain reason; tests cover ogg, 0-byte, oversize, corrupt"
+          ],
+          "reqs": [
+            "F3b",
+            "H9",
+            "R6"
+          ],
+          "refs": [
+            "§8.3"
+          ],
+          "depends": [
+            "D2",
+            "E2"
+          ]
+        },
+        {
+          "key": "D5",
+          "title": "DJ prefetch, cache by (track_id, voice_id), and failure fallback",
+          "milestone": "M2",
+          "goal": "No waiting between songs, and a DJ failure never stops the music.",
+          "criteria": [
+            "When an item starts, the next song's DJ clip generates in the background",
+            "Cache keyed by (track_id, voice_id); changing voice invalidates it",
+            "If TTS or Qwen fails, the player skips the DJ clip and shows a non-blocking notice",
+            "Measured gap between items with and without prefetch recorded (for README design judgment)",
+            "Fallback when Qwen or Chatterbox fails is skipping the DJ clip, never another voice or model"
+          ],
+          "reqs": [
+            "F3",
+            "R4",
+            "R6"
+          ],
+          "refs": [
+            "§8.3",
+            "§8.4"
+          ],
+          "depends": [
+            "D3",
+            "E4"
+          ]
+        },
+        {
+          "key": "D6",
+          "title": "Pinned requirements.txt + run.sh (macOS) / run.bat (Windows), tested on both",
+          "milestone": "M2",
+          "goal": "One command takes a fresh GitHub ZIP to a running app on macOS or Windows.",
+          "criteria": [
+            "Every direct dependency pinned to an exact version; installs cleanly on Windows x64 and macOS (Apple Silicon and Intel wheels exist)",
+            "run.sh (started as `bash run.sh`): finds python3.12/python3.11/python3, creates .venv if missing, installs requirements via .venv/bin/python, stops with a clear message if .env is missing, launches the app",
+            "run.bat (started as `.\\run.bat` from PowerShell or double-click/cmd): tries `py -3.12`, `py -3.11`, then `python`; uses .venv\\Scripts\\python.exe directly (no activation, no PowerShell scripts, so the downloaded-file execution policy can't block it); same .env check; launches the app; `pause` on error so the window doesn't vanish",
+            "First run with no .env: copies .env.example to .env, opens it in Notepad (Windows) or TextEdit via `open -e` (macOS), prints what to fill in, and exits; next run checks that placeholders were replaced (section 0.4.4)",
+            "Messages are written for non-coders (what happened, what to do next); run.bat ends with `pause` on any error so double-click users can read it; the URL is printed",
+            "Before launching, runs a quick connectivity check (scripts/check_endpoints.py) and warns in plain language if a class service can't be reached, without stopping the app",
+            "Both open the browser via the app (webbrowser / Gradio inbrowser), not OS commands",
+            "No ffmpeg or other system installs required",
+            "Tested from a fresh GitHub ZIP on one Windows and one Mac machine; results in the PR",
+            "Behavior matches PROJECT.md section 0.4 (Path 1) exactly; update section 0.4 and README Setup in the same PR if anything differs",
+            "requirements.txt contains no AI SDK or local-model package (check_models.py passes)"
+          ],
+          "reqs": [
+            "H7",
+            "DL4"
+          ],
+          "refs": [
+            "§4",
+            "§11"
+          ],
+          "depends": [
+            "E2"
+          ]
+        },
+        {
+          "key": "D8",
+          "title": "Reliability pass: generate while playing, repeated use, restart (TC-12, TC-14)",
+          "milestone": "M3",
+          "goal": "Show the app keeps working across realistic use (reliability is graded).",
+          "criteria": [
+            "TC-12: generating a song while the queue plays doesn't stall or interrupt playback",
+            "TC-14: 5 generations in a row, full queue playback, then restart behaves as documented",
+            "One failure per service (TC-F2, TC-F4, TC-F5) re-checked on the release candidate",
+            "Bugs filed and assigned; results logged with /log-test"
+          ],
+          "reqs": [
+            "R8",
+            "R6"
+          ],
+          "refs": [
+            "§12.2"
+          ],
+          "depends": [
+            "A8"
+          ]
+        },
+        {
+          "key": "D7",
+          "title": "README: DJ walkthrough + limitation/failure investigated",
+          "milestone": "M4",
+          "goal": "Explain F3 and one limitation the team investigated and what was learned.",
+          "criteria": [
+            "Usage steps for default and custom voice, with screenshots",
+            "Limitation write-up in the team's own words with evidence"
+          ],
+          "reqs": [
+            "DL1"
+          ],
+          "refs": [
+            "§11"
+          ],
+          "depends": [
+            "E7"
+          ]
+        },
+        {
+          "key": "D9",
+          "title": "Docs-vs-app verification (on your OS): follow the README sections you didn't write",
+          "milestone": "M4",
+          "goal": "Two people who didn't write a README section follow it literally and report mismatches.",
+          "criteria": [
+            "Do this on the OS B didn't use, so both OSes are covered",
+            "Follow every README section you didn't write, step by step, on the release candidate",
+            "Mismatches filed as bugs and fixed",
+            "Your findings paragraph (own words) added to README 'Documentation verification'"
+          ],
+          "reqs": [
+            "DL6"
+          ],
+          "refs": [
+            "§11"
+          ],
+          "depends": [
+            "A9",
+            "B9",
+            "C7",
+            "D7",
+            "E8"
+          ]
+        }
+      ]
+    },
+    {
+      "role": "E",
+      "title": "Player, UX & QA",
+      "label": "feature:player",
+      "mission": "Own the listening experience and the app's look: the app shell, library view, and a queue that plays DJ → song → DJ → song by itself with play/pause/skip. You also own testing: the live test matrix and the Windows/macOS deploy tests.",
+      "owns": [
+        "`app.py`",
+        "`jukebox/ui/` layout, `player_panel.py`, `library_tab.py`",
+        "`jukebox/services/player.py`",
+        "`docs/TEST_EVIDENCE.md` and the §12 test matrix"
+      ],
+      "provides": [
+        "App shell to B and D (by Wed 10/14) so their UI has a place to live",
+        "Queue/player that plays DJ clips (D) and covers (C)",
+        "Test results and deploy-test findings for the README"
+      ],
+      "needs": [
+        "A: library",
+        "C: covers",
+        "D: DJ clips"
+      ],
+      "tasks": [
+        {
+          "key": "E1",
+          "title": "Spike: Gradio playback approach (Option A native gr.Audio vs Option B custom HTML5)",
+          "milestone": "M0",
+          "goal": "Decide how the queue auto-advances DJ → song with no overlap.",
+          "criteria": [
+            "Minimal Gradio app plays 3 local test clips in sequence after one click",
+            "Tested: end event fires reliably, autoplay after source change, skip mid-load, gap length",
+            "Decision + evidence recorded as a row in PROJECT.md §2",
+            "Exact Gradio version pinned in requirements.txt"
+          ],
+          "reqs": [
+            "R3",
+            "R4"
+          ],
+          "refs": [
+            "§8.4",
+            "§2"
+          ],
+          "depends": []
+        },
+        {
+          "key": "E2",
+          "title": "Gradio app shell: thin app.py, layout skeleton, placeholder panels",
+          "milestone": "M0",
+          "goal": "Give every feature a place to plug its UI in without merge conflicts.",
+          "criteria": [
+            "app.py builds Blocks from jukebox/ui/*.py modules and launches on 127.0.0.1 (no share link)",
+            "Generate tab, Library tab, player panel, DJ settings placeholders exist",
+            "allowed_paths covers samples/ and runtime/",
+            "Runs locally with python app.py",
+            "Paths built with pathlib; app launches with `python app.py` on both macOS and Windows",
+            "A short 'How to use' panel on the page: play the samples, generate a song, change the DJ voice, expected waits (usability, R7)"
+          ],
+          "reqs": [],
+          "refs": [
+            "§5",
+            "§8.4"
+          ],
+          "depends": [
+            "E1",
+            "C0"
+          ]
+        },
+        {
+          "key": "E3",
+          "title": "Queue model (services/player.py) with unit tests",
+          "milestone": "M1",
+          "goal": "Pure-Python 'what plays next' logic, testable without Gradio.",
+          "criteria": [
+            "enqueue, play_now, skip, clear, next_item per §8.4",
+            "next_item returns DJ clip if ready, otherwise the song (never blocks on DJ)",
+            "Tests: ordering with DJ, skip during DJ, skip during song, DJ missing, end of queue"
+          ],
+          "reqs": [
+            "R3",
+            "R4"
+          ],
+          "refs": [
+            "§8.4"
+          ],
+          "depends": [
+            "A6"
+          ]
+        },
+        {
+          "key": "E4",
+          "title": "Player panel: play/pause, skip, now playing, up-next with covers, auto-advance",
+          "milestone": "M1",
+          "goal": "The listening experience: press Play once and the queue runs itself.",
+          "criteria": [
+            "Implements the approach chosen in E1",
+            "Shows cover, title, and 'DJ speaking…' vs 'Now playing'",
+            "Auto-advances through the queue with exactly one audio source playing",
+            "Works with the 3 sample tracks and placeholder DJ clips",
+            "Player and UI call services only, never model clients directly (check_models.py feature map)"
+          ],
+          "reqs": [
+            "R3",
+            "R4",
+            "R5"
+          ],
+          "refs": [
+            "§8.4"
+          ],
+          "depends": [
+            "E2",
+            "E3"
+          ]
+        },
+        {
+          "key": "E5",
+          "title": "Error and recovery pass (TC-F1 to TC-F5)",
+          "milestone": "M2",
+          "goal": "Prove every failure shows a clear message and the user can recover.",
+          "criteria": [
+            "Each failure case in §12.2 forced and observed",
+            "Bugs filed and assigned to the owning role",
+            "Results logged with /log-test"
+          ],
+          "reqs": [
+            "R6"
+          ],
+          "refs": [
+            "§12.2"
+          ],
+          "depends": [
+            "A7"
+          ]
+        },
+        {
+          "key": "E6",
+          "title": "Independent deploy test from the GitHub ZIP on Windows AND macOS (TC-10a, TC-10b)",
+          "milestone": "M3",
+          "goal": "Prove the grader can run the app using only our README and class credentials.",
+          "criteria": [
+            "Run once on Windows (TC-10a) and once on macOS (TC-10b), each by someone who didn't write run.sh/run.bat, using only that OS's README section",
+            "Fresh folder (ideally a machine that never had the repo), ZIP downloaded from GitHub, no help",
+            "Extract to a different folder path than any developer used, to catch files that exist only on a dev machine; grep the code for absolute paths (TC-11)",
+            "Every friction point filed as a bug issue labeled with the OS and assigned to the owning lane",
+            "All 3 core features verified on both; results logged with /log-test"
+          ],
+          "reqs": [
+            "DL4",
+            "H7"
+          ],
+          "refs": [
+            "§10",
+            "§12.2"
+          ],
+          "depends": [
+            "A8"
+          ]
+        },
+        {
+          "key": "E7",
+          "title": "Run the full live test matrix on the release candidate",
+          "milestone": "M3",
+          "goal": "Real results for every §12.2 row, recorded honestly.",
+          "criteria": [
+            "Every TC row has Actual, Status, Tester, Date, Commit in docs/TEST_EVIDENCE.md",
+            "Owners run their own features' rows (B: TC-01–03, C: TC-04, D: TC-05–07, E: the rest)",
+            "Untested rows explicitly marked Not tested",
+            "TC-15 (models used) run and logged: check_models.py passes and the request log shows only ports 9001/9006/9007/9008"
+          ],
+          "reqs": [
+            "DL1"
+          ],
+          "refs": [
+            "§7.0",
+            "§12.2"
+          ],
+          "depends": [
+            "A8"
+          ]
+        },
+        {
+          "key": "E8",
+          "title": "README: test results section",
+          "milestone": "M4",
+          "goal": "Present inputs, expected, actual for the core features and at least one failure case.",
+          "criteria": [
+            "Table copied from docs/TEST_EVIDENCE.md",
+            "Completed tests clearly separated from unchecked claims",
+            "Unresolved problems listed"
+          ],
+          "reqs": [
+            "DL1"
+          ],
+          "refs": [
+            "§11",
+            "§12"
+          ],
+          "depends": [
+            "E7"
+          ]
+        }
+      ]
+    }
+  ]
+}

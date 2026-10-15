@@ -1,0 +1,11 @@
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = [".venv", "runtime"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]  # long strings are fine; ruff format handles code width
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
