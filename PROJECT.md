@@ -15,9 +15,9 @@ This is the team's working plan. It is the single source of truth for scope, own
 
 | | |
 |---|---|
-| **Phase** | Planning done; **M0 starts Tue 10/13**. |
+| **Phase** | **M0 in progress.** Repo is live on GitHub, the five lane issues are assigned, and `main` is protected (1 approval + CI). |
 | **Is the app built?** | **No.** There is nothing to run yet. Path 1 below describes the finished app (v1.0) and is the contract the team builds to. |
-| **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation. |
+| **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation, and CI on Ubuntu, Windows and macOS. |
 | **Latest release** | none (will be the `v1.0` tag) |
 | **Due date** | Assumed Fri 10/23/2026; not yet confirmed (§14 Q2) |
 | **Blockers** | `class-endpoints.txt` formats not yet in §7.1 (§14 Q3) |
