@@ -3,21 +3,26 @@
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 import gradio as gr
 import pytest
 
-from jukebox.ui.launch import (
+# The pytest console script does not put the repo root on sys.path.
+# `python -m pytest` does, which is why this passed locally and failed in CI.
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from jukebox.ui.launch import (  # noqa: E402
     HOST,
     allowed_paths,
     choose_port,
     ensure_runtime,
     serve,
 )
-from jukebox.ui.layout import build_demo
+from jukebox.ui.layout import build_demo  # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
 UI_DIR = ROOT / "jukebox" / "ui"
 SHELL_FILES = [ROOT / "app.py", *sorted(UI_DIR.glob("*.py"))]
 
