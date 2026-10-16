@@ -16,7 +16,8 @@ It's an **asynchronous job API** in three steps:
 
 - **Auth:** `Authorization: Bearer <CLASS_API_KEY>`, the same as Qwen. Sent on all three steps.
 - **Model:** class-endpoints.txt spells it `ACE-Step/acestep-v15-xl-turbo`, and `/v1/models` reports `acestep/acestep-v15-xl-turbo`. Every result also reports `dit_model: "acestep-v15-xl-turbo"` and `lm_model: "acestep-5Hz-lm-4B"` (ACE-Step's own internal planner; it is part of the same service).
-- **The `model` field is accepted but ignored** (follow-up test, 2026-10-16). Four 10 s jobs sent `model` as `ACE-Step/acestep-v15-xl-turbo`, `acestep/acestep-v15-xl-turbo`, `acestep-v15-xl-turbo`, and a made-up `not-a-real-model`. All four succeeded, all reported `dit_model: "acestep-v15-xl-turbo"`, and all four files were the same size. So the spelling doesn't matter, and sending `ACESTEP_MODEL` (as §7.2 asks) is harmless. The real evidence of which model ran is `dit_model` in the result, not the request.
+- **The `model` field is accepted, and any value still runs `acestep-v15-xl-turbo`** (follow-up test, 2026-10-16). Four 10 s jobs sent `model` as `ACE-Step/acestep-v15-xl-turbo`, `acestep/acestep-v15-xl-turbo`, `acestep-v15-xl-turbo`, and a made-up `not-a-real-model`. All four succeeded and all reported `dit_model: "acestep-v15-xl-turbo"`. So the spelling doesn't break anything, and sending `ACESTEP_MODEL` (as §7.2 asks) is harmless. The only evidence of which model ran is `dit_model` in the result, not the request.
+- **The same seed did not give the same audio.** All four follow-up jobs used `seed: 42` with `use_random_seed: false`, and the result echoed `seed_value: "42"`. But the four MP3s differ in almost every byte (about 157,000 of 160,940), so the audio itself was different. Their file sizes match only because the output is constant-bitrate. These requests differed in their `model` value, so this is not a clean repeatability test. But it means **we can't count on a fixed seed to reproduce a song** (relevant to the sample songs, C5) until two identical requests are compared.
 
 ### Submit fields we used
 
@@ -68,7 +69,7 @@ Not sent, so the server chose them: `bpm` (it picked 86–125) and `key_scale` (
 
 1. **Use the submit → poll → download flow**, polling every **1 s**, with a total time limit for the whole job and short per-request timeouts. Keep the total limit at `ACESTEP_TIMEOUT_S=300` s until queueing under class load is measured; the empty-queue numbers alone would justify something much shorter. Status `2` or an unparseable `result` → `ServiceError(kind="bad_response")`. Running out of time → `kind="timeout"`.
 2. **Proposed: never retry `POST /release_task` automatically.** A retried submit can create a duplicate job on the shared GPU. Retrying `/query_result` and the download is safe. This conflicts with the current §7.2 rule ("retry once on timeouts…"), so it needs @mlip3191's agreement and a way to turn retries off per request in the shared client (raised for #9).
-3. **Always send `batch_size: 1`.** Sending `model` is optional and harmless (the server ignores it). To prove which model ran (TC-15), read `dit_model` from the result and treat anything other than `acestep-v15-xl-turbo` as a `bad_response` error.
+3. **Always send `batch_size: 1`.** Sending `model` is optional and harmless (any value ran the same model). To confirm which model actually ran, B4 can check `dit_model` in each result against the exact string `acestep-v15-xl-turbo`. That's the `ACESTEP_MODEL` value with its `acestep/` prefix removed. Anything else becomes a `bad_response` error. The same check would also suit A4's `check_endpoints.py`.
 4. **Send `"[Instrumental]"` as the lyrics for instrumental tracks.** Both methods worked, but the explicit marker makes the intent visible in logs and results.
 5. **Ideas for B5/B6, all untested:**
    - **High-pitched voice:** try voice tags in `prompt` such as `"warm female vocals"`, `"male vocals"` or `"natural voice"`.
@@ -83,7 +84,7 @@ Not sent, so the server chose them: `bpm` (it picked 86–125) and `key_scale` (
 - Queueing and latency when several teammates or the whole class generate at once.
 - Durations above 60 s, and the 600 s upper limit.
 - Error responses: bad fields, missing auth, overload, and what a status `2` (failed) result looks like.
-- Whether `seed` gives the same audio twice (it matters for reproducing the sample songs, C5).
+- Whether two **identical** requests with the same `seed` give the same audio (it matters for reproducing the sample songs, C5). The follow-up jobs suggest not, but their requests weren't identical (see "Model" above).
 - `wav` / `flac` output, `bpm` / `key_scale` control, `thinking: true`, and higher `inference_steps`.
 - Listening was one person on one set of speakers or headphones, with one sample per setting.
 
