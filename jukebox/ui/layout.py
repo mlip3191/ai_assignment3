@@ -16,9 +16,11 @@ HOW_TO = "\n".join(
         "The browser plays nothing until that click. The queue then advances on its own.",
         "- **Generate a song.** Choose style, mood, duration, and instrumental or vocal. "
         "The button stays disabled while it runs, and a status line names the stage. "
-        "Measured wait times will be added after they are recorded.",
+        "With an empty class queue, a short Qwen reply is about 1.5 seconds, "
+        "an ACE-Step song is about 5 to 7 seconds, and a FLUX cover is about 2.3 seconds. "
+        "A busy queue can take longer.",
         "- **Change the DJ voice.** Keep the default voice, or upload an MP3 or WAV. "
-        "A failed DJ intro still leaves the song.",
+        "A failed DJ intro still leaves the song. The DJ wait has not been measured.",
         "",
         "Generated songs stay available until you stop the app.",
     ]

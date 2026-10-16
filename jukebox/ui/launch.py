@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import socket
 from collections.abc import Callable
 from pathlib import Path
@@ -42,7 +43,15 @@ def choose_port(host: str, port: int, fallback: int, can_bind: BindCheck) -> int
 
 
 def port_is_free(host: str, port: int) -> bool:
+    """True when nothing is listening on host:port.
+
+    macOS and Linux keep a just-closed port in TIME_WAIT, so a plain bind fails
+    and a restart looks like both ports are busy. SO_REUSEADDR ignores that.
+    Do not set it on Windows: there it lets a second process bind the same port.
+    """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        if os.name != "nt":
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind((host, port))
         except OSError:

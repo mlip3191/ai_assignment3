@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import re
+import socket
 import sys
 from pathlib import Path
 
@@ -19,6 +19,7 @@ from jukebox.ui.launch import (  # noqa: E402
     allowed_paths,
     choose_port,
     ensure_runtime,
+    port_is_free,
     serve,
 )
 from jukebox.ui.layout import build_demo  # noqa: E402
@@ -80,14 +81,17 @@ def test_build_demo_shows_how_to_and_four_regions() -> None:
     assert "gr.Blocks" not in (ROOT / "app.py").read_text(encoding="utf-8")
 
 
-def test_how_to_covers_play_generate_and_voice_without_a_made_up_wait() -> None:
+def test_how_to_covers_play_generate_voice_and_measured_waits() -> None:
     text = str(getattr(_block(build_demo(), "how-to"), "value", ""))
     assert "Play queue" in text
     assert "Generate a song" in text
     assert "DJ voice" in text
     assert "not connected" in text
+    assert "1.5 seconds" in text
+    assert "5 to 7 seconds" in text
+    assert "2.3 seconds" in text
+    assert "DJ wait has not been measured" in text
     assert "usually takes" not in text.lower()
-    assert re.search(r"\d+\s*seconds", text, re.I) is None
 
 
 def test_player_has_one_unwired_audio() -> None:
@@ -144,6 +148,32 @@ def test_ensure_runtime_creates_runtime_dirs_only(tmp_path: Path) -> None:
     assert (tmp_path / "runtime" / "generated").is_dir()
     assert (tmp_path / "runtime" / "uploads").is_dir()
     assert not (tmp_path / "samples").exists()
+
+
+def test_a_listening_socket_is_not_free() -> None:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        port = listener.getsockname()[1]
+        assert port_is_free("127.0.0.1", port) is False
+
+
+def test_port_is_free_after_the_server_closes_first() -> None:
+    """A server that closes first leaves TIME_WAIT. Unix must still report the port free."""
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        port = listener.getsockname()[1]
+        client.connect(("127.0.0.1", port))
+        accepted, _addr = listener.accept()
+        accepted.close()
+        listener.close()
+        assert port_is_free("127.0.0.1", port) is True
+    finally:
+        client.close()
+        listener.close()
 
 
 def test_busy_7860_uses_7861_and_both_busy_raises() -> None:
