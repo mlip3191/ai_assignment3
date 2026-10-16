@@ -78,3 +78,26 @@ def test_tick_only_touches_the_task_line() -> None:
     assert "- [ ] **B5**" in new
     assert tick(new, "B4") == (new, False)  # already ticked
     assert tick(body, "B40")[1] is False
+
+
+def test_a11_prepush_hook_task_is_in_lane_a() -> None:
+    spec, _ = load()
+    lane_a = next(lane for lane in spec["lanes"] if lane["role"] == "A")
+    task = next((t for t in lane_a["tasks"] if t["key"] == "A11"), None)
+    assert task is not None
+    assert task["milestone"] == "M1"
+    assert task["depends"] == []
+    criteria = " ".join(task["criteria"])
+    assert "100755" in criteria
+    assert "doctor.py" in criteria
+
+
+def test_project_md_lists_every_backlog_task_and_count() -> None:
+    spec, _ = load()
+    keys = [t["key"] for lane in spec["lanes"] for t in lane["tasks"]]
+    text = (ROOT / "PROJECT.md").read_text(encoding="utf-8")
+    section19 = text.split("## 19. The five lanes", 1)[1]
+    for key in keys:
+        assert f"\n| {key} |" in section19, f"{key} missing from PROJECT.md section 19"
+    assert f"({len(keys)} tasks total)" in text
+    assert f"5 lanes, {len(keys)} tasks" in text
