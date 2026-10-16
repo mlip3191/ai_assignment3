@@ -18,6 +18,7 @@ One file per module, named `test_<module>.py`:
 | `test_check_models.py` | Only-the-four-class-models check |
 | `test_lanes.py` | Lane issue generation |
 | `test_playback_spike.py` | E1 Option A queue: clip order, skip, stale end event, one autoplay Audio |
+| `test_app_shell.py` | E2 shell: placeholder panels, loopback launch, no model clients |
 | `test_<service>.py` | One per client in `jukebox/clients/` (added by lanes B, C, D) |
 
 A good test case covers the happy path, at least one failure path (service down, bad input, timeout), and each "Done when" criterion of its task.
