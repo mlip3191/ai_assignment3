@@ -640,7 +640,7 @@ Which feature may call which model:
 | Service | Port | Base URL env var | Method + path | Auth | Request body (key fields) | Response (key fields) | Typical latency | Timeout we set |
 |---|---|---|---|---|---|---|---|---|
 | Qwen3.6-35B-A3B | 9001 | `QWEN_BASE_URL` | TBD | TBD | TBD | TBD | measure | |
-| FLUX.2 klein 4B | 9006 | `FLUX_BASE_URL` | TBD | TBD | TBD | TBD (image bytes? base64? URL?) | measure | |
+| FLUX.2 klein 4B | 9006 | `FLUX_BASE_URL` | `POST /v1/images/generations` (OpenAI-style images API, synchronous) | `Authorization: Bearer <key>` | `prompt`, `model` (`black-forest-labs/FLUX.2-klein-4B`), `n` 1, `size` `"1024x1024"` (`WIDTHxHEIGHT`), `seed`, `response_format` `b64_json`, `output_format` `png`, **`output_compression` 1** (1.4 MB instead of 3.1 MB, lossless) | `data[0].b64_json`: base64 PNG; `url` not implemented; prompt not rewritten (`revised_prompt` empty). Same seed gives the same image | ~2.3 s per 1024x1024 image (0.95 s server generation), ~2.9 s with `output_compression` 1; empty queue (C1, 10/15) | 120 s for now (`FLUX_TIMEOUT_S`). See [docs/spikes/C1-flux.md](docs/spikes/C1-flux.md) |
 | ACE-Step 1.5 XL Turbo | 9007 | `ACESTEP_BASE_URL` | TBD | TBD | TBD (tags, lyrics, duration, seed?) | TBD (format? wav/mp3?) | measure | |
 | Chatterbox Multilingual V3 | 9008 | `CHATTERBOX_BASE_URL` | TBD | TBD | TBD (text, language, voice reference field?) | TBD | measure | |
 
