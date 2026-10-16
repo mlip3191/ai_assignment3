@@ -2,7 +2,7 @@
 
 Task B2 (lane #3). Run by @gunnaroc on Windows 11, 2026-10-15, against the class server, with only our own jobs in the queue (every job was at queue position 1). The numbers are a snapshot of a quiet server, not a guarantee for deadline week.
 
-The request format comes from ACE-Step 1.5's official API docs (`docs/en/API.md` in the ace-step/ACE-Step-1.5 GitHub repo). The class server's `/openapi.json` lists the paths but doesn't describe request bodies, and class-endpoints.txt has no entry for port 9007. Every field below was then confirmed against the class server.
+The request format comes from ACE-Step 1.5's official API docs (`docs/en/API.md` in the ace-step/ACE-Step-1.5 GitHub repo). The current class-endpoints.txt (updated 2026/09/30) has a 9007 entry that describes the same submit → poll → download flow and points to that same `API.md`. The class server's own `/openapi.json` lists the paths but doesn't describe request bodies. Every field below was then confirmed against the class server.
 
 ## How the service is called
 
@@ -15,7 +15,8 @@ It's an **asynchronous job API** in three steps:
 | 3. Download | `GET /v1/audio?path=...`, using the `file` value from the result as-is | MP3 bytes, `content-type: audio/mpeg` |
 
 - **Auth:** `Authorization: Bearer <CLASS_API_KEY>`, the same as Qwen. Sent on all three steps.
-- **Model:** `/v1/models` reports `acestep/acestep-v15-xl-turbo`. Every result also reports `dit_model: "acestep-v15-xl-turbo"` and `lm_model: "acestep-5Hz-lm-4B"` (ACE-Step's own internal planner; it is part of the same service).
+- **Model:** class-endpoints.txt spells it `ACE-Step/acestep-v15-xl-turbo`, and `/v1/models` reports `acestep/acestep-v15-xl-turbo`. Every result also reports `dit_model: "acestep-v15-xl-turbo"` and `lm_model: "acestep-5Hz-lm-4B"` (ACE-Step's own internal planner; it is part of the same service).
+- **The `model` field is accepted but ignored** (follow-up test, 2026-10-16). Four 10 s jobs sent `model` as `ACE-Step/acestep-v15-xl-turbo`, `acestep/acestep-v15-xl-turbo`, `acestep-v15-xl-turbo`, and a made-up `not-a-real-model`. All four succeeded, all reported `dit_model: "acestep-v15-xl-turbo"`, and all four files were the same size. So the spelling doesn't matter, and sending `ACESTEP_MODEL` (as §7.2 asks) is harmless. The real evidence of which model ran is `dit_model` in the result, not the request.
 
 ### Submit fields we used
 
@@ -67,11 +68,11 @@ Not sent, so the server chose them: `bpm` (it picked 86–125) and `key_scale` (
 
 1. **Use the submit → poll → download flow**, polling every **1 s**, with a total time limit for the whole job and short per-request timeouts. Keep the total limit at `ACESTEP_TIMEOUT_S=300` s until queueing under class load is measured; the empty-queue numbers alone would justify something much shorter. Status `2` or an unparseable `result` → `ServiceError(kind="bad_response")`. Running out of time → `kind="timeout"`.
 2. **Proposed: never retry `POST /release_task` automatically.** A retried submit can create a duplicate job on the shared GPU. Retrying `/query_result` and the download is safe. This conflicts with the current §7.2 rule ("retry once on timeouts…"), so it needs @mlip3191's agreement and a way to turn retries off per request in the shared client (raised for #9).
-3. **Always send `batch_size: 1`.**
+3. **Always send `batch_size: 1`.** Sending `model` is optional and harmless (the server ignores it). To prove which model ran (TC-15), read `dit_model` from the result and treat anything other than `acestep-v15-xl-turbo` as a `bad_response` error.
 4. **Send `"[Instrumental]"` as the lyrics for instrumental tracks.** Both methods worked, but the explicit marker makes the intent visible in logs and results.
 5. **Ideas for B5/B6, all untested:**
    - **High-pitched voice:** try voice tags in `prompt` such as `"warm female vocals"`, `"male vocals"` or `"natural voice"`.
-   - **Abrupt ending:** try adding an `[outro]` section to the lyrics, or make the lyrics length fit the duration.
+   - **Abrupt ending:** a likely cause is lyrics that are too short for the duration. The 60 s vocal used one verse and one chorus, the same short output B1 found Qwen gives for 60 s requests, so the song may simply run out of words. Try lyrics sized to the duration plus an `[outro]` section (B5). Not tested.
    - **Rough instrumentals:** try higher `inference_steps` (up to 20) or `thinking: true`.
 
    Each should be compared by ear before we commit to it.
@@ -88,4 +89,4 @@ Not sent, so the server chose them: `bpm` (it picked 86–125) and `key_scale` (
 
 ## How it was run
 
-A throwaway script read the key from the local `.env` (never printed), submitted 5 jobs one after another (a 5 s limit test, instrumental 30 s and 60 s, vocal 30 s and 60 s), polled every 2 s, and downloaded each MP3 to the gitignored `runtime/tmp/`. Neither the script nor the audio is committed.
+A throwaway script read the key from the local `.env` (never printed), submitted 5 jobs one after another (a 5 s limit test, instrumental 30 s and 60 s, vocal 30 s and 60 s), polled every 2 s, and downloaded each MP3 to the gitignored `runtime/tmp/`. On 2026-10-16, a follow-up script reused the same helpers for four 10 s instrumental jobs to test the `model` field. Neither script nor any audio is committed.
