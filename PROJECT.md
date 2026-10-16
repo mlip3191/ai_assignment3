@@ -639,7 +639,7 @@ Which feature may call which model:
 
 | Service | Port | Base URL env var | Method + path | Auth | Request body (key fields) | Response (key fields) | Typical latency | Timeout we set |
 |---|---|---|---|---|---|---|---|---|
-| Qwen3.6-35B-A3B | 9001 | `QWEN_BASE_URL` | TBD | TBD | TBD | TBD | measure | |
+| Qwen3.6-35B-A3B | 9001 | `QWEN_BASE_URL` | `POST /v1/chat/completions` (OpenAI-compatible, synchronous) | `Authorization: Bearer <key>` | `model` (`cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit`), `messages`, `max_tokens`, `temperature`, **`chat_template_kwargs: {"enable_thinking": false}`** (thinking is on by default), optional `response_format` (JSON schema) | `choices[0].message.content`; reasoning arrives separately in `message.reasoning`; `content` is `null` if thinking used up `max_tokens` | ~1.5 s for ~200 tokens with thinking off; ~10 s with it on (B1, 10/15) | 90 s for now (`QWEN_TIMEOUT_S`); 30 s would be ample. See [docs/spikes/B1-qwen.md](docs/spikes/B1-qwen.md) |
 | FLUX.2 klein 4B | 9006 | `FLUX_BASE_URL` | TBD | TBD | TBD | TBD (image bytes? base64? URL?) | measure | |
 | ACE-Step 1.5 XL Turbo | 9007 | `ACESTEP_BASE_URL` | TBD | TBD | TBD (tags, lyrics, duration, seed?) | TBD (format? wav/mp3?) | measure | |
 | Chatterbox Multilingual V3 | 9008 | `CHATTERBOX_BASE_URL` | TBD | TBD | TBD (text, language, voice reference field?) | TBD | measure | |
