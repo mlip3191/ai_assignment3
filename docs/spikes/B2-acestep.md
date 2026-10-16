@@ -65,8 +65,8 @@ Not sent, so the server chose them: `bpm` (it picked 86–125) and `key_scale` (
 
 ## Recommendations for B4 (ACE-Step client) and B5/B6
 
-1. **Use the submit → poll → download flow**, polling every **1 s**, with a total time limit for the whole job (e.g. 120 s, configurable) and short per-request timeouts. Status `2` or an unparseable `result` → `ServiceError(kind="bad_response")`. Running out of time → `kind="timeout"`.
-2. **Never retry `POST /release_task` automatically.** A retried submit can create a duplicate job on the shared GPU. Retrying `/query_result` and the download is safe. This needs a way to turn retries off per request in the shared client (#9).
+1. **Use the submit → poll → download flow**, polling every **1 s**, with a total time limit for the whole job and short per-request timeouts. Keep the total limit at `ACESTEP_TIMEOUT_S=300` s until queueing under class load is measured; the empty-queue numbers alone would justify something much shorter. Status `2` or an unparseable `result` → `ServiceError(kind="bad_response")`. Running out of time → `kind="timeout"`.
+2. **Proposed: never retry `POST /release_task` automatically.** A retried submit can create a duplicate job on the shared GPU. Retrying `/query_result` and the download is safe. This conflicts with the current §7.2 rule ("retry once on timeouts…"), so it needs @mlip3191's agreement and a way to turn retries off per request in the shared client (raised for #9).
 3. **Always send `batch_size: 1`.**
 4. **Send `"[Instrumental]"` as the lyrics for instrumental tracks.** Both methods worked, but the explicit marker makes the intent visible in logs and results.
 5. **Ideas for B5/B6, all untested:**
