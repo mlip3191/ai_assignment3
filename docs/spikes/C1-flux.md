@@ -7,13 +7,13 @@ Task C1 (lane #4). Run by @felcervino with Claude Code on Windows 11, 2026-10-15
 | | |
 |---|---|
 | Method + path | `POST {FLUX_BASE_URL}/v1/images/generations` (OpenAI-style images API; the server's spec is at `/openapi.json` and needs no key) |
-| Auth | `Authorization: Bearer <CLASS_API_KEY>`. Without it: HTTP 401 `{"error":"Unauthorized"}` |
+| Auth | `Authorization: Bearer <CLASS_API_KEY>`. Without it, `GET /v1/models` returned HTTP 401 `{"error":"Unauthorized"}` |
 | Model name | `black-forest-labs/FLUX.2-klein-4B`, as given in class-endpoints.txt and as the server reports in `/v1/models` |
 | Call style | Synchronous; one request, one reply. No job ID or polling |
 | Request fields we use | `prompt`, `model`, `n` (1), `size` (`"1024x1024"`), `seed`, `response_format` (`b64_json`), `output_format` (`png`), `output_compression` |
 | Reply image | `data[0].b64_json`: a base64-encoded PNG |
 
-Other documented request fields (not used yet): `negative_prompt`, `num_inference_steps` (1 to 200), `guidance_scale` (0 to 20). `n` accepts 1 to 10. `size` is `WIDTHxHEIGHT`; the model default applies if it is left out. `response_format` also lists `url`, which the spec marks "not implemented", and `file`.
+Other documented request fields (not used yet): `negative_prompt`, `num_inference_steps` (1 to 200), `guidance_scale` (0 to 20). `n` accepts 1 to 10. `size` is `WIDTHxHEIGHT`; the model default applies if it is left out. `response_format` also lists `url` and `file`; the spec marks the response's `url` field "not implemented".
 
 ## Findings
 
@@ -61,4 +61,4 @@ Other documented request fields (not used yet): `negative_prompt`, `num_inferenc
 
 ## How it was run
 
-A throwaway script read the key from the local `.env` inside its own process (never printed) and checked that `FLUX_BASE_URL` uses port 9006. It made two `GET /v1/models` calls and two image generations: one with default settings and one with `output_compression: 1`, both with `seed: 42`. A second throwaway script decoded both PNGs with the Python standard library and compared their pixels. Neither script is committed, and the test images stay in the gitignored `runtime/tmp/`.
+Without a key, `curl` fetched `/openapi.json` (HTTP 200, the full spec) and called `GET /v1/models` (HTTP 401). Then a throwaway script read the key from the local `.env` inside its own process (never printed) and checked that `FLUX_BASE_URL` uses port 9006. It made two `GET /v1/models` calls and two image generations: one with default settings and one with `output_compression: 1`, both with `seed: 42`. A second throwaway script decoded both PNGs with the Python standard library and compared their pixels. Neither script is committed, and the test images stay in the gitignored `runtime/tmp/`.
