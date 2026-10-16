@@ -18,7 +18,7 @@ Task B1 (lane #3). Run by @gunnaroc on Windows 11, 2026-10-15, against the class
 ### 1. Thinking is ON by default. Turn it off on every call.
 
 - With default settings, a two-line poem took **6.98 s and 1,300 completion tokens**, almost all of them reasoning.
-- The reasoning comes back in a separate `message.reasoning` field, **not** as `<think>` tags inside `content`. In all 20+ calls, `content` never contained `<think>`.
+- The reasoning comes back in a separate `message.reasoning` field, **not** as `<think>` tags inside `content`. In all 21 calls, `content` never contained `<think>`.
 - Sending `"chat_template_kwargs": {"enable_thinking": false}` turns it off: the same poem took **0.22 s and 15 tokens**, and `reasoning` was empty.
 - **Main risk:** with thinking on, 2 of 3 longer requests used up the whole `max_tokens` budget (2,500) on reasoning and returned **`content: null`** with `finish_reason: "length"`. In the app that would look like an empty or failed reply.
 
@@ -54,9 +54,10 @@ Task B1 (lane #3). Run by @gunnaroc on Windows 11, 2026-10-15, against the class
 
 - Behavior under heavy load (for example everyone testing at once near the deadline).
 - Very long prompts or replies, and the context-window limit.
+- Error responses for bad input or an overloaded server (4xx/5xx). Only the missing-key response (HTTP 401) was seen, so B3's error mapping is not yet verified against real errors.
 - Whether `seed` gives repeatable output (it matters for the sample songs, C5).
 - Lyric quality beyond a quick read of a few samples.
 
 ## How it was run
 
-A throwaway script read the key from the local `.env` (never printed) and made 22 calls: one default call, one thinking-off call, 5 prompt-only JSON calls, 5 schema JSON calls, 5 thinking-off latency calls and 3 thinking-on latency calls. The script itself is not committed.
+A throwaway script read the key from the local `.env` (never printed) and made 21 chat calls: one default call, one thinking-off call, 5 prompt-only JSON calls, 5 schema JSON calls, 5 thinking-off latency calls, 3 thinking-on latency calls, and one more default call to find which response field carries the reasoning. The script itself is not committed.
