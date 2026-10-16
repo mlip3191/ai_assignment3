@@ -26,8 +26,8 @@ Other documented request fields (not used yet): `negative_prompt`, `num_inferenc
 
 ### 2. A fixed seed reproduces the same image
 
-- The two calls used the same prompt and `seed: 42`. After decoding, their pixels were **identical**, byte for byte.
-- This helps C5 (sample songs with fixed seeds) and makes covers repeatable for tests and evidence.
+- The two calls used the same prompt and `seed: 42`. The PNG files differ in size (finding 3), but the **decoded pixel data was identical**.
+- This makes sample **covers** repeatable for C5, tests, and evidence. Song **audio** can't rely on seeds: a fixed ACE-Step `seed` did not reproduce the audio (see #12).
 
 ### 3. Use `output_compression: 1` to halve the file size
 
@@ -50,10 +50,12 @@ Other documented request fields (not used yet): `negative_prompt`, `num_inferenc
 1. Send `model`, `n: 1`, `size` from `width` and `height` (`f"{width}x{height}"`), `seed` when given, `response_format: "b64_json"`, `output_format: "png"`, and `output_compression: 1`.
 2. Read `data[0].b64_json` and base64-decode it. Treat a missing or empty `data`, a missing `b64_json`, or bytes that do not start with the PNG signature as a `bad_response` error.
 3. Timeout: about 2 to 3 s per image with an empty queue, so `FLUX_TIMEOUT_S=120` leaves plenty of room for queueing. Not changed here; it's a team setting.
+4. Retries: with the shared client's default retry (#9), a POST that times out after the server has started work generates a second image. That costs about 3 s of the shared GPU, so keeping the default retry for FLUX is reasonable, unlike ACE-Step's job submit.
+5. Decide the format in C2 with one comparison call: `output_format` `jpeg` or `webp` (where `output_compression` is the encoder quality) and a smaller `size` such as 512x512 could cut the file size well below 1.4 MB. Untested. The PNG-signature check in item 2 must follow whichever format is chosen.
 
 ## Not checked
 
-- Sizes other than 1024 x 1024.
+- Sizes other than 1024 x 1024, and JPEG or WebP output.
 - `negative_prompt`, `num_inference_steps`, `guidance_scale`.
 - Behavior under heavy load (for example everyone testing at once near the deadline).
 - Error responses for bad input or an overloaded server (4xx/5xx). Only the missing-key response (HTTP 401) was seen, so C2's error mapping is not yet verified against real errors.
@@ -61,4 +63,4 @@ Other documented request fields (not used yet): `negative_prompt`, `num_inferenc
 
 ## How it was run
 
-Without a key, `curl` fetched `/openapi.json` (HTTP 200, the full spec) and called `GET /v1/models` (HTTP 401). Then a throwaway script read the key from the local `.env` inside its own process (never printed) and checked that `FLUX_BASE_URL` uses port 9006. It made two `GET /v1/models` calls and two image generations: one with default settings and one with `output_compression: 1`, both with `seed: 42`. A second throwaway script decoded both PNGs with the Python standard library and compared their pixels. Neither script is committed, and the test images stay in the gitignored `runtime/tmp/`.
+Without a key, `curl` fetched `/openapi.json` (HTTP 200, the full spec) and called `GET /v1/models` (HTTP 401). Then a throwaway script read the key from the local `.env` inside its own process (never printed) and checked that `FLUX_BASE_URL` uses port 9006. It made two `GET /v1/models` calls and two image generations with the same prompt, `seed: 42`, and `model: "black-forest-labs/FLUX.2-klein-4B"` spelled exactly as `/v1/models` reports it (both returned HTTP 200): one with default settings and one with `output_compression: 1`. The queue was empty for both: the server's own `metrics.stage_durations.queue_wait_ms` was about 0.1 ms each time. These are single samples, one call per setting. A second throwaway script decoded both PNGs with the Python standard library (zlib plus PNG unfiltering) and compared the raw pixel data. Neither script is committed, and the test images stay in the gitignored `runtime/tmp/`.
