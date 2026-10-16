@@ -17,7 +17,7 @@ This is the team's working plan. It is the single source of truth for scope, own
 |---|---|
 | **Phase** | **M0 in progress.** Repo is live on GitHub, the five lane issues are assigned, and `main` is protected (1 approval + CI). |
 | **Is the app built?** | **No.** There is nothing to run yet. Path 1 below describes the finished app (v1.0) and is the contract the team builds to. |
-| **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation, and CI on Ubuntu, Windows and macOS. |
+| **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation, and CI (Ubuntu on every PR; Windows and macOS after each merge to `main`). |
 | **Latest release** | none (will be the `v1.0` tag) |
 | **Due date** | Assumed Fri 10/23/2026; not yet confirmed (§14 Q2) |
 | **Blockers** | §7.1 still has TBD rows for FLUX (spike C1, PR #13) and Chatterbox (spike D1); Qwen and ACE-Step are filled (§14 Q3) |
