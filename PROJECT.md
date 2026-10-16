@@ -1727,11 +1727,11 @@ Each person owns one lane, and each lane is **one GitHub issue** (label `lane`) 
 | A4 | M0 (Wed 10/14) | Fill §7.1 endpoint contracts from class-endpoints.txt + scripts/check_endpoints.py | A2 |
 | A5 | M0 (Wed 10/14) | Ask the professor/team the section 14 open questions (Hermes, due date, repo access, network, Claude access) | — |
 | A6 | M1 (Sun 10/18) | Track/Job models, thread-safe library, sample manifest loader, job store | A2 |
+| A11 | M1 (Sun 10/18) | Make the pre-push hook executable in git and have doctor catch it | — |
 | A7 | M2 (Tue 10/20) | Integration: song → cover → library → queue → DJ prefetch | B7 (B), C4 (C), D3 (D), E4 (E) |
 | A8 | M3 (Wed 10/21) | Tag release candidate rc1 and fix deploy findings | A7, C6 (C), D6 (D) |
 | A9 | M4 (Thu 10/22) | README assembly: setup, architecture, safeguards, contributions | E7 (E) |
 | A10 | M4 (Thu 10/22) | Final release: secret scan, tag v1.0, ZIP, submit on Canvas | B10 (B), D9 (D) |
-| A11 | M1 (Sun 10/18) | Make the pre-push hook executable in git and have doctor catch it | — |
 
 ### Lane B: Song Generation
 
