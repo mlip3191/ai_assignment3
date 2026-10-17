@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import socket
 import sys
+import time
 from pathlib import Path
 
 import gradio as gr
@@ -159,18 +160,27 @@ def test_a_listening_socket_is_not_free() -> None:
 
 
 def test_port_is_free_after_the_server_closes_first() -> None:
-    """A server that closes first leaves TIME_WAIT. Unix must still report the port free."""
+    """A server that closes first leaves TIME_WAIT. Unix must still report the port free.
+
+    Linux reuses that port only when the TIME_WAIT socket had SO_REUSEADDR set
+    as well as the new bind. Gradio's listener sets it, so this socket does too.
+    """
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.bind(("127.0.0.1", 0))
         listener.listen(1)
         port = listener.getsockname()[1]
         client.connect(("127.0.0.1", port))
         accepted, _addr = listener.accept()
+        accepted.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         accepted.close()
         listener.close()
         client.close()
+        deadline = time.monotonic() + 1
+        while not port_is_free("127.0.0.1", port) and time.monotonic() < deadline:
+            time.sleep(0.02)
         assert port_is_free("127.0.0.1", port) is True
     finally:
         client.close()
