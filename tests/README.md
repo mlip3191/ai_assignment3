@@ -21,6 +21,7 @@ One file per module, named `test_<module>.py`:
 | `test_check_config.py` | `scripts/check_config.py`: OK/missing table that never prints values |
 | `test_errors.py` | `jukebox/errors.py`: `ServiceError`, the user-facing messages, recovery hints, redaction |
 | `test_clients.py` | `jukebox/clients/base.py`: retries, status-to-error mapping, the URL guard, redacted logging |
+| `test_chatterbox.py` | `jukebox/clients/chatterbox.py`: `speak()` request format (default and reference voice), local input checks, each error kind with no retry, speech endpoint on 9008 only |
 | `test_<service>.py` | One per client in `jukebox/clients/` (added by lanes B, C, D) |
 
 A good test case covers the happy path, at least one failure path (service down, bad input, timeout), and each "Done when" criterion of its task.
