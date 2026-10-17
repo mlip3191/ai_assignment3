@@ -682,10 +682,10 @@ Shared behavior in `clients/base.py` (owner A, built first):
 - **Only the four configured base URLs** (`QWEN_BASE_URL`, `FLUX_BASE_URL`, `ACESTEP_BASE_URL`, `CHATTERBOX_BASE_URL`) can be called; any other URL raises `ServiceError(kind="config")`. Each client is bound to its own service and puts its `*_MODEL` value in the request when the service's format has a model field.
 - Logs one line per request: `service → host:port, status, duration` (never headers or bodies). This log is TC-15's evidence.
 
-- Auth header from config. **Never** logged; the logger redacts `Authorization` and any key-like value.
-- Explicit connect/read timeouts per service (read timeout for ACE-Step will be long; set it from M0 measurements plus margin).
-- Retry **once** with backoff on timeouts, connection errors, and 502/503/504. No retry on 4xx.
-- Converts every failure into `ServiceError(service, kind, detail)`.
+- Auth header from config. **Never** logged; the key, `Authorization` and any key-like value are scrubbed from every record on any `jukebox.*` logger, so a plain `logging.getLogger(__name__)` in a client or service is safe.
+- Explicit connect/read timeouts per service (read timeout for ACE-Step will be long; set it from M0 measurements plus margin). `request(..., timeout=...)` overrides the timeout for one request (for example short polls inside a long job).
+- Retry **once** with backoff on timeouts, connection errors, and 502/503/504. No retry on 4xx. `request(..., retry=False)` makes exactly one attempt: use it for a call that starts work on the shared servers, where a timed-out request may already have been accepted (ACE-Step `/release_task` must never run twice).
+- Converts every failure into `ServiceError(service, kind, detail)`. HTTP 404 maps to `config` (a wrong path or base URL, not something the user typed); a client that knows 404 means something else may catch it and raise its own kind.
 
 ### 7.3 Error model (R6)
 
@@ -700,7 +700,7 @@ User-facing messages (in `errors.py`, owner A). The UI shows these, never raw ex
 
 | kind | Message pattern | Recovery offered |
 |---|---|---|
-| config | "The {service} endpoint isn't configured. Check `.env` against `.env.example`." | — (startup check catches this first) |
+| config | "The {service} endpoint isn't configured. Check `.env` against `.env.example`." | — (startup check catches this first; an HTTP 404 from a service also lands here) |
 | auth | "The {service} service rejected our credentials. Check the API key in `.env`." | Fix and restart |
 | timeout | "The {service} service took too long to respond. The class servers may be busy." | **Retry** button |
 | unavailable | "The {service} service is unreachable right now." | **Retry** button |

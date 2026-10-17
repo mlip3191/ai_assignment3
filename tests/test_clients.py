@@ -5,6 +5,8 @@ All HTTP is mocked with respx. No real class service is ever called.
 
 from __future__ import annotations
 
+import inspect
+import io
 import logging
 import sys
 from pathlib import Path
@@ -16,9 +18,10 @@ import respx
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+import jukebox.clients.base as clients_base  # noqa: E402
 from jukebox.clients.base import ServiceClient  # noqa: E402
 from jukebox.config import Config, load_config  # noqa: E402
-from jukebox.errors import ServiceError  # noqa: E402
+from jukebox.errors import ServiceError, recovery, user_message  # noqa: E402
 
 KEY = "test-key-0123456789"
 HOST = "class.example"
@@ -167,7 +170,8 @@ def test_gateway_errors_twice_are_unavailable(client: ServiceClient, status: int
         (401, "auth"),
         (403, "auth"),
         (400, "bad_request"),
-        (404, "bad_request"),
+        (404, "config"),  # a wrong path or base URL, not something the user typed
+        (405, "bad_request"),
         (422, "bad_request"),
         (429, "unavailable"),
         (500, "bad_response"),
@@ -291,3 +295,150 @@ def test_error_detail_is_truncated(client: ServiceClient) -> None:
     with pytest.raises(ServiceError) as exc:
         client.request("GET", "/x")
     assert len(exc.value.detail) < 1000
+
+
+# ---- the key is scrubbed from every jukebox.* logger, however a client gets its logger --------
+
+
+@pytest.mark.parametrize(
+    "name", ["jukebox", "jukebox.clients", "jukebox.clients.flux", "jukebox.services.songs"]
+)
+def test_records_from_any_jukebox_logger_are_scrubbed(
+    client: ServiceClient, caplog: pytest.LogCaptureFixture, name: str
+) -> None:
+    with caplog.at_level(logging.DEBUG):
+        logging.getLogger(name).info("sent key=%s and Authorization: Bearer %s", KEY, KEY)
+    text = " ".join(r.getMessage() for r in caplog.records if r.name == name)
+    assert text and KEY not in text
+
+
+def test_a_handler_on_a_child_logger_never_sees_the_key(client: ServiceClient) -> None:
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    log = logging.getLogger("jukebox.clients.flux")
+    log.addHandler(handler)
+    log.setLevel(logging.INFO)
+    try:
+        log.info("the key is %s", KEY)
+    finally:
+        log.removeHandler(handler)
+        log.setLevel(logging.NOTSET)
+    assert stream.getvalue().strip() and KEY not in stream.getvalue()
+
+
+def test_only_jukebox_loggers_are_touched(client: ServiceClient, caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.DEBUG):
+        logging.getLogger("jukeboxer.other").info("hello %s", KEY)  # a name that merely starts with "jukebox"
+        logging.getLogger("httpx").info("hello %s", KEY)
+    seen = [r.getMessage() for r in caplog.records if r.name in ("jukeboxer.other", "httpx")]
+    assert len(seen) == 2 and all(KEY in line for line in seen)
+
+
+def test_malformed_log_arguments_neither_raise_nor_leak_the_key(client: ServiceClient) -> None:
+    # "%d" with a string argument is a bad format. logging's own error report prints msg and args, so the
+    # scrubber must clean those too, and must not turn a bad log call into an exception in the caller.
+    factory = logging.getLogRecordFactory()
+    record = factory("jukebox.clients.flux", logging.INFO, __file__, 1, "%d items", (KEY,), None)
+    assert record.args in ((), None)
+    assert KEY not in str(record.msg) and KEY not in record.getMessage()
+
+
+def test_installing_the_scrubber_twice_is_harmless() -> None:
+    before = logging.getLogRecordFactory()
+    assert getattr(before, "_jukebox_redacting", False)
+    clients_base._install_log_redaction()
+    clients_base._install_log_redaction()
+    assert logging.getLogRecordFactory() is before
+
+
+# ---- opting out of the retry: a timed-out job submit must never run twice ----------------------
+
+
+def test_retry_defaults_to_true() -> None:
+    assert inspect.signature(ServiceClient.request).parameters["retry"].default is True
+
+
+@respx.mock
+def test_retry_false_timeout_makes_exactly_one_call(client: ServiceClient, sleeps: list[float]) -> None:
+    route = respx.post(f"{base()}/x").mock(side_effect=httpx.ReadTimeout("slow"))
+    with pytest.raises(ServiceError) as exc:
+        client.request("POST", "/x", retry=False)
+    assert exc.value.kind == "timeout"
+    assert route.call_count == 1
+    assert sleeps == []  # no backoff when there is no second attempt
+
+
+@pytest.mark.parametrize("status", [502, 503, 504])
+@respx.mock
+def test_retry_false_gateway_error_makes_exactly_one_call(client: ServiceClient, status: int) -> None:
+    route = respx.post(f"{base()}/x").respond(status)
+    with pytest.raises(ServiceError) as exc:
+        client.request("POST", "/x", retry=False)
+    assert exc.value.kind == "unavailable"
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_retry_false_connection_error_makes_exactly_one_call(client: ServiceClient) -> None:
+    route = respx.post(f"{base()}/x").mock(side_effect=httpx.ConnectError("refused"))
+    with pytest.raises(ServiceError) as exc:
+        client.request("POST", "/x", retry=False)
+    assert exc.value.kind == "unavailable"
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_retry_false_success_is_unchanged(client: ServiceClient) -> None:
+    route = respx.post(f"{base()}/x").respond(200, json={"ok": 1})
+    assert client.request("POST", "/x", retry=False).json() == {"ok": 1}
+    assert route.call_count == 1
+
+
+# ---- a per-request timeout (ACE-Step: long total limit, short polls) ----------------------------
+
+
+@respx.mock
+def test_default_timeout_is_the_services(client: ServiceClient, cfg: Config) -> None:
+    route = respx.get(f"{base()}/x").respond(200)
+    client.request("GET", "/x")
+    sent = route.calls[0].request.extensions["timeout"]
+    assert sent["read"] == cfg.qwen.timeout_s
+    assert sent["connect"] == clients_base.CONNECT_TIMEOUT_S
+
+
+@respx.mock
+def test_per_request_timeout_overrides_it_with_a_number(client: ServiceClient) -> None:
+    route = respx.get(f"{base()}/x").respond(200)
+    client.request("GET", "/x", timeout=7)
+    assert route.calls[0].request.extensions["timeout"] == {"connect": 7, "read": 7, "write": 7, "pool": 7}
+
+
+@respx.mock
+def test_per_request_timeout_accepts_an_httpx_timeout(client: ServiceClient) -> None:
+    route = respx.get(f"{base()}/x").respond(200)
+    client.request("GET", "/x", timeout=httpx.Timeout(300, connect=5))
+    sent = route.calls[0].request.extensions["timeout"]
+    assert sent["read"] == 300 and sent["connect"] == 5
+
+
+@respx.mock
+def test_a_per_request_timeout_does_not_stick(client: ServiceClient, cfg: Config) -> None:
+    route = respx.get(f"{base()}/x").respond(200)
+    client.request("GET", "/x", timeout=7)
+    client.request("GET", "/x")
+    assert route.calls[1].request.extensions["timeout"]["read"] == cfg.qwen.timeout_s
+
+
+# ---- 404 means a wrong path or base URL: a settings problem, not something the user typed ------
+
+
+@respx.mock
+def test_404_user_message_points_at_the_settings_not_the_inputs(client: ServiceClient) -> None:
+    respx.post(f"{base()}/x").respond(404, json={"detail": "Not Found"})
+    with pytest.raises(ServiceError) as exc:
+        client.request("POST", "/x")
+    err = exc.value
+    assert err.kind == "config"
+    assert "isn't configured" in user_message(err)
+    assert recovery(err) is None  # retrying or editing the prompt cannot fix it
+    assert "HTTP 404" in err.detail  # developers still see the real status

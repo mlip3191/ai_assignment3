@@ -7,8 +7,10 @@ supplies paths and bodies from the documented format in PROJECT.md 7.1.
   - Only the service's own configured base URL can be called; anything else raises
     ServiceError(kind="config") before a request is sent.
   - One retry, with backoff, on timeouts, connection errors, and 502/503/504. Never on 4xx.
+    `request(..., retry=False)` opts out for calls that start work on the server.
+  - HTTP 404 is a wrong path or base URL, so it maps to ServiceError(kind="config").
   - One log line per attempt: `service -> host:port status duration` (TC-15 evidence). Never
-    headers or bodies, and the key is scrubbed from every record on the logger.
+    headers or bodies, and the key is scrubbed from every record on any `jukebox.*` logger.
 """
 
 from __future__ import annotations
@@ -35,21 +37,39 @@ MAX_DETAIL_CHARS = 300
 _SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*:")
 
 
-class _RedactFilter(logging.Filter):
-    """Scrubs the API key and Authorization-like text from every record on the clients logger."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.secrets: set[str] = set()
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = redact(record.getMessage(), self.secrets)
-        record.args = ()
-        return True
+_SECRETS: set[str] = set()  # every API key a ServiceClient was built with
+_REDACTING = "_jukebox_redacting"
 
 
-_redactor = _RedactFilter()
-logger.addFilter(_redactor)
+def _install_log_redaction() -> None:
+    """Scrub the API key and Authorization-like text from every log record under `jukebox` / `jukebox.*`.
+
+    A logger's filters only see records logged on that exact logger, never records from its children, so a
+    filter on `jukebox.clients` would miss `logging.getLogger("jukebox.clients.flux")`. A record factory runs
+    for every record as it is created, so a plain `logging.getLogger(__name__)` in any client or service is
+    safe by default. Installing it twice does not stack wrappers.
+    """
+    current = logging.getLogRecordFactory()
+    if getattr(current, _REDACTING, False):
+        return
+
+    def factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
+        record = current(*args, **kwargs)
+        if record.name == "jukebox" or record.name.startswith("jukebox."):
+            try:
+                record.msg = redact(record.getMessage(), _SECRETS)
+            except Exception:
+                # A malformed log call (wrong number or type of arguments). Never raise from here, and never
+                # leave the arguments for logging's own error report to print.
+                record.msg = redact(f"{record.msg} {record.args!r}", _SECRETS)
+            record.args = ()
+        return record
+
+    setattr(factory, _REDACTING, True)
+    logging.setLogRecordFactory(factory)
+
+
+_install_log_redaction()
 
 
 class ServiceClient:
@@ -77,7 +97,7 @@ class ServiceClient:
         self._origin = (parts.scheme, parts.hostname, parts.port)
         self._host_port = f"{parts.hostname}:{parts.port}"
         key = config.api_key.reveal()
-        _redactor.secrets.add(key)
+        _SECRETS.add(key)
         self._auth = {auth_header: f"{auth_scheme} {key}" if auth_scheme else key}
         self._sleep = sleep
         self._clock = clock
@@ -112,11 +132,20 @@ class ServiceClient:
         files: Any = None,
         params: Any = None,
         headers: dict[str, str] | None = None,
+        retry: bool = True,
+        timeout: Any = httpx.USE_CLIENT_DEFAULT,
     ) -> httpx.Response:
-        """Send one request and return the 2xx response, or raise ServiceError."""
+        """Send one request and return the 2xx response, or raise ServiceError.
+
+        `retry=False` makes exactly one attempt. Use it for a call that starts work on the shared class
+        servers (ACE-Step's `/release_task`): a request that times out may still have been accepted, and
+        a retry would start a second job. `timeout` (seconds, or an `httpx.Timeout`) overrides the
+        service's timeout for this request only, for example short polls inside a long job.
+        """
         url = self._resolve(path)
         sent_headers = {**self._auth, **(headers or {})}
-        for attempt in (1, 2):
+        attempts = 2 if retry else 1
+        for attempt in range(1, attempts + 1):
             started = self._clock()
             retryable = True
             try:
@@ -129,6 +158,7 @@ class ServiceClient:
                     content=content,
                     files=files,
                     params=params,
+                    timeout=timeout,
                 )
             except httpx.TimeoutException as e:
                 label, error = "timeout", self._error("timeout", type(e).__name__)
@@ -144,7 +174,7 @@ class ServiceClient:
                 error = self._status_error(response)
                 retryable = response.status_code in RETRY_STATUSES
             self._log(label, started)
-            if attempt == 2 or not retryable:
+            if attempt == attempts or not retryable:
                 raise error
             self._sleep(BACKOFF_S)
         raise AssertionError("unreachable")  # pragma: no cover
@@ -179,7 +209,7 @@ class ServiceClient:
         logger.info("%s -> %s %s %dms", self.service, self._host_port, label, ms)
 
     def _clean(self, text: str) -> str:
-        return redact(text, _redactor.secrets)
+        return redact(text, _SECRETS)
 
     def _error(self, kind: Kind, detail: str, *, reason: str | None = None) -> ServiceError:
         return ServiceError(self.service, kind, self._clean(detail)[:MAX_DETAIL_CHARS], reason=reason)
@@ -195,6 +225,10 @@ class ServiceClient:
             return self._error("auth", detail)
         if status == 429 or status in RETRY_STATUSES:
             return self._error("unavailable", detail)
+        if status == 404:
+            # A wrong path or base URL (for example a base URL copied with a stray /v1), not something the
+            # user typed. A client that knows 404 means something else can catch this and raise its own kind.
+            return self._error("config", detail)
         if 400 <= status < 500:
             reason = _server_message(response)
             if reason:
