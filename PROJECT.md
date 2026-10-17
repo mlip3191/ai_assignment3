@@ -756,6 +756,7 @@ APP_PORT=7860
 - Fail fast with a clear message if any required variable is missing.
 - **Refuse to start if any service URL uses port 9000** (H5), **or if any `*_BASE_URL` doesn't use its own port**: Qwen 9001, FLUX 9006, ACE-Step 9007, Chatterbox 9008 (H1–H4, §7.0).
 - Refuse unknown `*_BASE_URL` variables (no fifth AI service).
+- A `*_BASE_URL` is `scheme://host:port` only; the request paths in §7.1 are appended to it. `class-endpoints.txt` lists some URLs with a trailing `/v1`: that one suffix is removed automatically (and `check_config.py` says so on that row), because the §7.1 paths already include it. Any other path, a query or a fragment is `INVALID`. `str(config)` shows the host as `****` and keeps the port.
 - Never print key values. Show `CLASS_API_KEY=****` (set) or `(missing)`.
 
 ---

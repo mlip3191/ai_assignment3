@@ -1,1 +1,1 @@
-"""AI Jukebox application package."""
+"""AI Jukebox package."""
