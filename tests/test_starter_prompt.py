@@ -89,4 +89,5 @@ def test_additions_block_is_separate_and_after_original() -> None:
 
 
 def test_no_em_dashes() -> None:
+    # Team writing style: no em dashes in docs. Written as an escape so this file has none either.
     assert "\u2014" not in _text()

@@ -40,7 +40,8 @@ with the app.
 ```
 # Team Additions
 Everything needed to build the app is in this prompt and PROJECT.md, so
-the build does not depend on any one coding agent.
+the build does not depend on any one coding agent. An agent that cannot
+read the repository (for example Hermes) gets both files attached.
 
 ## Stack and deployment
 - Python 3.11+ with Gradio (Blocks API). Pin every dependency to an exact
@@ -130,5 +131,7 @@ the build does not depend on any one coding agent.
 - Include pytest tests with mocked services for clients, parsing, upload
   validation, and queue logic.
 - Never log credentials or request headers.
-- Never read, print, or ask for .env or credential values.
+- The coding agent never reads, prints, or asks for .env contents or
+  credential values. The app loads them at runtime only through
+  jukebox/config.py, and never logs them.
 ```
