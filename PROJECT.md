@@ -20,7 +20,7 @@ This is the team's working plan. It is the single source of truth for scope, own
 | **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation, and CI (Ubuntu on every PR; Windows and macOS after each merge to `main`). |
 | **Latest release** | none (will be the `v1.0` tag) |
 | **Due date** | Assumed Fri 10/23/2026; not yet confirmed (§14 Q2) |
-| **Blockers** | §7.1 still has TBD rows for FLUX (spike C1, PR #13) and Chatterbox (spike D1); Qwen and ACE-Step are filled (§14 Q3) |
+| **Blockers** | §7.1 still has a TBD row for Chatterbox (spike D1); Qwen, ACE-Step and FLUX are filled (§14 Q3) |
 
 ### 0.2 Notes for AI assistants reading this file
 
@@ -363,7 +363,7 @@ IDs start with **DL** so they're never confused with the AI DJ issue keys (D1–
 | 10/12 | **Avoid an ffmpeg dependency** | One less system install for the grader; decode MP3/WAV with `soundfile` (wheels bundle libsndfile with MP3 support; verify in M0) | pydub/ffmpeg |
 | 10/12 | **Shared Claude Code skills, hooks, and permissions committed in `.claude/`** | Everyone's agent follows the same session routine and the same guardrails; a guard hook blocks the most damaging mistakes (touching `.env`, pushing to main, port 9000) even when a human forgets | Each member configuring Claude Code individually |
 | 10/12 | **Branch names carry the lane issue number and task key** (`feat/2-b4-acestep-client`) | Skills and the session hook find the lane and task automatically; PRs tie to the right checkbox | `feat/<area>-<desc>` |
-| 10/12 | **One GitHub issue per person (5 "lanes")**, each holding that person's task checklist (46 tasks total), owned files, and hand-offs | Each person has one clear place to look and a lane nobody else works in; GitHub shows "3 of 10 tasks" progress per person; still one branch + one PR per task, so reviews stay small | 45 separate issues (too much to track); one issue per feature with shared ownership |
+| 10/12 | **One GitHub issue per person (5 "lanes")**, each holding that person's task checklist (47 tasks total), owned files, and hand-offs | Each person has one clear place to look and a lane nobody else works in; GitHub shows "3 of 10 tasks" progress per person; still one branch + one PR per task, so reviews stay small | 45 separate issues (too much to track); one issue per feature with shared ownership |
 | 10/12 | **Task boxes tick automatically on merge** (`tick-task.yml` reads `Part of #N` + `Task: B4` from the PR) | Lane progress stays accurate without anyone remembering to update it | Manual ticking |
 | 10/12 | **Backlog lives in `scripts/github/issues.json`** and is created by `bootstrap.py` | One reviewed source for lanes, tasks, and dependencies; re-runnable | Typing issues by hand |
 | 10/12 | **Support macOS and native Windows equally** | The team (and probably the grader) uses both; anything that only works on one OS fails the independent-deploy test | Mac-only scripts; requiring WSL |
@@ -470,7 +470,7 @@ ai-jukebox/
 │   ├── check_models.py         # Fails if anything could use a model other than the four class models
 │   ├── scan_secrets.py         # Fails on key-like strings, .env, runtime/, stray audio, port 9000 (--zip for releases)
 │   └── github/
-│       ├── issues.json         # The backlog: 5 lanes, 46 tasks, owned files, hand-offs, dependencies
+│       ├── issues.json         # The backlog: 5 lanes, 47 tasks, owned files, hand-offs, dependencies
 │       ├── lanes.py            # Renders lane issue bodies (used by the two scripts below)
 │       ├── bootstrap.py        # Creates labels, the milestone, the 5 lane issues; invites team; protects main (§18)
 │       ├── assignments.py      # Prints the §19 lane tables from issues.json + team.json
@@ -640,7 +640,7 @@ Which feature may call which model:
 | Service | Port | Base URL env var | Method + path | Auth | Request body (key fields) | Response (key fields) | Typical latency | Timeout we set |
 |---|---|---|---|---|---|---|---|---|
 | Qwen3.6-35B-A3B | 9001 | `QWEN_BASE_URL` | `POST /v1/chat/completions` (OpenAI-compatible, synchronous) | `Authorization: Bearer <key>` | `model` (`cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit`), `messages`, `max_tokens`, `temperature`, **`chat_template_kwargs: {"enable_thinking": false}`** (thinking is on by default), optional `response_format` (JSON schema) | `choices[0].message.content`; reasoning arrives separately in `message.reasoning`; `content` is `null` if thinking used up `max_tokens` | ~1.5 s for ~200 tokens with thinking off; ~10 s with it on (B1, 10/15) | 90 s for now (`QWEN_TIMEOUT_S`); 30 s would be ample. See [docs/spikes/B1-qwen.md](docs/spikes/B1-qwen.md) |
-| FLUX.2 klein 4B | 9006 | `FLUX_BASE_URL` | TBD | TBD | TBD | TBD (image bytes? base64? URL?) | measure | |
+| FLUX.2 klein 4B | 9006 | `FLUX_BASE_URL` | `POST /v1/images/generations` (OpenAI-style images API, synchronous) | `Authorization: Bearer <key>` | `prompt`, `model` (`black-forest-labs/FLUX.2-klein-4B`), `n` 1, `size` `"1024x1024"` (`WIDTHxHEIGHT`), `seed`, `response_format` `b64_json`, `output_format` `png`, **`output_compression` 1** (1.4 MB instead of 3.1 MB, lossless) | `data[0].b64_json`: base64 PNG; `url` not implemented; prompt not rewritten (`revised_prompt` empty). Same seed gives the same image | ~2.3 s per 1024x1024 image (0.95 s server generation), ~2.9 s with `output_compression` 1; single samples, one call each, empty queue (C1, 10/15) | 120 s for now (`FLUX_TIMEOUT_S`). See [docs/spikes/C1-flux.md](docs/spikes/C1-flux.md) |
 | ACE-Step 1.5 XL Turbo | 9007 | `ACESTEP_BASE_URL` | **Async job:** `POST /release_task` → poll `POST /query_result` `{"task_id_list": [id]}` → `GET /v1/audio?path=…` (the result's `file`) | `Authorization: Bearer <key>` | `prompt` (style tags), `lyrics` (`[verse]`/`[chorus]` tags; `"[Instrumental]"` or `""` for instrumental), `audio_duration` (docs: 10–600 s; 5 s was accepted), `audio_format` `mp3`, `inference_steps` 8, **`batch_size` 1** (default is 2), `seed` + `use_random_seed: false`; `model` is accepted, but any value still ran `acestep-v15-xl-turbo`, so check `dit_model` in the result instead. A fixed `seed` did **not** reproduce the same audio in the follow-up test | Submit: `data.task_id`. Poll: `data[0].status` integer 0 running / 1 done / 2 failed; `data[0].result` is a JSON **string** (parse again) with `file`, `metas.duration`, `seed_value`. Audio: MP3, 48 kHz, 128 kbps (~16 KB/s) | Server-reported 2–3 s for 30–60 s of audio; 4.8–7.2 s submit → file saved, empty queue (B2, 10/15) | 300 s for now (`ACESTEP_TIMEOUT_S`) until queueing under load is measured; needs a total-job deadline plus short per-poll timeouts. **Proposed:** never auto-retry the submit (conflicts with the §7.2 retry rule; raised for #9). See [docs/spikes/B2-acestep.md](docs/spikes/B2-acestep.md) |
 | Chatterbox Multilingual V3 | 9008 | `CHATTERBOX_BASE_URL` | TBD | TBD | TBD (text, language, voice reference field?) | TBD | measure | |
 
@@ -1705,7 +1705,7 @@ Each person owns one lane, and each lane is **one GitHub issue** (label `lane`) 
 
 | Lane | Owner | OS | Tasks | Reviewer of their PRs | Mission (short) |
 |---|---|---|---|---|---|
-| **A: Platform & Release** | TBD | TBD | 10 | E | Make it possible for everyone else to build, and make sure what we submit installs, passes, and arrives on Canvas correctly. |
+| **A: Platform & Release** | TBD | TBD | 11 | E | Make it possible for everyone else to build, and make sure what we submit installs, passes, and arrives on Canvas correctly. |
 | **B: Song Generation** | TBD | TBD | 10 | D | Turn a user's style, mood, duration, and theme into a playable song in the library: instrumental, or vocal with original AI-written lyrics. |
 | **C: Cover Art, Samples & Evidence** | TBD | TBD | 9 | B | Give every song its own matching FLUX cover, produce the three bundled sample songs and their generation log, and own the evidence the grader sees: starter prompt, screenshots, and the non-technical usability run. |
 | **D: AI DJ & Launchers** | TBD | TBD | 9 | C | Make the DJ talk: a short, song-specific intro written by Qwen and spoken by Chatterbox before each queued song, with an optional uploaded MP3/WAV voice. |
@@ -1727,6 +1727,7 @@ Each person owns one lane, and each lane is **one GitHub issue** (label `lane`) 
 | A4 | M0 (Wed 10/14) | Fill §7.1 endpoint contracts from class-endpoints.txt + scripts/check_endpoints.py | A2 |
 | A5 | M0 (Wed 10/14) | Ask the professor/team the section 14 open questions (Hermes, due date, repo access, network, Claude access) | — |
 | A6 | M1 (Sun 10/18) | Track/Job models, thread-safe library, sample manifest loader, job store | A2 |
+| A11 | M1 (Sun 10/18) | Make the pre-push hook executable in git and have doctor catch it | — |
 | A7 | M2 (Tue 10/20) | Integration: song → cover → library → queue → DJ prefetch | B7 (B), C4 (C), D3 (D), E4 (E) |
 | A8 | M3 (Wed 10/21) | Tag release candidate rc1 and fix deploy findings | A7, C6 (C), D6 (D) |
 | A9 | M4 (Thu 10/22) | README assembly: setup, architecture, safeguards, contributions | E7 (E) |
@@ -1817,7 +1818,7 @@ Each person owns one lane, and each lane is **one GitHub issue** (label `lane`) 
 | Checkpoint | A | B | C | D | E | Tasks |
 |---|---|---|---|---|---|---|
 | M0 Foundations & spikes (due Wed 10/14) | 5 | 2 | 2 | 1 | 2 | 12 |
-| M1 Vertical slices (due Sun 10/18) | 1 | 5 | 3 | 3 | 2 | 14 |
+| M1 Vertical slices (due Sun 10/18) | 2 | 5 | 3 | 3 | 2 | 15 |
 | M2 Integration & samples (due Tue 10/20) | 1 | 1 | 2 | 2 | 1 | 7 |
 | M3 Independent deploy test (due Wed 10/21) | 1 | 0 | 1 | 1 | 2 | 5 |
 | M4 Docs, evidence, submit (due Thu 10/22) | 2 | 2 | 1 | 2 | 1 | 8 |
