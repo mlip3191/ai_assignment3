@@ -22,6 +22,7 @@ from playback_spike import (  # noqa: E402
     new_queue,
     play,
     serve_for_browser,
+    stamp_playback_started,
     token_from_audio,
     write_clips,
 )
@@ -123,6 +124,38 @@ def test_option_a_wires_one_audio_autoplay_and_stop(tmp_path: Path) -> None:
     assert ("skip", "click") in bindings
     assert ("play-queue", "click") in bindings
     assert LAUNCH == {"server_name": "127.0.0.1", "server_port": 7860, "share": False}
+
+
+def _bound_fn(demo: object, elem_id: str, event_name: str):
+    by_id: dict[int, str] = {}
+    for block in demo.blocks.values():
+        block_id = getattr(block, "_id", None)
+        found = getattr(block, "elem_id", None)
+        if block_id is not None and found:
+            by_id[int(block_id)] = str(found)
+    for dep in demo.fns.values():
+        for target in dep.targets:
+            if int(target[0]) in by_id and by_id[int(target[0])] == elem_id and target[1] == event_name:
+                return dep.fn
+    raise AssertionError(f"no {elem_id} {event_name} handler")
+
+
+def test_play_event_stamps_start_without_advancing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    clips = write_clips(tmp_path)
+    demo = build_demo(clips)
+    assert ("now-playing", "play") in event_bindings(demo)
+    assert _bound_fn(demo, "now-playing", "play") is stamp_playback_started
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("queue moved")
+
+    monkeypatch.setattr("playback_spike.advance", fail)
+    monkeypatch.setattr("playback_spike.play", fail)
+    served = serve_for_browser(clips[0], 1)
+    prior = "2026-10-16T00:00:00.000+00:00 end: clip ended"
+    logged = stamp_playback_started(str(served), prior)
+    assert logged.startswith(prior + "\n")
+    assert " playing: file=t1-clip-440hz.wav" in logged
 
 
 def test_requirements_pin_is_exact_gradio() -> None:

@@ -121,18 +121,18 @@ def build_demo(clips: Sequence[Path]) -> gr.Blocks:
     """Option A: one autoplay Audio, Play queue, and Skip."""
     queue = tuple(Path(clip) for clip in clips)
 
-    def on_play(index: int, token: int) -> tuple[object, str, int, int]:
+    def on_play(index: int, token: int, prior: str) -> tuple[object, str, int, int]:
         state, step = play(QueueState(queue, int(index), int(token)))
         if step.status != "playing" or step.path is None:
-            return gr.skip(), _stamp("play", step.message), int(token), int(index)
+            return gr.skip(), _append(prior, "play", step.message), int(token), int(index)
         served = serve_for_browser(step.path, step.token)
-        return str(served), _stamp("play", step.message), step.token, step.index
+        return str(served), _append(prior, "play", step.message), step.token, step.index
 
-    def on_skip(index: int, token: int) -> tuple[object, str, int, int]:
+    def on_skip(index: int, token: int, prior: str) -> tuple[object, str, int, int]:
         state, step = advance(QueueState(queue, int(index), int(token)), None)
-        return _audio_update(step), _stamp("skip", step.message), step.token, state.index
+        return _audio_update(step), _append(prior, "skip", step.message), step.token, state.index
 
-    def on_end(audio_value: object, index: int, token: int) -> tuple[object, str, int, int]:
+    def on_end(audio_value: object, index: int, token: int, prior: str) -> tuple[object, str, int, int]:
         event_token = token_from_audio(audio_value)
         heard = Path(_audio_path(audio_value) or "").name
         if event_token is None:
@@ -140,8 +140,8 @@ def build_demo(clips: Sequence[Path]) -> gr.Blocks:
         state, step = advance(QueueState(queue, int(index), int(token)), event_token)
         detail = f"{step.message} | file={heard or 'none'} parsed_token={event_token}"
         if step.status == "ignored":
-            return gr.skip(), _stamp("end", detail), int(token), int(index)
-        return _audio_update(step), _stamp("end", detail), step.token, state.index
+            return gr.skip(), _append(prior, "end", detail), int(token), int(index)
+        return _audio_update(step), _append(prior, "end", detail), step.token, state.index
 
     with gr.Blocks(title="Playback spike") as demo:
         gr.Markdown(
@@ -152,14 +152,15 @@ def build_demo(clips: Sequence[Path]) -> gr.Blocks:
                     "Click **Play queue** once. Three tones should play in order, low then higher, "
                     "about 2 seconds each. Do not click again.",
                     "",
-                    "The status line timestamps each end event and the next file. "
-                    "The gap is the time between those two lines.",
+                    "The status log keeps every line. An end line is the end event. "
+                    "The next playing line is when the browser started that file. "
+                    "The gap is the end timestamp subtracted from that playing timestamp.",
                     "Skip during a tone should move to the next tone once.",
                     "Pause and resume use the controls on the single player.",
                 ]
             )
         )
-        status = gr.Textbox(label="Status", value="Idle. Click Play queue.", lines=6, elem_id="status")
+        status = gr.Textbox(label="Status", value="Idle. Click Play queue.", lines=12, elem_id="status")
         audio = gr.Audio(
             label="Now playing",
             type="filepath",
@@ -172,9 +173,10 @@ def build_demo(clips: Sequence[Path]) -> gr.Blocks:
         token = gr.State(0)
         play_btn = gr.Button("Play queue", elem_id="play-queue")
         skip_btn = gr.Button("Skip", elem_id="skip")
-        play_btn.click(on_play, inputs=[index, token], outputs=[audio, status, token, index])
-        skip_btn.click(on_skip, inputs=[index, token], outputs=[audio, status, token, index])
-        audio.stop(on_end, inputs=[audio, index, token], outputs=[audio, status, token, index])
+        play_btn.click(on_play, inputs=[index, token, status], outputs=[audio, status, token, index])
+        skip_btn.click(on_skip, inputs=[index, token, status], outputs=[audio, status, token, index])
+        audio.stop(on_end, inputs=[audio, index, token, status], outputs=[audio, status, token, index])
+        audio.play(stamp_playback_started, inputs=[audio, status], outputs=[status])
     return demo
 
 
@@ -232,6 +234,20 @@ def _audio_update(step: Step) -> object:
     if step.status != "playing" or step.path is None:
         return None
     return str(serve_for_browser(step.path, step.token))
+
+
+def stamp_playback_started(audio_value: object, prior: str) -> str:
+    """Record that the browser started the file. Does not move the queue."""
+    heard = Path(_audio_path(audio_value) or "").name
+    return _append(prior, "playing", f"file={heard or 'none'}")
+
+
+def _append(prior: object, event: str, message: str) -> str:
+    line = _stamp(event, message)
+    text = prior.strip() if isinstance(prior, str) else ""
+    if text == "" or text == "Idle. Click Play queue.":
+        return line
+    return f"{text}\n{line}"
 
 
 def _stamp(event: str, message: str) -> str:
