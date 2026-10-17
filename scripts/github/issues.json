@@ -379,6 +379,25 @@
             "B10",
             "D9"
           ]
+        },
+        {
+          "key": "A11",
+          "title": "Make the pre-push hook executable in git and have doctor catch it",
+          "milestone": "M1",
+          "goal": "The pre-push quality gate must actually run in every fresh clone or worktree. Today .githooks/pre-push is committed as mode 100644, so git ignores it with 'hook was ignored because it's not set as executable' and the author check, lint and tests are silently skipped.",
+          "criteria": [
+            ".githooks/pre-push is committed with mode 100755 (git update-index --chmod=+x); git ls-files -s shows 100755",
+            "A test asserts the committed mode is 100755 and that the hook runs scripts/prepush.py",
+            "scripts/setup_dev.py makes sure the hook is executable when it sets core.hooksPath",
+            "scripts/doctor.py FAILs, with the fix for the user's OS, when core.hooksPath is set but the hook would not run: on macOS/Linux the file is not executable; on every OS git ls-files -s shows 100644 (Git for Windows often has core.fileMode=false, so do not rely on the file's own mode there); never a silent PASS",
+            "A real `git push` from a fresh clone runs the gate (no 'hook was ignored' hint) on macOS and Windows (Git Bash)",
+            "Full pytest suite, ruff and scan_secrets pass; core.hooksPath and --no-verify are never bypassed to get there"
+          ],
+          "reqs": [],
+          "refs": [
+            "§16.5"
+          ],
+          "depends": []
         }
       ]
     },
