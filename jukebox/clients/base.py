@@ -48,6 +48,9 @@ def _install_log_redaction() -> None:
     filter on `jukebox.clients` would miss `logging.getLogger("jukebox.clients.flux")`. A record factory runs
     for every record as it is created, so a plain `logging.getLogger(__name__)` in any client or service is
     safe by default. Installing it twice does not stack wrappers.
+
+    Limits: only the formatted message is scrubbed, not `exc_info` tracebacks or `extra=` fields. The errors
+    this package raises are redacted when they are built, so do not put the key in other exceptions.
     """
     current = logging.getLogRecordFactory()
     if getattr(current, _REDACTING, False):
@@ -56,12 +59,17 @@ def _install_log_redaction() -> None:
     def factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
         record = current(*args, **kwargs)
         if record.name == "jukebox" or record.name.startswith("jukebox."):
+            secrets = tuple(_SECRETS)  # a snapshot: another client may register its key meanwhile
             try:
-                record.msg = redact(record.getMessage(), _SECRETS)
+                record.msg = redact(record.getMessage(), secrets)
             except Exception:
-                # A malformed log call (wrong number or type of arguments). Never raise from here, and never
-                # leave the arguments for logging's own error report to print.
-                record.msg = redact(f"{record.msg} {record.args!r}", _SECRETS)
+                # A malformed log call (wrong number or type of arguments), or an argument that cannot be
+                # printed. Stock logging would defer this to the handler, which swallows it; never raise
+                # from here, and never leave the arguments for logging's own error report to print.
+                try:
+                    record.msg = redact(f"{record.msg} {record.args!r}", secrets)
+                except Exception:
+                    record.msg = "<unprintable log message>"
             record.args = ()
         return record
 
@@ -140,7 +148,8 @@ class ServiceClient:
         `retry=False` makes exactly one attempt. Use it for a call that starts work on the shared class
         servers (ACE-Step's `/release_task`): a request that times out may still have been accepted, and
         a retry would start a second job. `timeout` (seconds, or an `httpx.Timeout`) overrides the
-        service's timeout for this request only, for example short polls inside a long job.
+        service's timeout for this request only, for example short polls inside a long job. `timeout=None`
+        means no timeout at all (httpx semantics), so a hung server would block forever: avoid it.
         """
         url = self._resolve(path)
         sent_headers = {**self._auth, **(headers or {})}
@@ -209,7 +218,7 @@ class ServiceClient:
         logger.info("%s -> %s %s %dms", self.service, self._host_port, label, ms)
 
     def _clean(self, text: str) -> str:
-        return redact(text, _SECRETS)
+        return redact(text, tuple(_SECRETS))
 
     def _error(self, kind: Kind, detail: str, *, reason: str | None = None) -> ServiceError:
         return ServiceError(self.service, kind, self._clean(detail)[:MAX_DETAIL_CHARS], reason=reason)

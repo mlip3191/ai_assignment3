@@ -343,12 +343,36 @@ def test_malformed_log_arguments_neither_raise_nor_leak_the_key(client: ServiceC
     assert KEY not in str(record.msg) and KEY not in record.getMessage()
 
 
+def test_a_malformed_log_call_does_not_raise_or_leak_through_a_real_logger(
+    client: ServiceClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.DEBUG):
+        logging.getLogger("jukebox.clients.flux").info("%d items", KEY)
+    text = " ".join(r.getMessage() for r in caplog.records if r.name == "jukebox.clients.flux")
+    assert text and KEY not in text
+
+
+class Unprintable:
+    def __str__(self) -> str:
+        raise RuntimeError("cannot be turned into text")
+
+    __repr__ = __str__
+
+
+@pytest.mark.parametrize("fmt", ["value: %s", "value: %d"])
+def test_a_log_argument_that_cannot_be_printed_does_not_raise(client: ServiceClient, fmt: str) -> None:
+    # stock logging defers formatting to the handler, which swallows the error; the scrubber must not
+    # turn it into an exception inside the caller's logging call. WARNING, because INFO is off by default
+    # and a disabled logger never even creates the record.
+    logging.getLogger("jukebox.clients.flux").warning(fmt, Unprintable())
+
+
 def test_installing_the_scrubber_twice_is_harmless() -> None:
-    before = logging.getLogRecordFactory()
-    assert getattr(before, "_jukebox_redacting", False)
     clients_base._install_log_redaction()
+    first = logging.getLogRecordFactory()
+    assert getattr(first, "_jukebox_redacting", False)
     clients_base._install_log_redaction()
-    assert logging.getLogRecordFactory() is before
+    assert logging.getLogRecordFactory() is first
 
 
 # ---- opting out of the retry: a timed-out job submit must never run twice ----------------------
@@ -419,6 +443,14 @@ def test_per_request_timeout_accepts_an_httpx_timeout(client: ServiceClient) -> 
     client.request("GET", "/x", timeout=httpx.Timeout(300, connect=5))
     sent = route.calls[0].request.extensions["timeout"]
     assert sent["read"] == 300 and sent["connect"] == 5
+
+
+@respx.mock
+def test_timeout_none_means_no_timeout_at_all(client: ServiceClient) -> None:
+    route = respx.get(f"{base()}/x").respond(200)
+    client.request("GET", "/x", timeout=None)
+    sent = route.calls[0].request.extensions["timeout"]
+    assert sent == {"connect": None, "read": None, "write": None, "pool": None}
 
 
 @respx.mock

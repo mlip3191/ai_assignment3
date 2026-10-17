@@ -685,7 +685,7 @@ Shared behavior in `clients/base.py` (owner A, built first):
 - Auth header from config. **Never** logged; the key, `Authorization` and any key-like value are scrubbed from every record on any `jukebox.*` logger, so a plain `logging.getLogger(__name__)` in a client or service is safe.
 - Explicit connect/read timeouts per service (read timeout for ACE-Step will be long; set it from M0 measurements plus margin). `request(..., timeout=...)` overrides the timeout for one request (for example short polls inside a long job).
 - Retry **once** with backoff on timeouts, connection errors, and 502/503/504. No retry on 4xx. `request(..., retry=False)` makes exactly one attempt: use it for a call that starts work on the shared servers, where a timed-out request may already have been accepted (ACE-Step `/release_task` must never run twice).
-- Converts every failure into `ServiceError(service, kind, detail)`. HTTP 404 maps to `config` (a wrong path or base URL, not something the user typed); a client that knows 404 means something else may catch it and raise its own kind.
+- Converts every failure into `ServiceError(service, kind, detail)`. HTTP 404 maps to `config` (a wrong path or base URL, not something the user typed). A client where 404 can legitimately mean "not found" (a stale ACE-Step task or audio file, a missing Chatterbox voice reference) **should** catch the `config` error for that call and raise its own kind, so the user is not told to check the settings.
 
 ### 7.3 Error model (R6)
 
@@ -700,7 +700,7 @@ User-facing messages (in `errors.py`, owner A). The UI shows these, never raw ex
 
 | kind | Message pattern | Recovery offered |
 |---|---|---|
-| config | "The {service} endpoint isn't configured. Check `.env` against `.env.example`." | — (startup check catches this first; an HTTP 404 from a service also lands here) |
+| config | "The {service} endpoint isn't configured. Check `.env` against `.env.example`." | — (startup check catches a malformed URL or the wrong port; an HTTP 404 at run time also lands here: it means a wrong path or base URL, which the startup check cannot see) |
 | auth | "The {service} service rejected our credentials. Check the API key in `.env`." | Fix and restart |
 | timeout | "The {service} service took too long to respond. The class servers may be busy." | **Retry** button |
 | unavailable | "The {service} service is unreachable right now." | **Retry** button |
