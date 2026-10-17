@@ -69,6 +69,10 @@ def test_original_block_matches_assignment_word_for_word() -> None:
     assert _non_blank(original) == _non_blank(ASSIGNMENT_PROMPT.splitlines())
 
 
+def test_original_block_keeps_the_assignment_blank_lines() -> None:
+    assert _fenced_block_after(ORIGINAL_HEADING) == ASSIGNMENT_PROMPT.splitlines()
+
+
 def test_original_block_present_once() -> None:
     text = _text()
     assert text.count(ORIGINAL_HEADING) == 1
@@ -85,4 +89,4 @@ def test_additions_block_is_separate_and_after_original() -> None:
 
 
 def test_no_em_dashes() -> None:
-    assert "—" not in _text()
+    assert "\u2014" not in _text()
