@@ -17,6 +17,10 @@ One file per module, named `test_<module>.py`:
 | `test_prepush.py` | Pre-push gate and the secret scan's `.env` handling |
 | `test_check_models.py` | Only-the-four-class-models check |
 | `test_lanes.py` | Lane issue generation |
+| `test_config.py` | `jukebox/config.py`: required variables, one port per service, no port 9000, no secrets in output |
+| `test_check_config.py` | `scripts/check_config.py`: OK/missing table that never prints values |
+| `test_errors.py` | `jukebox/errors.py`: `ServiceError`, the user-facing messages, recovery hints, redaction |
+| `test_clients.py` | `jukebox/clients/base.py`: retries, status-to-error mapping, the URL guard, redacted logging |
 | `test_<service>.py` | One per client in `jukebox/clients/` (added by lanes B, C, D) |
 
 A good test case covers the happy path, at least one failure path (service down, bad input, timeout), and each "Done when" criterion of its task.
