@@ -51,6 +51,10 @@ def make_executable(repo: Path) -> None:
 @pytest.fixture
 def hook_repo(tmp_path: Path) -> Path:
     """A throwaway repo with the hook committed as mode 100644 and the team hooks path switched on."""
+    leaked = [v for v in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE") if v in os.environ]
+    assert not leaked, (
+        f"git's hook environment leaked into the tests ({leaked}); they would hit the real repo"
+    )
     git(tmp_path, "init", "-q", "-b", "main")
     hook = tmp_path / ".githooks" / "pre-push"
     hook.parent.mkdir()
@@ -188,3 +192,28 @@ def test_setup_dev_survives_a_hook_it_cannot_chmod(tmp_path: Path, monkeypatch: 
 
     monkeypatch.setattr(Path, "chmod", refuse)
     assert setup_dev.ensure_hook_executable(hook) is False  # reported, not a crash
+
+
+# --- the gate runs these tests from inside git's hook environment ---------------------------------
+
+
+def test_temp_repo_tests_survive_git_hook_environment(tmp_path: Path) -> None:
+    """git exports GIT_DIR and friends to a hook (always from a linked worktree). Tests that build their
+    own temp repos must not inherit them, or they act on the REAL repo: stray commits and branches, a
+    reset index, core.bare=true. Runs a few of them with those variables pointing at a decoy, not the
+    real repo, and checks the decoy is never touched."""
+    decoy = tmp_path / "decoy.git"
+    env = {
+        **os.environ,
+        "GIT_DIR": str(decoy),
+        "GIT_WORK_TREE": str(tmp_path / "decoy-worktree"),
+        "GIT_INDEX_FILE": str(tmp_path / "decoy-index"),
+    }
+    cmd = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(Path(__file__))]
+    r = subprocess.run(
+        [*cmd, "-k", "index_mode_reads_real_git or check_hook_passes"],
+        cwd=ROOT, env=env, capture_output=True, text=True, encoding="utf-8",
+    )  # fmt: skip
+    assert r.returncode == 0, r.stdout[-1500:]
+    assert not decoy.exists()
+    assert not (tmp_path / "decoy-index").exists()
