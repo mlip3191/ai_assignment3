@@ -58,11 +58,9 @@ def speak(text: str, *, voice_ref_path: str | None = None, language: str = "en")
         try:
             response = client.request("POST", SPEECH_PATH, json=body, retry=False)
         except ServiceError as err:
-            if (
-                voice_ref_path is not None
-                and err.kind == "bad_request"
-                and "reference" in (err.reason or "").lower()
-            ):
+            # A 404 stays kind="config" (the base mapping) on purpose: we always send voice="default",
+            # so a 404 means a wrong base URL or path, not a missing voice.
+            if voice_ref_path is not None and _is_reference_rejection(err):
                 raise _bad_request(REF_REJECTED_REASON, err.detail) from None
             raise
 
@@ -73,6 +71,14 @@ def speak(text: str, *, voice_ref_path: str | None = None, language: str = "en")
 
 
 # ---- helpers ------------------------------------------------------------------------------------
+
+
+def _is_reference_rejection(err: ServiceError) -> bool:
+    """A 400 about the voice clip: the server's `invalid_reference` code (it's in the error detail,
+    which holds the start of the response body), or, as a fallback, its message mentioning the reference."""
+    if err.kind != "bad_request":
+        return False
+    return "invalid_reference" in err.detail or "reference" in (err.reason or "").lower()
 
 
 def _bad_request(reason: str, detail: str = "") -> ServiceError:
