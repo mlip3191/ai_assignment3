@@ -170,6 +170,7 @@ def test_port_is_free_after_the_server_closes_first() -> None:
         accepted, _addr = listener.accept()
         accepted.close()
         listener.close()
+        client.close()
         assert port_is_free("127.0.0.1", port) is True
     finally:
         client.close()
