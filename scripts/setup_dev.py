@@ -30,10 +30,23 @@ IS_WINDOWS = platform.system() == "Windows"
 VENV = ROOT / ".venv"
 VENV_PY = VENV / ("Scripts/python.exe" if IS_WINDOWS else "bin/python")
 MIN = (3, 11)
+HOOK = ROOT / ".githooks" / "pre-push"
 
 
 def say(msg: str) -> None:
     print(msg, flush=True)
+
+
+def ensure_hook_executable(hook: Path = HOOK) -> bool:
+    """Make sure git will run the pre-push hook. True if it is (now) runnable, False if it is missing.
+
+    git silently skips a hook that is not executable. Windows has no execute bit, so nothing to do there.
+    """
+    if not hook.exists():
+        return False
+    if not IS_WINDOWS and not os.access(hook, os.X_OK):
+        hook.chmod(hook.stat().st_mode | 0o111)
+    return True
 
 
 def run(cmd: list[str]) -> None:
@@ -92,6 +105,10 @@ def main() -> int:
     # 5. Team git hooks: the quality gate runs before every push, from any terminal
     say("[5/6] Turning on the team git hooks (quality gate before every push)")
     run(["git", "config", "core.hooksPath", ".githooks"])
+    if ensure_hook_executable():
+        say("      .githooks/pre-push is executable  OK")
+    else:
+        say("      ! .githooks/pre-push is missing. Run `git pull origin main`, then run this script again.")
 
     # 6. Doctor
     say("[6/6] Checking your environment\n")

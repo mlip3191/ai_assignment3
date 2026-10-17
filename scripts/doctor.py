@@ -23,6 +23,8 @@ IS_WINDOWS = platform.system() == "Windows"
 IS_MAC = platform.system() == "Darwin"
 VENV = ROOT / ".venv"
 VENV_PY = VENV / ("Scripts/python.exe" if IS_WINDOWS else "bin/python")
+HOOK = ".githooks/pre-push"
+GATE = "Pre-push quality gate"
 
 results: list[tuple[str, str, str, str]] = []  # (status, check, detail, fix)
 
@@ -110,16 +112,48 @@ def check_git() -> None:
             "Clone the team repo with `gh repo clone OWNER/ai-jukebox`",
         )
         return
-    hooks = run(["git", "config", "core.hooksPath"], cwd=ROOT).stdout.strip()
-    if hooks == ".githooks":
-        add("PASS", "Pre-push quality gate", "git runs scripts/prepush.py before every push")
-    else:
+    check_hook(ROOT)
+
+
+def hook_index_mode(root: Path) -> str | None:
+    """The file mode git has stored for the pre-push hook (e.g. '100755'), or None if it isn't tracked."""
+    out = run(["git", "ls-files", "-s", HOOK], cwd=root).stdout.split()
+    return out[0] if out else None
+
+
+def hook_problem(index_mode: str | None, runnable_on_disk: bool, check_disk: bool) -> tuple[str, str] | None:
+    """Why git would skip the pre-push hook, as (detail, fix), or None when it will run.
+
+    git ignores a hook that is not executable. Git for Windows ignores the bit, so there the committed
+    mode is the only reliable signal; on macOS and Linux the checked-out file has to be executable too.
+    """
+    if index_mode is None:
+        return f"{HOOK} is not tracked by git", "git pull origin main"
+    if index_mode != "100755":
+        return (
+            f"{HOOK} is committed as mode {index_mode}, not 100755, so git skips it and no checks run",
+            f"Ask the release lead to run `git update-index --chmod=+x {HOOK}` and commit it",
+        )
+    if check_disk and not runnable_on_disk:
+        return f"{HOOK} is not executable on disk, so git skips it and no checks run", f"chmod +x {HOOK}"
+    return None
+
+
+def check_hook(root: Path) -> None:
+    hooks = run(["git", "config", "core.hooksPath"], cwd=root).stdout.strip()
+    if hooks != ".githooks":
         add(
             "FAIL",
-            "Pre-push quality gate",
+            GATE,
             "team git hooks are off, so pushes skip the checks",
             "git config core.hooksPath .githooks",
         )
+        return
+    problem = hook_problem(hook_index_mode(root), os.access(root / HOOK, os.X_OK), not IS_WINDOWS)
+    if problem:
+        add("FAIL", GATE, *problem)
+    else:
+        add("PASS", GATE, "git runs scripts/prepush.py before every push")
 
 
 def git_bash_path() -> str | None:
