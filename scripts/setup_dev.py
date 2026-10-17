@@ -38,14 +38,18 @@ def say(msg: str) -> None:
 
 
 def ensure_hook_executable(hook: Path = HOOK) -> bool:
-    """Make sure git will run the pre-push hook. True if it is (now) runnable, False if it is missing.
+    """Make sure git will run the pre-push hook. True if it is (now) runnable, False if it is missing
+    or cannot be made executable.
 
     git silently skips a hook that is not executable. Windows has no execute bit, so nothing to do there.
     """
     if not hook.exists():
         return False
     if not IS_WINDOWS and not os.access(hook, os.X_OK):
-        hook.chmod(hook.stat().st_mode | 0o111)
+        try:
+            hook.chmod(hook.stat().st_mode | 0o111)
+        except OSError:
+            return False
     return True
 
 
@@ -108,7 +112,8 @@ def main() -> int:
     if ensure_hook_executable():
         say("      .githooks/pre-push is executable  OK")
     else:
-        say("      ! .githooks/pre-push is missing. Run `git pull origin main`, then run this script again.")
+        say("      ! .githooks/pre-push is missing or can't be made executable. Run `git pull origin main`")
+        say("        (macOS: also `chmod +x .githooks/pre-push`), then run this script again.")
 
     # 6. Doctor
     say("[6/6] Checking your environment\n")

@@ -132,7 +132,8 @@ def hook_problem(index_mode: str | None, runnable_on_disk: bool, check_disk: boo
     if index_mode != "100755":
         return (
             f"{HOOK} is committed as mode {index_mode}, not 100755, so git skips it and no checks run",
-            f"Ask the release lead to run `git update-index --chmod=+x {HOOK}` and commit it",
+            f"git pull origin main to get the fixed hook; if main still has 100644, ask the release lead "
+            f"to run `git update-index --chmod=+x {HOOK}` and commit it",
         )
     if check_disk and not runnable_on_disk:
         return f"{HOOK} is not executable on disk, so git skips it and no checks run", f"chmod +x {HOOK}"

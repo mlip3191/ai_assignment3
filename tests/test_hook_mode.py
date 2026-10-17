@@ -23,9 +23,11 @@ GATE = "Pre-push quality gate"
 
 
 def load(name: str):
-    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / f"{name}.py")
+    """Load scripts/<name>.py under a private module name, so other tests' `import doctor` is unaffected."""
+    private = f"{name}_a11"
+    spec = importlib.util.spec_from_file_location(private, ROOT / "scripts" / f"{name}.py")
     mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod
+    sys.modules[private] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -90,7 +92,8 @@ def test_hook_runs_the_prepush_gate() -> None:
 def test_hook_problem_flags_non_executable_index_mode() -> None:
     detail, fix = doctor.hook_problem("100644", True, True)
     assert "100755" in detail
-    assert "git update-index --chmod=+x .githooks/pre-push" in fix
+    assert "git pull origin main" in fix  # an older clone only needs main's fixed hook
+    assert "git update-index --chmod=+x .githooks/pre-push" in fix  # unless main still has 100644
 
 
 def test_hook_problem_flags_untracked_hook() -> None:
@@ -125,6 +128,7 @@ def test_check_hook_fails_when_not_executable(hook_repo: Path) -> None:
     [(status, _, detail, fix)] = gate_results()
     assert status == "FAIL"
     assert "100644" in detail
+    assert "git pull origin main" in fix
     assert "git update-index --chmod=+x" in fix
 
 
@@ -171,3 +175,16 @@ def test_setup_dev_makes_hook_executable(tmp_path: Path) -> None:
     assert setup_dev.ensure_hook_executable(hook) is True  # already executable: left alone
     assert hook.stat().st_mode == mode
     assert setup_dev.ensure_hook_executable(tmp_path / "missing") is False  # no crash
+
+
+@pytest.mark.skipif(not POSIX, reason="execute bits are a macOS and Linux concept")
+def test_setup_dev_survives_a_hook_it_cannot_chmod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    hook = tmp_path / "pre-push"
+    hook.write_text("#!/usr/bin/env bash\n", encoding="utf-8", newline="\n")
+    hook.chmod(0o644)
+
+    def refuse(self: Path, mode: int) -> None:
+        raise PermissionError("not yours")
+
+    monkeypatch.setattr(Path, "chmod", refuse)
+    assert setup_dev.ensure_hook_executable(hook) is False  # reported, not a crash
