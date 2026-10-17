@@ -175,15 +175,16 @@ def _url_problem(value: str, port: int) -> str | None:
         return f"must use port {port}" + ("" if found is None else f" (not {found})")
     if parts.query or parts.fragment or parts.path.rstrip("/") not in ("", "/v1"):
         return (
-            f"enter only http://host:{port} (no path, query or fragment; a trailing /v1 is removed for you)"
+            f"enter only http://host:{port} "
+            "(no path, query or fragment; only a lowercase trailing /v1 is removed for you)"
         )
     return None
 
 
 def normalize_base_url(value: str) -> tuple[str, bool]:
     """The `scheme://host:port` form of a base URL that passed `_url_problem`, and whether a trailing
-    `/v1` was removed. class-endpoints.txt lists some URLs with `/v1`, but the paths in PROJECT.md 7.1
-    already include it, so keeping it would send every request to `/v1/v1/...`."""
+    `/v1` was removed. class-endpoints.txt lists some URLs with `/v1`, but the request paths already include
+    it where a service needs it, so keeping it would send those requests to `/v1/v1/...`."""
     parts = urlsplit(value)
     return f"{parts.scheme}://{parts.netloc}", parts.path.rstrip("/") == "/v1"
 
@@ -229,7 +230,9 @@ def evaluate(values: Mapping[str, str]) -> tuple[list[VarStatus], Config | None]
             if bad is None:
                 urls[service], removed_v1 = normalize_base_url(value)
                 if removed_v1:
-                    note += " (trailing /v1 removed; the paths in PROJECT.md 7.1 already include it)"
+                    note += (
+                        " (trailing /v1 removed; request paths already include it where the service needs it)"
+                    )
         add(bad or VarStatus(var, "OK", note))
 
     models: dict[str, str | None] = {}
