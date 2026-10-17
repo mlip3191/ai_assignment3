@@ -284,6 +284,39 @@ def test_bad_input_400_keeps_the_server_reason(use_config) -> None:
 
 
 @respx.mock
+def test_a_non_reference_400_with_a_reference_keeps_the_server_reason(use_config, ref_file) -> None:
+    body = {
+        "error": {
+            "message": "Unsupported language",
+            "type": "invalid_request_error",
+            "param": "language_id",
+            "code": "invalid_value",
+        }
+    }
+    respx.post(SPEECH_URL).mock(return_value=httpx.Response(400, json=body))
+    with pytest.raises(ServiceError) as err:
+        chatterbox.speak(TEXT, voice_ref_path=str(ref_file("voice.wav")), language="xx")
+    assert err.value.kind == "bad_request"
+    assert err.value.reason == "Unsupported language"
+
+
+@respx.mock
+def test_invalid_reference_code_is_recognised_even_with_other_wording(use_config, ref_file) -> None:
+    body = {
+        "error": {
+            "message": "Clip rejected.",
+            "type": "invalid_request_error",
+            "param": "ref_audio",
+            "code": "invalid_reference",
+        }
+    }
+    respx.post(SPEECH_URL).mock(return_value=httpx.Response(400, json=body))
+    with pytest.raises(ServiceError) as err:
+        chatterbox.speak(TEXT, voice_ref_path=str(ref_file("voice.wav")))
+    assert err.value.reason == chatterbox.REF_REJECTED_REASON
+
+
+@respx.mock
 @pytest.mark.parametrize(
     "message",
     [
