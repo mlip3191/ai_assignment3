@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT))
 
 import jukebox.clients.qwen as qwen  # noqa: E402
 from jukebox.clients.qwen import QwenClient  # noqa: E402
-from jukebox.config import Config, load_config  # noqa: E402
+from jukebox.config import Config, ConfigError, load_config  # noqa: E402
 from jukebox.errors import ServiceError  # noqa: E402
 
 KEY = "test-key-0123456789"
@@ -258,6 +258,50 @@ def test_chat_json_malformed_raises_bad_response(client: QwenClient, content: st
         client.chat_json(MESSAGES)
     assert e.value.kind == "bad_response"
     assert e.value.service == "qwen"
+
+
+@respx.mock
+def test_chat_json_keeps_think_words_inside_json_values(client: QwenClient) -> None:
+    """Lyrics may contain the words <think> or </think>; valid JSON must come back untouched."""
+    content = '{"title": "Overthinking", "lyrics": "I </think> so I am <think> again"}'
+    respx.post(URL).respond(200, json=reply(content))
+    assert client.chat_json(MESSAGES) == {
+        "title": "Overthinking",
+        "lyrics": "I </think> so I am <think> again",
+    }
+
+
+@respx.mock
+def test_chat_strips_only_a_leading_think_block(client: QwenClient) -> None:
+    respx.post(URL).respond(200, json=reply("<think>plan</think>Use the <think>tag</think> sparingly."))
+    assert client.chat(MESSAGES) == "Use the <think>tag</think> sparingly."
+
+
+@pytest.mark.parametrize(
+    "content",
+    ['{"a": 1} {"b": 2}', 'Sure: {"a": 1}. Use {braces} in prose.', 'Not {json}, but {"a": 1} is.'],
+)
+@respx.mock
+def test_chat_json_returns_the_first_complete_object(client: QwenClient, content: str) -> None:
+    respx.post(URL).respond(200, json=reply(content))
+    assert client.chat_json(MESSAGES) == {"a": 1}
+
+
+def test_module_chat_turns_a_config_problem_into_a_service_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Feature code catches only ServiceError (PROJECT.md 7.3), so a bad .env must not escape as ConfigError."""
+
+    def broken() -> QwenClient:
+        raise ConfigError(["QWEN_BASE_URL: missing", "CLASS_API_KEY: missing"])
+
+    monkeypatch.setattr(qwen, "_default", None)
+    monkeypatch.setattr(qwen, "_make_default_client", broken)
+    for call in (lambda: qwen.chat(MESSAGES), lambda: qwen.chat_json(MESSAGES)):
+        with pytest.raises(ServiceError) as e:
+            call()
+        assert e.value.service == "qwen"
+        assert e.value.kind == "config"
+        assert "QWEN_BASE_URL" in e.value.detail
+    assert qwen._default is None  # nothing cached, so fixing .env and retrying works
 
 
 def test_parse_json_reply_is_usable_on_its_own() -> None:

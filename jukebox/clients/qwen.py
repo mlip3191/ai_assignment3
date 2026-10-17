@@ -23,13 +23,15 @@ from types import TracebackType
 from typing import Any
 
 from jukebox.clients.base import ServiceClient
-from jukebox.config import Config
+from jukebox.config import Config, ConfigError
 from jukebox.errors import ServiceError
 
 CHAT_PATH = "/v1/chat/completions"
 NO_THINKING = {"enable_thinking": False}
-_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
-_CODE_FENCE = re.compile(r"^```[a-zA-Z]*\s*|\s*```$")
+# Only thinking at the very start of a reply is removed, so a lyric that happens to contain the
+# word <think> or </think> later on is left alone.
+_LEADING_THINK = re.compile(r"^\s*(?:<think>.*?</think>\s*)+", re.DOTALL)
+_DECODER = json.JSONDecoder()
 
 
 class QwenClient:
@@ -68,7 +70,7 @@ class QwenClient:
 
     def chat(self, messages: list[dict], *, max_tokens: int = 600, temperature: float = 0.8) -> str:
         """Send a chat and return the reply text, with any thinking removed."""
-        return self._complete(messages, max_tokens=max_tokens, temperature=temperature)
+        return strip_think(self._complete(messages, max_tokens=max_tokens, temperature=temperature))
 
     def chat_json(
         self,
@@ -118,45 +120,51 @@ class QwenClient:
             raise _bad_response(f"the reply was cut off at max_tokens={max_tokens}")
         message = choice.get("message")
         content = message.get("content") if isinstance(message, dict) else None
-        text = strip_think(content) if isinstance(content, str) else ""
-        if not text:
+        if not isinstance(content, str) or not strip_think(content):
             raise _bad_response("the reply had no text")
-        return text
+        return content.strip()
 
 
 def strip_think(text: str) -> str:
-    """Remove `<think>...</think>` blocks and any thinking left before a stray `</think>`."""
-    text = _THINK_BLOCK.sub("", text)
-    if "</think>" in text:
+    """Remove thinking from the start of a reply.
+
+    Removes `<think>...</think>` blocks at the very start. A reply that starts with an unclosed `<think>`
+    is all thinking. A `</think>` with no `<think>` anywhere means the opening tag was dropped, so
+    everything before it is thinking. Tags later in the reply are left alone.
+    """
+    text = _LEADING_THINK.sub("", text)
+    if text.lstrip().startswith("<think>"):
+        return ""
+    if "</think>" in text and "<think>" not in text:
         text = text.rsplit("</think>", 1)[1]
-    if "<think>" in text:
-        text = text.split("<think>", 1)[0]
     return text.strip()
 
 
 def parse_json_reply(text: str) -> dict:
     """Parse a reply that should be one JSON object.
 
-    Tries the reply as-is first. If that fails, strips thinking and code fences and parses the span from
-    the first `{` to the last `}`, so "Here is your song: {...}" still works. Raises
-    `ServiceError(kind="bad_response")` if no JSON object can be found.
+    Tries the whole reply first, untouched, so a value that contains the word `<think>` survives. If that
+    fails, removes leading thinking and returns the first complete JSON object found from any `{`, so
+    "Here is your song: {...}", code fences, or a second object after the first still work. Raises
+    `ServiceError(kind="bad_response")` if there is no JSON object.
     """
-    for candidate in (text, _outer_object(text)):
-        if candidate is None:
-            continue
+    try:
+        value = json.loads(text)
+    except ValueError:
+        value = None
+    if isinstance(value, dict):
+        return value
+    cleaned = strip_think(text)
+    start = cleaned.find("{")
+    while start != -1:
         try:
-            value = json.loads(candidate)
+            value, _end = _DECODER.raw_decode(cleaned, start)
         except ValueError:
-            continue
+            value = None
         if isinstance(value, dict):
             return value
+        start = cleaned.find("{", start + 1)
     raise _bad_response("the reply was not a JSON object")
-
-
-def _outer_object(text: str) -> str | None:
-    cleaned = _CODE_FENCE.sub("", strip_think(text).strip())
-    start, end = cleaned.find("{"), cleaned.rfind("}")
-    return cleaned[start : end + 1] if 0 <= start < end else None
 
 
 def _first_choice(data: Any) -> dict:
@@ -181,10 +189,16 @@ def _make_default_client() -> QwenClient:
 
 
 def _get_default() -> QwenClient:
+    """The shared client, created on first use. A settings problem becomes ServiceError(kind="config"),
+    because feature code catches only ServiceError (PROJECT.md 7.3). Nothing is cached on failure, so
+    fixing .env and retrying works. ConfigError lists variable names and problems, never values."""
     global _default
     with _default_lock:
         if _default is None:
-            _default = _make_default_client()
+            try:
+                _default = _make_default_client()
+            except ConfigError as e:
+                raise ServiceError("qwen", "config", "; ".join(e.problems)[:300]) from None
         return _default
 
 
