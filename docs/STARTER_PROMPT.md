@@ -64,8 +64,9 @@ the build does not depend on any one coding agent.
 - Song generation: style, mood, duration, instrumental or vocal. Vocal
   tracks get original lyrics written by Qwen. Show staged progress
   ("Writing lyrics…", "Composing music…", "Painting cover…").
-- The UI limits song duration to the range recorded in PROJECT.md §7.1
-  (ACE-Step row).
+- The duration slider runs from 10 s (ACE-Step's documented minimum) to
+  about 120 s (longer songs are untested and make large files), default
+  about 60 s. See PROJECT.md §7.1 and docs/spikes/B2-acestep.md.
 - Newly generated songs join the playable library and stay available for
   the whole session.
 - Every generated song gets its own FLUX cover reflecting its theme,
@@ -91,10 +92,13 @@ the build does not depend on any one coding agent.
   written by Qwen. samples/GENERATION_LOG.md records how each one was made.
 
 ## Documentation and submission
-- README.md covers setup and use, test results (inputs, expected, actual)
-  for the three core features and at least one failure, one design choice
-  with evidence, one limitation investigated, how the samples were
-  generated, and screenshots.
+- README.md follows the PROJECT.md §11 outline: setup and use (how to
+  supply credentials securely and configure endpoints, placeholders
+  only), test results (inputs, expected, actual) for the three core
+  features and at least one failure, unresolved problems, completed tests
+  kept separate from unchecked claims, one design choice with evidence,
+  one limitation investigated, how the samples were generated, and
+  screenshots.
 - The ZIP includes code, requirements, .env.example, docs, and the sample
   audio and image files. It never includes .env, user uploads, or voice
   recordings.
@@ -108,8 +112,10 @@ the build does not depend on any one coding agent.
 ## Service findings from the spikes
 - Qwen: send chat_template_kwargs {"enable_thinking": false} (B1).
 - ACE-Step: async job API (submit, poll, download); always send
-  batch_size 1. Don't rely on a fixed seed to reproduce the audio (not
-  yet cleanly tested); commit the generated sample files instead (B2).
+  batch_size 1. Still send a fixed seed with use_random_seed false and
+  record it in samples/GENERATION_LOG.md (PROJECT.md §8.5), but don't
+  rely on it to reproduce the audio (not yet cleanly tested); commit the
+  generated sample files instead (B2).
 - Request details live in PROJECT.md §7.1.
 
 ## Models
