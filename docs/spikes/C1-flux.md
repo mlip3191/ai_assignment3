@@ -6,7 +6,7 @@ Task C1 (lane #4). Run by @felcervino with Claude Code on Windows 11, 2026-10-15
 
 | | |
 |---|---|
-| Method + path | `POST {FLUX_BASE_URL}/v1/images/generations` (OpenAI-style images API; the server's spec is at `/openapi.json` and needs no key) |
+| Method + path | `POST {FLUX_BASE_URL}/v1/images/generations` (OpenAI-style images API; the server's spec is at `/openapi.json`, which needed no key on 10/15; an observation, not a documented guarantee) |
 | Auth | `Authorization: Bearer <CLASS_API_KEY>`. Without it, `GET /v1/models` returned HTTP 401 `{"error":"Unauthorized"}` |
 | Model name | `black-forest-labs/FLUX.2-klein-4B`, as given in class-endpoints.txt and as the server reports in `/v1/models` |
 | Call style | Synchronous; one request, one reply. No job ID or polling |
@@ -58,7 +58,7 @@ Other documented request fields (not used yet): `negative_prompt`, `num_inferenc
 - Sizes other than 1024 x 1024, and JPEG or WebP output.
 - `negative_prompt`, `num_inference_steps`, `guidance_scale`.
 - Behavior under heavy load (for example everyone testing at once near the deadline).
-- Error responses for bad input or an overloaded server (4xx/5xx). Only the missing-key response (HTTP 401) was seen, so C2's error mapping is not yet verified against real errors.
+- Error responses for bad input or an overloaded server (4xx/5xx). Only the missing-key response (HTTP 401) was seen, so C2's error mapping is not yet verified against real errors; C2's first error-path test should be built from a real error response.
 - The suffix on more than one image, and on song-specific prompts (C3).
 
 ## How it was run
