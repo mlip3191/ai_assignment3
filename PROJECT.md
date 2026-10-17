@@ -387,7 +387,7 @@ Fill in names, GitHub handles, and OS (macOS/Windows) at kickoff, here and in `.
 
 | Role | Member | GitHub | OS | Owns | Reviews PRs from |
 |---|---|---|---|---|---|
-| **A — Platform & Release lead** | Michael Lippert | mlip3191 | Windows | Repo setup, config/credentials, shared HTTP client base and error model, library/job store, launch scripts, endpoint checks, secret scanning, README assembly, final ZIP & submission | E |
+| **A — Platform & Release lead** | Michael Lippert | mlip3191 | macOS | Repo setup, config/credentials, shared HTTP client base and error model, library/job store, launch scripts, endpoint checks, secret scanning, README assembly, final ZIP & submission | E |
 | **B — Song Generation** | Gunnar O'Connor | gunnaroc | TBD | F1, F1a, F1b: generation form, Qwen lyrics/title, ACE-Step client, song job pipeline | C |
 | **C — Cover Art, Samples & Evidence** | Felipe | felcervino | TBD | F2: FLUX client, art-prompt builder, cover display & retry; R1/DL2: sample generation script, manifest, generation log; screenshots | D |
 | **D — AI DJ & Launchers** | Dillon Smart | dilloncsmart | TBD | F3, F3a, F3b: Qwen commentary, Chatterbox client, voice upload validation, DJ prefetch | B |
