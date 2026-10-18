@@ -226,7 +226,9 @@ class ServiceClient:
     def _status_error(self, response: httpx.Response) -> ServiceError:
         status = response.status_code
         try:
-            snippet = response.text[:MAX_DETAIL_CHARS]
+            # Redact before cutting: cutting first can split a key that straddles the cut, and half a key
+            # no longer matches the redaction.
+            snippet = self._clean(response.text)[:MAX_DETAIL_CHARS]
         except Exception:
             snippet = ""
         detail = f"HTTP {status}: {snippet}"

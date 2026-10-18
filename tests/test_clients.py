@@ -481,3 +481,77 @@ def test_404_user_message_points_at_the_settings_not_the_inputs(client: ServiceC
     assert "isn't configured" in user_message(err)
     assert recovery(err) is None  # retrying or editing the prompt cannot fix it
     assert "HTTP 404" in err.detail  # developers still see the real status
+
+
+# ---- the key is redacted before an error body is cut, so a half key cannot slip through -----------
+
+
+LONG_KEY = "test-long-key-" + "".join(chr(97 + i % 26) for i in range(30))  # built at run time, 44 characters
+
+
+@pytest.fixture
+def long_key_client(tmp_path: Path, sleeps: list[float]):
+    env = {"CLASS_API_KEY": LONG_KEY}
+    for service, port in PORTS.items():
+        env[f"{service.upper()}_BASE_URL"] = f"http://{HOST}:{port}"
+    c = ServiceClient("qwen", load_config(env=env, env_file=tmp_path / "missing-file"), sleep=sleeps.append)
+    yield c
+    c.close()
+
+
+def _longest_key_piece_in(text: str, key: str, shortest: int = 8) -> int:
+    """Length of the longest piece of `key` (at least `shortest` characters) found in `text`, else 0."""
+    for size in range(len(key), shortest - 1, -1):
+        if any(key[i : i + size] in text for i in range(len(key) - size + 1)):
+            return size
+    return 0
+
+
+@respx.mock
+@pytest.mark.parametrize("offset", [0, 100, 240, 250, 262, 270, 280, 285, 290, 295, 299, 300, 310])
+def test_a_key_echoed_around_the_cut_point_never_reaches_the_error(
+    long_key_client: ServiceClient, offset: int
+) -> None:
+    """The error body is cut to MAX_DETAIL_CHARS. Cutting first would split a key that straddles the cut,
+    and half a key no longer matches the redaction. A long key is used because the final cut of the detail
+    hides the shorter half keys."""
+    body = "x" * offset + LONG_KEY + "tail"
+    respx.post(f"{base()}/x").respond(500, text=body)
+    with pytest.raises(ServiceError) as err:
+        long_key_client.request("POST", "/x", retry=False)
+    shown = f"{err.value} {err.value.detail} {err.value!r}"
+    assert _longest_key_piece_in(shown, LONG_KEY) == 0
+
+
+@respx.mock
+def test_a_key_echoed_in_a_4xx_body_never_reaches_detail_or_reason(long_key_client: ServiceClient) -> None:
+    body = {"detail": "x" * 250 + LONG_KEY + " bad"}
+    respx.post(f"{base()}/x").respond(422, json=body)
+    with pytest.raises(ServiceError) as err:
+        long_key_client.request("POST", "/x", retry=False)
+    shown = f"{err.value.detail} {err.value.reason}"
+    assert _longest_key_piece_in(shown, LONG_KEY) == 0
+
+
+# ---- a file or multipart upload is sent in full again when the request is retried ---------------
+
+
+@respx.mock
+def test_a_file_object_upload_is_resent_in_full_on_retry(client: ServiceClient, sleeps: list[float]) -> None:
+    payload = b"RIFF" + bytes(range(256)) * 20
+    route = respx.post(f"{base()}/upload").mock(
+        side_effect=[httpx.Response(503), httpx.Response(200, json={"ok": True})]
+    )
+    resp = client.request(
+        "POST",
+        "/upload",
+        files={"file": ("voice.wav", io.BytesIO(payload), "audio/wav")},
+        data={"request": '{"voice": "default"}'},
+    )
+    assert resp.json() == {"ok": True}
+    assert route.call_count == 2
+    first, second = (call.request.content for call in route.calls)
+    assert payload in first
+    assert payload in second
+    assert len(first) == len(second)
+    assert sleeps  # it did back off once between the attempts
