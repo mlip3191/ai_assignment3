@@ -1,7 +1,7 @@
 # AI Jukebox — Project Plan
 
 MBAX 6418 · Assignment 3 · Team of 5
-Target submission: **Fri 10/23/2026** (placeholder; shift every date when the real due date is announced)
+Target submission: **Fri 10/30/2026** (set by the release lead; not yet confirmed with the professor, §14 Q2)
 
 This is the team's working plan. It is the single source of truth for scope, ownership, interfaces, schedule, and definition of done. Change it through a PR like any other file.
 
@@ -19,7 +19,7 @@ This is the team's working plan. It is the single source of truth for scope, own
 | **Is the app built?** | **No.** There is nothing to run yet. Path 1 below describes the finished app (v1.0) and is the contract the team builds to. |
 | **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation, and CI (Ubuntu on every PR; Windows and macOS after each merge to `main`). |
 | **Latest release** | none (will be the `v1.0` tag) |
-| **Due date** | Assumed Fri 10/23/2026; not yet confirmed (§14 Q2) |
+| **Due date** | Fri 10/30/2026, set by the release lead; not yet confirmed with the professor (§14 Q2). The internal checkpoints M1-M4 (§10) are unchanged, so the extra days are buffer |
 | **Blockers** | §7.1 still has a TBD row for Chatterbox (spike D1); Qwen, ACE-Step and FLUX are filled (§14 Q3) |
 
 ### 0.2 Notes for AI assistants reading this file
@@ -928,9 +928,9 @@ Setup is a one-time job for the release lead (A); the step-by-step guide is **§
 
 ---
 
-## 10. Schedule & milestones (target: submit Fri 10/23)
+## 10. Schedule & milestones (target: submit Fri 10/30)
 
-Today is Mon 10/12. The plan aims to be **submission-ready Thu 10/22 evening**, leaving Friday as buffer. Every task below is a checkbox in one person's lane issue; see §19 for all five lanes.
+Today is Mon 10/12. The plan aims to be **submission-ready Thu 10/22 evening** (the M1-M4 checkpoints below are unchanged), leaving the days up to Fri 10/30 as buffer. Every task below is a checkbox in one person's lane issue; see §19 for all five lanes.
 
 ### M0 — Foundations & spikes · Tue 10/13 – Wed 10/14
 
@@ -983,7 +983,7 @@ Today is Mon 10/12. The plan aims to be **submission-ready Thu 10/22 evening**, 
 | Non-technical usability run (TC-13) | C |
 | Reliability pass (TC-12, TC-14) | D |
 
-### M4 — Docs, evidence, submit · Thu 10/22 (Fri 10/23 buffer)
+### M4 — Docs, evidence, submit · Thu 10/22 (buffer until the Fri 10/30 due date)
 
 | Task | Owner |
 |---|---|
@@ -1123,7 +1123,7 @@ Status values: **Pass / Fail / Not tested**. Fill "Actual" with what really happ
 | # | Question | Ask whom | Status |
 |---|---|---|---|
 | Q1 | Is building with Claude Code acceptable instead of (or alongside) Hermes? | Professor | Open |
-| Q2 | Actual due date? | Professor / Canvas | Open; plan assumes 10/23 |
+| Q2 | Actual due date? | Professor / Canvas | Open; plan uses Fri 10/30 (set by the release lead, not yet confirmed) |
 | Q3 | Contents of `class-endpoints.txt`: formats, auth, limits | Class materials | **Blocker for M0** |
 | Q4 | Do all four services share one credential? | Class materials | Open |
 | Q5 | Is a public repo okay, or should we add the professor as a collaborator? | Professor | Open |
@@ -1625,7 +1625,7 @@ python scripts/github/bootstrap.py
 The first command lists what it would do. The second prints exactly what lane B's issue will say. The third does it:
 
 - **Labels:** 14, colored by area (including `lane`, plus `os:windows` / `os:macos` for OS-specific bugs).
-- **Milestone:** one, "v1.0 submission" (due 10/22). The M0–M4 checkpoints are headings inside each lane issue.
+- **Milestone:** one, "v1.0 submission" (due 10/30). The M0–M4 checkpoints are headings inside each lane issue.
 - **Lane issues:** five, one per person, each assigned to its owner from `team.json`. Each contains:
   - the owner's mission
   - the files they own ("stay in your lane")
