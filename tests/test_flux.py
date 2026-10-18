@@ -189,6 +189,24 @@ def test_400_becomes_bad_request_with_the_server_reason(client: ServiceClient) -
 
 
 @respx.mock
+def test_404_becomes_a_config_error(client: ServiceClient) -> None:
+    respx.post(FLUX_URL).respond(404, json={"detail": "Not Found"})
+    with pytest.raises(ServiceError) as exc:
+        flux.generate_image("a calm lake", client=client)
+    assert (exc.value.service, exc.value.kind) == ("flux", "config")
+
+
+@respx.mock
+def test_a_pasted_v1_base_url_still_calls_the_documented_path(tmp_path: Path) -> None:
+    env = _env()
+    env["FLUX_BASE_URL"] = f"http://{HOST}:{PORTS['flux']}/v1"
+    cfg = load_config(env=env, env_file=tmp_path / "missing-file")
+    route = respx.post(FLUX_URL).respond(200, json=_reply())
+    assert flux.generate_image("a calm lake", config=cfg) == PNG
+    assert route.call_count == 1
+
+
+@respx.mock
 def test_500_becomes_bad_response(client: ServiceClient) -> None:
     respx.post(FLUX_URL).respond(500)
     with pytest.raises(ServiceError) as exc:
