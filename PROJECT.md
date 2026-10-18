@@ -20,7 +20,7 @@ This is the team's working plan. It is the single source of truth for scope, own
 | **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation, and CI (Ubuntu on every PR; Windows and macOS after each merge to `main`). |
 | **Latest release** | none (will be the `v1.0` tag) |
 | **Due date** | Fri 10/30/2026, set by the release lead; not yet confirmed with the professor (§14 Q2). The internal checkpoints M1-M4 (§10) are unchanged, so the extra days are buffer |
-| **Blockers** | §7.1 still has a TBD row for Chatterbox (spike D1); Qwen, ACE-Step and FLUX are filled (§14 Q3) |
+| **Blockers** | None on endpoint formats: all four §7.1 rows are filled (§14 Q3). Open questions are in §14 |
 
 ### 0.2 Notes for AI assistants reading this file
 
@@ -635,14 +635,14 @@ Which feature may call which model:
 
 ### 7.1 Endpoint contracts
 
-> **BLOCKER for M0:** fill this table from `class-endpoints.txt`. Do not guess formats; H11 requires following each service's documented request format. Owner: **A**, with each feature owner verifying their service.
+> **Status:** all four rows are filled from the spikes (B1 Qwen, B2 ACE-Step, C1 FLUX, D1 Chatterbox). Do not guess formats; H11 requires following each service's documented request format. If a service behaves differently from its row, fix the row in a PR with the evidence. Owner: **A**, with each feature owner verifying their service.
 
 | Service | Port | Base URL env var | Method + path | Auth | Request body (key fields) | Response (key fields) | Typical latency | Timeout we set |
 |---|---|---|---|---|---|---|---|---|
 | Qwen3.6-35B-A3B | 9001 | `QWEN_BASE_URL` | `POST /v1/chat/completions` (OpenAI-compatible, synchronous) | `Authorization: Bearer <key>` | `model` (`cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit`), `messages`, `max_tokens`, `temperature`, **`chat_template_kwargs: {"enable_thinking": false}`** (thinking is on by default), optional `response_format` (JSON schema) | `choices[0].message.content`; reasoning arrives separately in `message.reasoning`; `content` is `null` if thinking used up `max_tokens` | ~1.5 s for ~200 tokens with thinking off; ~10 s with it on (B1, 10/15) | 90 s for now (`QWEN_TIMEOUT_S`); 30 s would be ample. See [docs/spikes/B1-qwen.md](docs/spikes/B1-qwen.md) |
 | FLUX.2 klein 4B | 9006 | `FLUX_BASE_URL` | `POST /v1/images/generations` (OpenAI-style images API, synchronous) | `Authorization: Bearer <key>` | `prompt`, `model` (`black-forest-labs/FLUX.2-klein-4B`), `n` 1, `size` `"1024x1024"` (`WIDTHxHEIGHT`), `seed`, `response_format` `b64_json`, `output_format` `png`, **`output_compression` 1** (1.4 MB instead of 3.1 MB, lossless) | `data[0].b64_json`: base64 PNG; `url` not implemented; prompt not rewritten (`revised_prompt` empty). Same seed gives the same image | ~2.3 s per 1024x1024 image (0.95 s server generation), ~2.9 s with `output_compression` 1; single samples, one call each, empty queue (C1, 10/15) | 120 s for now (`FLUX_TIMEOUT_S`). See [docs/spikes/C1-flux.md](docs/spikes/C1-flux.md) |
 | ACE-Step 1.5 XL Turbo | 9007 | `ACESTEP_BASE_URL` | **Async job:** `POST /release_task` → poll `POST /query_result` `{"task_id_list": [id]}` → `GET /v1/audio?path=…` (the result's `file`) | `Authorization: Bearer <key>` | `prompt` (style tags), `lyrics` (`[verse]`/`[chorus]` tags; `"[Instrumental]"` or `""` for instrumental), `audio_duration` (docs: 10–600 s; 5 s was accepted), `audio_format` `mp3`, `inference_steps` 8, **`batch_size` 1** (default is 2), `seed` + `use_random_seed: false`; `model` is accepted, but any value still ran `acestep-v15-xl-turbo`, so check `dit_model` in the result instead. A fixed `seed` did **not** reproduce the same audio in the follow-up test | Submit: `data.task_id`. Poll: `data[0].status` integer 0 running / 1 done / 2 failed; `data[0].result` is a JSON **string** (parse again) with `file`, `metas.duration`, `seed_value`. Audio: MP3, 48 kHz, 128 kbps (~16 KB/s) | Server-reported 2–3 s for 30–60 s of audio; 4.8–7.2 s submit → file saved, empty queue (B2, 10/15) | 300 s for now (`ACESTEP_TIMEOUT_S`) until queueing under load is measured; needs a total-job deadline plus short per-poll timeouts. **Proposed:** never auto-retry the submit (conflicts with the §7.2 retry rule; raised for #9). See [docs/spikes/B2-acestep.md](docs/spikes/B2-acestep.md) |
-| Chatterbox Multilingual V3 | 9008 | `CHATTERBOX_BASE_URL` | TBD | TBD | TBD (text, language, voice reference field?) | TBD | measure | |
+| Chatterbox Multilingual V3 | 9008 | `CHATTERBOX_BASE_URL` | `POST /v1/audio/speech` (JSON, synchronous; returns one complete audio file). Never `POST /v1/voices` (it saves the voice on the shared server) | `Authorization: Bearer <key>` | `model` (`chatterbox-v3`), `input` (1–4,096 chars), `voice: "default"`, `language_id: "en"`, `response_format: "mp3"`; custom voice: add `ref_audio` (base64 WAV or MP3, ≤20 MB, ≤60 s, >0.5 s) | Audio bytes (`audio/mpeg`; WAV is 24 kHz mono 16-bit); errors are `{"error":{"message","type","param","code"}}` | ~40 words: 3.4–4.0 s default voice, 4.8–6.8 s custom voice → ~11.5 s of speech (D1, 10/16) | 120 s for now (`CHATTERBOX_TIMEOUT_S`); 60 s would be ample. See [docs/spikes/D1-chatterbox.md](docs/spikes/D1-chatterbox.md) |
 
 Questions to answer for each service in M0:
 
@@ -1124,7 +1124,7 @@ Status values: **Pass / Fail / Not tested**. Fill "Actual" with what really happ
 |---|---|---|---|
 | Q1 | Is building with Claude Code acceptable instead of (or alongside) Hermes? | Professor | Open |
 | Q2 | Actual due date? | Professor / Canvas | Open; plan uses Fri 10/30 (set by the release lead, not yet confirmed) |
-| Q3 | Contents of `class-endpoints.txt`: formats, auth, limits | Class materials | **Blocker for M0** |
+| Q3 | Contents of `class-endpoints.txt`: formats, auth, limits | Class materials | Answered: the formats, auth and limits are in §7.1 (spikes B1, B2, C1, D1) |
 | Q4 | Do all four services share one credential? | Class materials | Open |
 | Q5 | Is a public repo okay, or should we add the professor as a collaborator? | Professor | Open |
 | Q6 | Python version and OS on the grader's machine? (affects run scripts) | Professor | Open; support Mac + Windows |
