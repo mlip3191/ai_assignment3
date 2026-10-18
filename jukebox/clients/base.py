@@ -235,8 +235,9 @@ class ServiceClient:
         if status == 429 or status in RETRY_STATUSES:
             return self._error("unavailable", detail)
         if status == 404:
-            # A wrong path or base URL (for example a base URL copied with a stray /v1), not something the
-            # user typed. A client that knows 404 means something else can catch this and raise its own kind.
+            # A wrong request path or server address (the config already strips a pasted /v1 from the base
+            # URL), not something the user typed. A client that knows 404 means something else can catch
+            # this and raise its own kind.
             return self._error("config", detail)
         if 400 <= status < 500:
             reason = _server_message(response)

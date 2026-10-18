@@ -78,14 +78,21 @@ def test_path_with_or_without_leading_slash_works(client: ServiceClient) -> None
 
 
 @respx.mock
-def test_a_path_in_the_base_url_is_kept(cfg: Config, tmp_path: Path, sleeps: list[float]) -> None:
+def test_a_pasted_v1_on_the_base_url_is_not_sent_twice(
+    cfg: Config, tmp_path: Path, sleeps: list[float]
+) -> None:
+    """The config strips a pasted trailing /v1, so a client that passes the full path (/v1/chat/completions)
+    reaches /v1/chat/completions once, not /v1/v1/chat/completions."""
     env = {"CLASS_API_KEY": KEY}
     for service, port in PORTS.items():
         env[f"{service.upper()}_BASE_URL"] = f"http://{HOST}:{port}" + ("/v1" if service == "qwen" else "")
     c = ServiceClient("qwen", load_config(env=env, env_file=tmp_path / "x"), sleep=sleeps.append)
+    doubled = respx.post(f"{base()}/v1/v1/chat/completions").respond(404)
     route = respx.post(f"{base()}/v1/chat/completions").respond(200, json={})
-    c.request("POST", "chat/completions")
+    c.request("POST", "/v1/chat/completions")
     assert route.call_count == 1
+    assert doubled.call_count == 0
+    assert c.base_url == base()
 
 
 def test_auth_scheme_can_be_changed(cfg: Config, sleeps: list[float]) -> None:
