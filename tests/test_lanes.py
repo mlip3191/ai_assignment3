@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime
+import re
 import sys
 from pathlib import Path
 
@@ -101,3 +103,52 @@ def test_project_md_lists_every_backlog_task_and_count() -> None:
         assert f"\n| {key} |" in section19, f"{key} missing from PROJECT.md section 19"
     assert f"({len(keys)} tasks total)" in text
     assert f"5 lanes, {len(keys)} tasks" in text
+
+
+# ---- the milestone due date in issues.json must match the target submission in PROJECT.md ----------
+
+TARGET = re.compile(r"Target submission: \*\*(\w{3}) (\d{1,2})/(\d{1,2})/(\d{4})\*\*")
+
+
+def _date_problems(milestone_due: str, project_text: str) -> list[str]:
+    """What is wrong between the milestone due date and the 'Target submission' line, if anything."""
+    found = TARGET.search(project_text)
+    if found is None:
+        return ["PROJECT.md has no 'Target submission: **Day M/D/YYYY**' line"]
+    weekday, month, day, year = found.group(1), int(found.group(2)), int(found.group(3)), int(found.group(4))
+    target = datetime.date(year, month, day)
+    problems = []
+    if target.strftime("%a") != weekday:
+        problems.append(f"{weekday} {target.isoformat()} is a {target.strftime('%a')}")
+    if target.isoformat() != milestone_due:
+        problems.append(
+            f"PROJECT.md says {target.isoformat()} but issues.json milestone due is {milestone_due}"
+        )
+    return problems
+
+
+def test_milestone_due_matches_the_target_submission_in_project_md() -> None:
+    spec, _ = load()
+    text = (ROOT / "PROJECT.md").read_text(encoding="utf-8")
+    assert _date_problems(spec["milestone"]["due"], text) == []
+
+
+def test_a_mismatched_or_misnamed_date_is_reported() -> None:
+    line = "Target submission: **Fri 10/30/2026** (note)"
+    assert _date_problems("2026-10-30", line) == []
+    assert _date_problems("2026-10-22", line) == [
+        "PROJECT.md says 2026-10-30 but issues.json milestone due is 2026-10-22"
+    ]
+    assert _date_problems("2026-10-26", "Target submission: **Fri 10/26/2026**") == [
+        "Fri 2026-10-26 is a Mon"
+    ]
+    assert _date_problems("2026-10-30", "no date here") == [
+        "PROJECT.md has no 'Target submission: **Day M/D/YYYY**' line"
+    ]
+
+
+def test_checkpoints_are_in_order_and_not_after_the_milestone() -> None:
+    spec, _ = load()
+    dues = [c["due"] for c in spec["checkpoints"]]
+    assert dues == sorted(dues)
+    assert dues[-1] <= spec["milestone"]["due"]
