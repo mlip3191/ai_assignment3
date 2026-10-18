@@ -100,3 +100,26 @@ def test_unset_optional_values_say_default(tmp_path: Path, capsys: pytest.Captur
     out = capsys.readouterr().out
     timeout = next(line for line in out.splitlines() if line.startswith("ACESTEP_TIMEOUT_S"))
     assert "default" in timeout
+
+
+def test_a_pasted_trailing_v1_is_noted_without_printing_values(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # the settings() helper gives Qwen and FLUX a trailing /v1, as class-endpoints.txt does
+    assert main(["--env-file", str(settings(tmp_path))], env={}) == 0
+    out = capsys.readouterr().out
+    qwen = next(line for line in out.splitlines() if line.startswith("QWEN_BASE_URL"))
+    acestep = next(line for line in out.splitlines() if line.startswith("ACESTEP_BASE_URL"))
+    assert "/v1" in qwen and "removed" in qwen
+    assert "removed" not in acestep
+    assert HOST not in out and KEY not in out
+
+
+def test_any_other_path_is_reported_invalid_without_printing_values(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["--env-file", str(settings(tmp_path, QWEN_BASE_URL=f"http://{HOST}:9001/api"))], env={}) == 1
+    out = capsys.readouterr().out
+    qwen = next(line for line in out.splitlines() if line.startswith("QWEN_BASE_URL"))
+    assert "INVALID" in qwen and "only http://host:9001" in qwen
+    assert HOST not in out and "/api" not in out

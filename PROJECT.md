@@ -728,6 +728,7 @@ Recovery rules:
 #   ACE-Step 1.5 XL Turbo       port 9007  music
 #   Chatterbox Multilingual V3  port 9008  DJ speech
 # Each *_BASE_URL must use its own port. Port 9000 is never used.
+# Enter only http://host:port. If class-endpoints.txt shows a trailing /v1, leave it out (it is removed if kept).
 CLASS_API_KEY=your-class-api-key-here
 QWEN_BASE_URL=http://CLASS_HOST:9001
 FLUX_BASE_URL=http://CLASS_HOST:9006
@@ -756,6 +757,7 @@ APP_PORT=7860
 - Fail fast with a clear message if any required variable is missing.
 - **Refuse to start if any service URL uses port 9000** (H5), **or if any `*_BASE_URL` doesn't use its own port**: Qwen 9001, FLUX 9006, ACE-Step 9007, Chatterbox 9008 (H1–H4, §7.0).
 - Refuse unknown `*_BASE_URL` variables (no fifth AI service).
+- A `*_BASE_URL` is `scheme://host:port` only; each client appends its own request path to it. `class-endpoints.txt` lists some URLs with a trailing `/v1`: that one lowercase suffix is removed automatically (and `check_config.py` says so on that row), because the request paths already include `/v1` where a service needs it (it is not uniform: ACE-Step's `/release_task` has none). Any other path, a query or a fragment is `INVALID`. `str(config)` shows the host as `****` and keeps the port.
 - Never print key values. Show `CLASS_API_KEY=****` (set) or `(missing)`.
 
 ---

@@ -10,7 +10,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from jukebox.config import Config, ConfigError, load_config  # noqa: E402
+from jukebox.config import Config, ConfigError, _hide_host, evaluate, load_config  # noqa: E402
 
 KEY = "test-key-0123456789"
 FORBIDDEN_PORT = 9 * 1000  # built from a number so no literal URL with this port appears in the repo
@@ -58,10 +58,11 @@ def test_models_are_loaded(tmp_path: Path) -> None:
     assert cfg.chatterbox.model == "chatterbox-model"
 
 
-def test_base_url_may_carry_a_path(tmp_path: Path) -> None:
-    env = good_env()
-    env["QWEN_BASE_URL"] = url(9001, "/v1")
-    assert load(env, tmp_path).qwen.base_url == url(9001, "/v1")
+@pytest.mark.parametrize("name", list(PORTS))
+@pytest.mark.parametrize("suffix", ["/v1", "/v1/", "/"])
+def test_trailing_v1_and_slash_are_removed(name: str, suffix: str, tmp_path: Path) -> None:
+    env = good_env() | {f"{name}_BASE_URL": url(PORTS[name], suffix)}
+    assert getattr(load(env, tmp_path), name.lower()).base_url == url(PORTS[name])
 
 
 def test_optional_values_default(tmp_path: Path) -> None:
@@ -259,3 +260,80 @@ def test_config_is_immutable(tmp_path: Path) -> None:
     cfg = load(good_env(), tmp_path)
     with pytest.raises(AttributeError):
         cfg.app_port = 1  # type: ignore[misc]
+
+
+def test_str_hides_the_host_but_keeps_the_port(tmp_path: Path) -> None:
+    text = str(load(good_env(), tmp_path))
+    assert "class.example" not in text  # logging str(config) must not put the class hosts in a log
+    assert "QWEN_BASE_URL=http://****:9001" in text
+
+
+# ---- a base URL is only scheme://host:port; a pasted /v1 is removed, anything else is refused ----
+
+
+def test_trailing_v1_is_noted_in_the_report() -> None:
+    rows, config = evaluate(good_env() | {"QWEN_BASE_URL": url(9001, "/v1")})
+    by_var = {r.var: r for r in rows}
+    assert config is not None and by_var["QWEN_BASE_URL"].status == "OK"
+    note = by_var["QWEN_BASE_URL"].note
+    assert "/v1" in note and "removed" in note
+    assert "where the service needs it" in note and "PROJECT.md" not in note  # no pointer to a table
+    assert "removed" not in by_var["FLUX_BASE_URL"].note
+    assert "class.example" not in by_var["QWEN_BASE_URL"].note  # names and notes only, never values
+
+
+@pytest.mark.parametrize("path", ["/api", "/v2", "/v1/extra", "/v1/v1", "/a/b"])
+def test_other_paths_are_refused(path: str, tmp_path: Path) -> None:
+    found = problems(good_env() | {"QWEN_BASE_URL": url(9001, path)}, tmp_path)
+    assert any("QWEN_BASE_URL" in p and "only http://host:9001" in p for p in found)
+
+
+@pytest.mark.parametrize("suffix", ["?x=1", "#frag", "/v1?x=1"])
+def test_query_and_fragment_are_refused(suffix: str, tmp_path: Path) -> None:
+    found = problems(good_env() | {"QWEN_BASE_URL": url(9001, suffix)}, tmp_path)
+    assert any("QWEN_BASE_URL" in p and "only http://host:9001" in p for p in found)
+
+
+def test_port_rules_still_apply_when_the_url_has_v1(tmp_path: Path) -> None:
+    found = problems(good_env() | {"QWEN_BASE_URL": url(FORBIDDEN_PORT, "/v1")}, tmp_path)
+    assert any("QWEN_BASE_URL" in p and str(FORBIDDEN_PORT) in p for p in found)
+    found = problems(good_env() | {"FLUX_BASE_URL": url(9001, "/v1")}, tmp_path)  # FLUX must use 9006
+    assert any("FLUX_BASE_URL" in p and "9006" in p for p in found)
+
+
+def test_upper_case_v1_is_not_guessed(tmp_path: Path) -> None:
+    found = problems(good_env() | {"QWEN_BASE_URL": url(9001, "/V1")}, tmp_path)
+    assert any("QWEN_BASE_URL" in p and "only a lowercase" in p for p in found)
+
+
+@pytest.mark.parametrize("suffix", ["//", "/v1//"])
+def test_repeated_trailing_slashes_are_tolerated(suffix: str, tmp_path: Path) -> None:
+    cfg = load(good_env() | {"QWEN_BASE_URL": url(9001, suffix)}, tmp_path)
+    assert cfg.qwen.base_url == url(9001)
+
+
+def test_a_bare_trailing_slash_does_not_claim_a_v1_was_removed() -> None:
+    rows, _ = evaluate(good_env() | {"QWEN_BASE_URL": url(9001, "/")})
+    assert "removed" not in {r.var: r for r in rows}["QWEN_BASE_URL"].note
+
+
+def test_https_and_ipv6_urls_are_normalized(tmp_path: Path) -> None:
+    cfg = load(good_env() | {"QWEN_BASE_URL": "https://[::1]:9001/v1"}, tmp_path)
+    assert cfg.qwen.base_url == "https://[::1]:9001"
+
+
+@pytest.mark.parametrize(
+    ("given", "shown"),
+    [
+        ("http://class.example:9001", "http://****:9001"),
+        ("https://[::1]:9006", "https://****:9006"),
+        ("http://10.1.2.3:9007", "http://****:9007"),
+    ],
+)
+def test_hide_host_keeps_only_scheme_and_port(given: str, shown: str) -> None:
+    assert _hide_host(given) == shown
+
+
+@pytest.mark.parametrize("odd", ["class.example", "http://class.example:notaport", ""])
+def test_hide_host_never_leaks_on_odd_input(odd: str) -> None:
+    assert "class" not in _hide_host(odd)

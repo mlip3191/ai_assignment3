@@ -4,6 +4,7 @@ Rules (PROJECT.md section 7.4):
   - Fail fast, naming every missing or invalid variable at once.
   - Each service URL must use its own port: Qwen 9001, FLUX 9006, ACE-Step 9007, Chatterbox 9008.
   - Port 9000 is never allowed (H5), and no fifth `*_BASE_URL` variable may exist (section 7.0).
+  - A base URL is `scheme://host:port` only. A pasted trailing `/v1` is removed; any other path is refused.
   - Secrets are never printed (H8): the key is a `Secret`, and error text only names variables.
 
 Standard library only, so it works before the app's dependencies are installed.
@@ -81,7 +82,7 @@ class Config:
 
     def __str__(self) -> str:
         lines = [f"{KEY_VAR}={self.api_key}"]
-        lines += [f"{_var(s, 'BASE_URL')}={getattr(self, s).base_url}" for s in SERVICES]
+        lines += [f"{_var(s, 'BASE_URL')}={_hide_host(getattr(self, s).base_url)}" for s in SERVICES]
         lines += [f"APP_HOST={self.app_host}", f"APP_PORT={self.app_port}"]
         return "\n".join(lines)
 
@@ -172,7 +173,29 @@ def _url_problem(value: str, port: int) -> str | None:
         return f"port {FORBIDDEN_PORT} is never allowed (H5)"
     if found != port:
         return f"must use port {port}" + ("" if found is None else f" (not {found})")
+    if parts.query or parts.fragment or parts.path.rstrip("/") not in ("", "/v1"):
+        return (
+            f"enter only http://host:{port} "
+            "(no path, query or fragment; only a lowercase trailing /v1 is removed for you)"
+        )
     return None
+
+
+def normalize_base_url(value: str) -> tuple[str, bool]:
+    """The `scheme://host:port` form of a base URL that passed `_url_problem`, and whether a trailing
+    `/v1` was removed. class-endpoints.txt lists some URLs with `/v1`, but the request paths already include
+    it where a service needs it, so keeping it would send those requests to `/v1/v1/...`."""
+    parts = urlsplit(value)
+    return f"{parts.scheme}://{parts.netloc}", parts.path.rstrip("/") == "/v1"
+
+
+def _hide_host(url: str) -> str:
+    """`http://****:9001`: the port is useful in a log, the class server's address is not."""
+    try:
+        parts = urlsplit(url)
+        return f"{parts.scheme}://****" + (f":{parts.port}" if parts.port else "")
+    except ValueError:
+        return "****"
 
 
 def _positive_float(value: str) -> float | None:
@@ -200,12 +223,17 @@ def evaluate(values: Mapping[str, str]) -> tuple[list[VarStatus], Config | None]
     for service, (port, _) in SERVICES.items():
         var = _var(service, "BASE_URL")
         value, bad = _required(values, var)
+        note = f"set, port {port}"
         if bad is None and value is not None:
             problem = _url_problem(value, port)
             bad = VarStatus(var, "INVALID", problem) if problem else None
             if bad is None:
-                urls[service] = value
-        add(bad or VarStatus(var, "OK", f"set, port {port}"))
+                urls[service], removed_v1 = normalize_base_url(value)
+                if removed_v1:
+                    note += (
+                        " (trailing /v1 removed; request paths already include it where the service needs it)"
+                    )
+        add(bad or VarStatus(var, "OK", note))
 
     models: dict[str, str | None] = {}
     for service in SERVICES:
