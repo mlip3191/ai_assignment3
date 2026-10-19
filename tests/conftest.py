@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pytest
 
-from jukebox.models import Track
+# Plain `pytest` (CI) does not put the repo root on sys.path, unlike `python -m pytest`; the test files
+# each do this too, but conftest.py loads first.
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from jukebox.models import Track  # noqa: E402
 
 # The variables that pin git to ONE repository (the same set `git rev-parse --local-env-vars` prints).
 # git exports some of them to a hook, always when the push runs from a linked worktree, and the pre-push
