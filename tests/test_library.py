@@ -403,3 +403,14 @@ def test_add_still_allows_a_cover_that_does_not_exist_yet(root, make_track):
     lib = Library(root=root)
     lib.add(make_track(id="t1", audio_path=audio(root, "t1"), cover_path="runtime/generated/t1.png"))
     assert lib.get("t1").cover_path == "runtime/generated/t1.png"
+
+
+@pytest.mark.parametrize("bad", ["../x.png", "..\\x.png", "runtime/../../x.png"])
+def test_attach_cover_refuses_a_path_that_climbs_out_of_the_root(root, make_track, bad):
+    lib = Library(root=root)
+    lib.add(make_track(id="t1", audio_path=audio(root, "t1"), cover_path="runtime/generated/t1.png"))
+    with pytest.raises(LibraryError, match=r"\.\."):
+        lib.attach_cover("t1", bad, cover_prompt="changed")
+    kept = lib.get("t1")
+    assert kept.cover_path == "runtime/generated/t1.png"
+    assert kept.cover_prompt is None

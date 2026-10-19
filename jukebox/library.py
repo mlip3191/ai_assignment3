@@ -62,6 +62,8 @@ class Library:
             track = self._tracks.get(track_id)
             if track is None:
                 raise LibraryError(f"no track {track_id!r} in the library")
+            if isinstance(cover_path, str) and _has_parent_segment(cover_path):
+                raise LibraryError(f"cover for track {track_id!r} must not contain '..': {cover_path!r}")
             try:
                 updated = dataclasses.replace(track, cover_path=cover_path, cover_prompt=cover_prompt)
                 updated = _normalised(updated)
