@@ -32,21 +32,24 @@ class Track:
     created_at: str  # ISO 8601
 
     def __post_init__(self) -> None:
-        """Values, not just types (from_dict checks types). Each check skips a wrong type so that
-        from_dict reports it first, rather than failing here with an AttributeError."""
+        """Types and values for the fields that other code relies on, so a Track built directly is
+        held to the same rules as one built by from_dict (which reports every other type error)."""
         for name in ("id", "audio_path"):
             value = getattr(self, name)
-            if isinstance(value, str) and not value.strip():
-                raise ValueError(f"Track.{name} has an invalid value: {value!r} (must not be empty)")
-        if isinstance(self.duration_s, int) and self.duration_s <= 0:
-            raise ValueError(f"Track.duration_s has an invalid value: {self.duration_s!r} (must be > 0)")
-        if isinstance(self.created_at, str):
-            try:
-                datetime.fromisoformat(self.created_at)
-            except ValueError:
-                raise ValueError(
-                    f"Track.created_at has an invalid value: {self.created_at!r} (must be ISO 8601)"
-                ) from None
+            if not isinstance(value, str) or not value.strip():
+                raise _invalid("Track", name, value, "must be a non-empty string")
+        if self.cover_path is not None and (
+            not isinstance(self.cover_path, str) or not self.cover_path.strip()
+        ):
+            raise _invalid("Track", "cover_path", self.cover_path, "must be a non-empty string or None")
+        if isinstance(self.duration_s, bool) or not isinstance(self.duration_s, int) or self.duration_s <= 0:
+            raise _invalid("Track", "duration_s", self.duration_s, "must be a whole number > 0")
+        try:
+            if not isinstance(self.created_at, str):
+                raise ValueError
+            datetime.fromisoformat(self.created_at)
+        except ValueError:
+            raise _invalid("Track", "created_at", self.created_at, "must be an ISO 8601 string") from None
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -73,6 +76,10 @@ class Job:
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Job:
         return cls(**_checked_fields(cls, data))
+
+
+def _invalid(cls_name: str, field: str, value: Any, why: str) -> ValueError:
+    return ValueError(f"{cls_name}.{field} has an invalid value: {value!r} ({why})")
 
 
 def _checked_fields(cls: type, data: Mapping[str, Any]) -> dict[str, Any]:

@@ -154,3 +154,30 @@ def test_building_a_track_directly_rejects_bad_values_too(make_track):
 )
 def test_iso_8601_timestamps_are_accepted(make_track, stamp):
     assert make_track(created_at=stamp).created_at == stamp
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("duration_s", True),
+        ("duration_s", 0.0),
+        ("duration_s", -1.5),
+        ("duration_s", "60"),
+        ("id", None),
+        ("audio_path", None),
+        ("created_at", 5),
+        ("cover_path", ""),
+        ("cover_path", "   "),
+    ],
+)
+def test_building_a_track_directly_checks_types_and_values_like_from_dict(make_track, field, value):
+    with pytest.raises(ValueError, match=field):
+        make_track(**{field: value})
+    data = make_track().to_dict()
+    data[field] = value
+    with pytest.raises(ValueError, match=field):
+        Track.from_dict(data)
+
+
+def test_a_missing_cover_is_none_not_an_empty_string(make_track):
+    assert make_track(cover_path=None).cover_path is None

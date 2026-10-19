@@ -304,3 +304,12 @@ def test_get_library_is_one_shared_instance(root, monkeypatch, make_track):
     first = library_module.get_library()
     assert library_module.get_library() is first
     assert [t.id for t in first.list()] == ["sample_01"]
+
+
+@pytest.mark.parametrize("empty", ["", "   "])
+def test_manifest_rejects_an_empty_cover_path(root, make_track, empty):
+    path = write_manifest(root, [sample_entry(make_track, root, 1, cover_path=empty)])
+    lib = Library(root=root)
+    with pytest.raises(LibraryError, match="cover_path"):
+        lib.load_manifest(path)
+    assert lib.list() == []
