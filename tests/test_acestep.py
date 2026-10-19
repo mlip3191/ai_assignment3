@@ -48,7 +48,7 @@ class FakeTime:
     """A clock that only moves when the client sleeps, so polling loops run instantly."""
 
     def __init__(self) -> None:
-        self.now = 1000.0
+        self.start = self.now = 1000.0
         self.sleeps: list[float] = []
 
     def clock(self) -> float:
@@ -262,8 +262,98 @@ def test_job_that_never_finishes_times_out(tmp_path: Path, fake_time: FakeTime) 
         with pytest.raises(ServiceError) as e:
             c.generate_music(tags="pop", lyrics=LYRICS, duration_s=30)
     assert e.value.kind == "timeout"
-    assert 15 <= poll.call_count <= 22  # about one poll per second for the 20 s job limit
+    assert poll.call_count == 20  # one poll a second, at t = 0..19 of the 20 s job limit
+    assert fake_time.now == fake_time.start + 20  # stops exactly at the deadline
     assert download.call_count == 0
+
+
+def slow(fake_time: FakeTime, seconds: float, response: httpx.Response, calls: list[tuple[float, float]]):
+    """A respx side effect: each request takes `seconds` on the fake clock. Records (start time, read timeout)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((fake_time.now, request.extensions["timeout"]["read"]))
+        fake_time.now += seconds
+        return response
+
+    return handler
+
+
+@respx.mock
+def test_slow_polls_never_run_past_the_deadline(tmp_path: Path, fake_time: FakeTime) -> None:
+    calls: list[tuple[float, float]] = []
+    respx.post(SUBMIT).respond(200, json=submitted())
+    respx.post(POLL).mock(side_effect=slow(fake_time, 3, httpx.Response(200, json=polled(0)), calls))
+    with AceStepClient(
+        make_config(tmp_path, timeout_s=20), sleep=fake_time.sleep, clock=fake_time.clock
+    ) as c:
+        with pytest.raises(ServiceError) as e:
+            c.generate_music(tags="pop", lyrics=LYRICS, duration_s=30)
+    deadline = fake_time.start + 20
+    assert e.value.kind == "timeout"
+    for started, read_timeout in calls:
+        assert read_timeout <= min(acestep.POLL_TIMEOUT_S, deadline - started)  # never asks past the deadline
+    assert fake_time.now <= deadline + 3  # at most one in-flight request finishing after it
+
+
+@respx.mock
+def test_download_is_limited_by_the_time_left(tmp_path: Path, fake_time: FakeTime) -> None:
+    respx.post(SUBMIT).respond(200, json=submitted())
+    calls: list[tuple[float, float]] = []
+    respx.post(POLL).mock(side_effect=slow(fake_time, 15, httpx.Response(200, json=polled(1)), []))
+    respx.get(url__startswith=f"{BASE}/v1/audio").mock(
+        side_effect=slow(fake_time, 0, httpx.Response(200, content=AUDIO), calls)
+    )
+    with AceStepClient(
+        make_config(tmp_path, timeout_s=20), sleep=fake_time.sleep, clock=fake_time.clock
+    ) as c:
+        assert c.generate_music(tags="pop", lyrics=LYRICS, duration_s=30) == (AUDIO, "mp3")
+    assert calls[0][1] <= 5  # 15 s of the 20 s were used polling, so the download gets at most 5 s
+
+
+@respx.mock
+def test_no_download_once_the_deadline_has_passed(tmp_path: Path, fake_time: FakeTime) -> None:
+    respx.post(SUBMIT).respond(200, json=submitted())
+    respx.post(POLL).mock(side_effect=slow(fake_time, 25, httpx.Response(200, json=polled(1)), []))
+    download = respx.get(url__startswith=f"{BASE}/v1/audio")
+    with AceStepClient(
+        make_config(tmp_path, timeout_s=20), sleep=fake_time.sleep, clock=fake_time.clock
+    ) as c:
+        with pytest.raises(ServiceError) as e:
+            c.generate_music(tags="pop", lyrics=LYRICS, duration_s=30)
+    assert e.value.kind == "timeout"
+    assert download.call_count == 0
+
+
+@respx.mock
+def test_a_failed_poll_keeps_polling_instead_of_resubmitting(client: AceStepClient) -> None:
+    """The job is already running on the GPU, so a poll hiccup must not end it (a user Retry would start a
+    second job)."""
+    submit = respx.post(SUBMIT).respond(200, json=submitted())
+    poll = respx.post(POLL).mock(
+        side_effect=[
+            httpx.TimeoutException("slow"),
+            httpx.Response(503),
+            httpx.ConnectError("blip"),
+            httpx.Response(200, json=polled(1)),
+        ]
+    )
+    respx.get(url__startswith=f"{BASE}/v1/audio").respond(200, content=AUDIO)
+    assert client.generate_music(tags="pop", lyrics=LYRICS, duration_s=30) == (AUDIO, "mp3")
+    assert submit.call_count == 1
+    assert poll.call_count == 4  # one request per poll; the loop itself does the retrying
+
+
+@respx.mock
+def test_polls_that_keep_failing_end_in_timeout(tmp_path: Path, fake_time: FakeTime) -> None:
+    submit = respx.post(SUBMIT).respond(200, json=submitted())
+    respx.post(POLL).respond(503)
+    with AceStepClient(
+        make_config(tmp_path, timeout_s=20), sleep=fake_time.sleep, clock=fake_time.clock
+    ) as c:
+        with pytest.raises(ServiceError) as e:
+            c.generate_music(tags="pop", lyrics=LYRICS, duration_s=30)
+    assert e.value.kind == "timeout"
+    assert submit.call_count == 1
 
 
 @respx.mock
@@ -354,6 +444,53 @@ def test_errors_never_include_server_paths(client: AceStepClient) -> None:
         client.generate_music(tags="pop", lyrics=LYRICS, duration_s=30)
     assert "/srv/" not in str(e2.value)
     assert "teacher" not in str(e2.value)
+
+
+def assert_no_server_path(error: ServiceError) -> None:
+    for text in (str(error), error.detail, error.reason or ""):
+        assert "/srv/" not in text
+        assert "teacher" not in text
+
+
+@respx.mock
+def test_a_poll_server_error_never_includes_server_paths(client: AceStepClient) -> None:
+    respx.post(SUBMIT).respond(200, json=submitted())
+    respx.post(POLL).respond(500, json={"detail": f"crashed reading {SERVER_PATH}"})
+    with pytest.raises(ServiceError) as e:
+        client.generate_music(tags="pop", lyrics=LYRICS, duration_s=30)
+    assert e.value.kind == "bad_response"
+    assert_no_server_path(e.value)
+
+
+@respx.mock
+def test_a_submit_error_never_includes_server_paths(client: AceStepClient) -> None:
+    respx.post(SUBMIT).respond(400, json={"detail": f"cannot write {SERVER_PATH}"})
+    with pytest.raises(ServiceError) as e:
+        client.generate_music(tags="pop", lyrics=LYRICS, duration_s=30)
+    assert e.value.kind == "bad_request"
+    assert_no_server_path(e.value)
+
+
+@respx.mock
+def test_a_plain_submit_reason_is_still_shown_to_the_user(client: AceStepClient) -> None:
+    respx.post(SUBMIT).respond(422, json={"detail": "prompt is too long"})
+    with pytest.raises(ServiceError) as e:
+        client.generate_music(tags="pop", lyrics=LYRICS, duration_s=30)
+    assert e.value.kind == "bad_request"
+    assert e.value.reason == "prompt is too long"
+
+
+@respx.mock
+def test_submit_timeout_is_limited_by_the_job_limit(tmp_path: Path, fake_time: FakeTime) -> None:
+    calls: list[tuple[float, float]] = []
+    respx.post(SUBMIT).mock(side_effect=slow(fake_time, 0, httpx.Response(200, json=submitted()), calls))
+    respx.post(POLL).respond(200, json=polled(1))
+    respx.get(url__startswith=f"{BASE}/v1/audio").respond(200, content=AUDIO)
+    with AceStepClient(
+        make_config(tmp_path, timeout_s=12), sleep=fake_time.sleep, clock=fake_time.clock
+    ) as c:
+        c.generate_music(tags="pop", lyrics=LYRICS, duration_s=30)
+    assert calls[0][1] == 12  # min(SUBMIT_TIMEOUT_S, the 12 s job limit)
 
 
 # ---- module-level generate_music() (PROJECT.md 7.2 signature) ---------------------------------------

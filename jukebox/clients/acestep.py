@@ -41,6 +41,7 @@ DOWNLOAD_TIMEOUT_S = 60.0
 AUDIO_EXTENSIONS = {"mp3", "wav", "flac", "opus", "aac"}
 
 PENDING, SUCCEEDED, FAILED = 0, 1, 2
+TRANSIENT = ("timeout", "unavailable")  # worth trying again while the job deadline allows
 
 
 class AceStepClient:
@@ -96,10 +97,11 @@ class AceStepClient:
                 f"duration_s={duration_s} is out of range",
                 reason=f"Duration must be between {MIN_DURATION_S} and {MAX_DURATION_S} seconds.",
             )
+        # ACESTEP_TIMEOUT_S limits the whole job. Every request gets at most the time that is left.
         deadline = self._clock() + self._job_timeout_s
-        task_id = self._submit(self._job_body(tags, lyrics, duration_s, seed))
+        task_id = self._submit(self._job_body(tags, lyrics, duration_s, seed), deadline)
         file_ref = self._wait_for_result(task_id, deadline)
-        return self._download(file_ref)
+        return self._download(file_ref, deadline)
 
     # ---- the three steps -----------------------------------------------------------------------
 
@@ -121,8 +123,13 @@ class AceStepClient:
             body["model"] = self._http.model  # accepted; any value still runs the XL Turbo model (B2)
         return body
 
-    def _submit(self, body: dict[str, Any]) -> str:
-        response = self._http.request("POST", SUBMIT_PATH, json=body, retry=False, timeout=SUBMIT_TIMEOUT_S)
+    def _submit(self, body: dict[str, Any], deadline: float) -> str:
+        timeout = min(SUBMIT_TIMEOUT_S, self._time_left(deadline))
+        try:
+            response = self._http.request("POST", SUBMIT_PATH, json=body, retry=False, timeout=timeout)
+        except ServiceError as e:
+            # A 404 here does mean a wrong address, so `config` stays; the server's text is still dropped.
+            raise _without_server_details(e, "submitting the job", keep_config=True) from None
         data = self._http.json_body(response)
         task = data.get("data") if isinstance(data, dict) else None
         task_id = task.get("task_id") if isinstance(task, dict) else None
@@ -131,9 +138,20 @@ class AceStepClient:
         return task_id
 
     def _wait_for_result(self, task_id: str, deadline: float) -> str:
-        """Poll until the job finishes, then return its `file` value."""
+        """Poll until the job finishes, then return its `file` value.
+
+        The job is already running on the GPU, so a poll that times out or finds the server briefly
+        unavailable is not the end of it: keep polling until the deadline. Giving up would make the user's
+        Retry submit a second job.
+        """
         while True:
-            item = self._poll(task_id)
+            timeout = min(POLL_TIMEOUT_S, self._time_left(deadline))
+            try:
+                item = self._poll(task_id, timeout)
+            except ServiceError as e:
+                if e.kind not in TRANSIENT:
+                    raise
+                item = None
             status = item.get("status") if item else PENDING
             if status == SUCCEEDED:
                 return _file_from_result(item.get("result"))
@@ -141,17 +159,17 @@ class AceStepClient:
                 raise _bad_response("the server reported that the job failed")
             if status != PENDING:
                 raise _bad_response(f"unknown job status {status!r}"[:80])
-            if self._clock() + POLL_INTERVAL_S > deadline:
-                raise ServiceError(
-                    "acestep", "timeout", f"the job did not finish within {self._job_timeout_s:g} s"
-                )
-            self._sleep(POLL_INTERVAL_S)
+            self._sleep(min(POLL_INTERVAL_S, max(0.0, deadline - self._clock())))
 
-    def _poll(self, task_id: str) -> dict | None:
-        """The job's entry from /query_result, or None if the server has not listed it yet."""
+    def _poll(self, task_id: str, timeout: float) -> dict | None:
+        """The job's entry from /query_result, or None if the server has not listed it yet.
+
+        One attempt per poll (`retry=False`): the polling loop already retries, and the base client's own
+        retry would let one poll run past the deadline.
+        """
         try:
             response = self._http.request(
-                "POST", POLL_PATH, json={"task_id_list": [task_id]}, timeout=POLL_TIMEOUT_S
+                "POST", POLL_PATH, json={"task_id_list": [task_id]}, retry=False, timeout=timeout
             )
         except ServiceError as e:
             raise _without_server_details(e, "polling the job") from None
@@ -164,15 +182,29 @@ class AceStepClient:
                 return item
         return None
 
-    def _download(self, file_ref: str) -> tuple[bytes, str]:
-        try:
-            response = self._http.request("GET", file_ref, timeout=DOWNLOAD_TIMEOUT_S)
-        except ServiceError as e:
-            raise _without_server_details(e, "downloading the audio") from None
+    def _download(self, file_ref: str, deadline: float) -> tuple[bytes, str]:
+        """Download the audio, retrying once on a timeout or outage while time is left."""
+        for attempt in (1, 2):
+            timeout = min(DOWNLOAD_TIMEOUT_S, self._time_left(deadline))
+            try:
+                response = self._http.request("GET", file_ref, retry=False, timeout=timeout)
+                break
+            except ServiceError as e:
+                if e.kind not in TRANSIENT or attempt == 2:
+                    raise _without_server_details(e, "downloading the audio") from None
         audio = response.content
         if not audio:
             raise _bad_response("the downloaded audio was empty")
         return audio, _extension(file_ref)
+
+    def _time_left(self, deadline: float) -> float:
+        """Seconds before the job deadline, or a timeout error if it has passed."""
+        left = deadline - self._clock()
+        if left <= 0:
+            raise ServiceError(
+                "acestep", "timeout", f"the job did not finish within {self._job_timeout_s:g} s"
+            )
+        return left
 
 
 def _file_from_result(result: Any) -> str:
@@ -199,13 +231,21 @@ def _extension(file_ref: str) -> str:
     return ext if ext in AUDIO_EXTENSIONS else "mp3"
 
 
-def _without_server_details(error: ServiceError, step: str) -> ServiceError:
-    """Re-raise a poll or download failure without the server's reply text, which can hold its private
-    paths. A 404 on these calls means the job or its audio is gone, not that the settings are wrong
-    (PROJECT.md 7.2), so `config` becomes `bad_response`; the submit call keeps `config` for a 404."""
-    kind = "bad_response" if error.kind == "config" else error.kind
+def _without_server_details(error: ServiceError, step: str, *, keep_config: bool = False) -> ServiceError:
+    """The same failure without the server's reply text, which can hold its private file paths.
+
+    A 404 while polling or downloading means the job or its audio is gone, not that the settings are wrong
+    (PROJECT.md 7.2), so `config` becomes `bad_response` unless `keep_config`. A server reason is kept for
+    the user only if it contains no path.
+    """
+    kind = "bad_response" if error.kind == "config" and not keep_config else error.kind
     status = error.detail.split(":", 1)[0] if error.detail.startswith("HTTP ") else error.kind
-    return ServiceError("acestep", kind, f"{step} failed ({status})")
+    reason = error.reason if kind == "bad_request" and error.reason and not _has_path(error.reason) else None
+    return ServiceError("acestep", kind, f"{step} failed ({status})", reason=reason)
+
+
+def _has_path(text: str) -> bool:
+    return "/" in text or "\\" in text
 
 
 def _bad_response(detail: str) -> ServiceError:
