@@ -51,7 +51,10 @@ class Library:
             track = self._tracks.get(track_id)
             if track is None:
                 raise LibraryError(f"no track {track_id!r} in the library")
-            updated = dataclasses.replace(track, cover_path=cover_path, cover_prompt=cover_prompt)
+            try:
+                updated = dataclasses.replace(track, cover_path=cover_path, cover_prompt=cover_prompt)
+            except ValueError as exc:
+                raise LibraryError(f"cover for track {track_id!r} is not usable: {exc}") from exc
             self._tracks[track_id] = updated
             return dataclasses.replace(updated)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
 import typing
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -32,21 +33,17 @@ class Track:
     created_at: str  # ISO 8601
 
     def __post_init__(self) -> None:
-        """Types and values for the fields that other code relies on, so a Track built directly is
-        held to the same rules as one built by from_dict (which reports every other type error)."""
+        """Hold a Track built directly to the same rules as one built by from_dict: every field has the
+        right type, then the values other code relies on make sense."""
+        _check_types(type(self), {f.name: getattr(self, f.name) for f in dataclasses.fields(self)})
         for name in ("id", "audio_path"):
-            value = getattr(self, name)
-            if not isinstance(value, str) or not value.strip():
-                raise _invalid("Track", name, value, "must be a non-empty string")
-        if self.cover_path is not None and (
-            not isinstance(self.cover_path, str) or not self.cover_path.strip()
-        ):
+            if not getattr(self, name).strip():
+                raise _invalid("Track", name, getattr(self, name), "must not be empty")
+        if self.cover_path is not None and not self.cover_path.strip():
             raise _invalid("Track", "cover_path", self.cover_path, "must be a non-empty string or None")
-        if isinstance(self.duration_s, bool) or not isinstance(self.duration_s, int) or self.duration_s <= 0:
-            raise _invalid("Track", "duration_s", self.duration_s, "must be a whole number > 0")
+        if self.duration_s <= 0:
+            raise _invalid("Track", "duration_s", self.duration_s, "must be greater than 0")
         try:
-            if not isinstance(self.created_at, str):
-                raise ValueError
             datetime.fromisoformat(self.created_at)
         except ValueError:
             raise _invalid("Track", "created_at", self.created_at, "must be an ISO 8601 string") from None
@@ -86,7 +83,6 @@ def _checked_fields(cls: type, data: Mapping[str, Any]) -> dict[str, Any]:
     """Return `data` as constructor arguments, or raise ValueError naming the first problem."""
     if not isinstance(data, Mapping):
         raise ValueError(f"{cls.__name__} must be built from a mapping, got {type(data).__name__}")
-    hints = typing.get_type_hints(cls)
     names = [f.name for f in dataclasses.fields(cls)]
     missing = [n for n in names if n not in data]
     if missing:
@@ -94,10 +90,21 @@ def _checked_fields(cls: type, data: Mapping[str, Any]) -> dict[str, Any]:
     unknown = sorted(set(data) - set(names))
     if unknown:
         raise ValueError(f"{cls.__name__} has unknown field(s): {', '.join(map(str, unknown))}")
-    for name in names:
-        if not _matches(hints[name], data[name]):
-            raise ValueError(f"{cls.__name__}.{name} has an invalid value: {data[name]!r}")
+    _check_types(cls, data)
     return {name: data[name] for name in names}
+
+
+@functools.cache
+def _hints(cls: type) -> dict[str, Any]:
+    return typing.get_type_hints(cls)
+
+
+def _check_types(cls: type, values: Mapping[str, Any]) -> None:
+    """Raise ValueError naming the first field of `cls` whose value has the wrong type."""
+    hints = _hints(cls)
+    for field in dataclasses.fields(cls):
+        if not _matches(hints[field.name], values[field.name]):
+            raise _invalid(cls.__name__, field.name, values[field.name], "wrong type")
 
 
 def _matches(hint: Any, value: Any) -> bool:

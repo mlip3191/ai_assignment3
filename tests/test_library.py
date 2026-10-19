@@ -313,3 +313,12 @@ def test_manifest_rejects_an_empty_cover_path(root, make_track, empty):
     with pytest.raises(LibraryError, match="cover_path"):
         lib.load_manifest(path)
     assert lib.list() == []
+
+
+@pytest.mark.parametrize("bad", ["", "   "])
+def test_attach_cover_with_an_empty_path_is_a_library_error_and_changes_nothing(root, make_track, bad):
+    lib = Library(root=root)
+    lib.add(make_track(id="t1", audio_path=audio(root, "t1"), cover_path="runtime/generated/t1.png"))
+    with pytest.raises(LibraryError, match="t1"):
+        lib.attach_cover("t1", bad)
+    assert lib.get("t1").cover_path == "runtime/generated/t1.png"

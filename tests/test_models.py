@@ -98,18 +98,18 @@ def test_from_dict_rejects_unknown_field(make_track):
 def test_from_dict_rejects_unknown_source(make_track):
     data = make_track().to_dict()
     data["source"] = "uploaded"
-    with pytest.raises(ValueError, match="source"):
+    with pytest.raises(ValueError, match=r"Track\.source has an invalid value"):
         Track.from_dict(data)
 
 
 def test_from_dict_rejects_wrong_types(make_track):
     data = make_track().to_dict()
     data["duration_s"] = "sixty"
-    with pytest.raises(ValueError, match="duration_s"):
+    with pytest.raises(ValueError, match=r"Track\.duration_s has an invalid value"):
         Track.from_dict(data)
     data = make_track().to_dict()
     data["vocal"] = "yes"
-    with pytest.raises(ValueError, match="vocal"):
+    with pytest.raises(ValueError, match=r"Track\.vocal has an invalid value"):
         Track.from_dict(data)
 
 
@@ -138,14 +138,14 @@ def test_from_dict_rejects_non_mapping():
 def test_from_dict_rejects_bad_values(make_track, field, value):
     data = make_track().to_dict()
     data[field] = value
-    with pytest.raises(ValueError, match=field):
+    with pytest.raises(ValueError, match=rf"Track\.{field} has an invalid value"):
         Track.from_dict(data)
 
 
 def test_building_a_track_directly_rejects_bad_values_too(make_track):
-    with pytest.raises(ValueError, match="id"):
+    with pytest.raises(ValueError, match=r"Track\.id has an invalid value"):
         make_track(id="")
-    with pytest.raises(ValueError, match="duration_s"):
+    with pytest.raises(ValueError, match=r"Track\.duration_s has an invalid value"):
         make_track(duration_s=-1)
 
 
@@ -168,14 +168,20 @@ def test_iso_8601_timestamps_are_accepted(make_track, stamp):
         ("created_at", 5),
         ("cover_path", ""),
         ("cover_path", "   "),
+        ("title", None),
+        ("source", "bogus"),
+        ("vocal", "yes"),
+        ("seed", True),
+        ("theme", 5),
+        ("cover_prompt", 5),
     ],
 )
 def test_building_a_track_directly_checks_types_and_values_like_from_dict(make_track, field, value):
-    with pytest.raises(ValueError, match=field):
+    with pytest.raises(ValueError, match=rf"Track\.{field} has an invalid value"):
         make_track(**{field: value})
     data = make_track().to_dict()
     data[field] = value
-    with pytest.raises(ValueError, match=field):
+    with pytest.raises(ValueError, match=rf"Track\.{field} has an invalid value"):
         Track.from_dict(data)
 
 
