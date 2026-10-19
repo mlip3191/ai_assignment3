@@ -203,3 +203,96 @@ def test_the_cover_service_uses_only_the_qwen_and_flux_clients() -> None:
     source = (ROOT / "jukebox" / "services" / "art.py").read_text(encoding="utf-8")
     for other in ("acestep", "chatterbox"):
         assert other not in source
+
+
+# ---- robustness ---------------------------------------------------------------------------------
+
+
+def test_an_unexpected_error_still_finishes_the_job(library: Library, root: Path) -> None:
+    def exploding_flux(prompt: str, *, seed: int | None = None) -> bytes:
+        raise RuntimeError("something odd")
+
+    jobs = JobStore()
+    with pytest.raises(RuntimeError):
+        cover("t1", library, root, jobs=jobs, generate=exploding_flux)
+    (job,) = jobs.list()
+    assert job.status == "failed"
+    assert job.error and "something odd" not in job.error
+    assert library.get("t1").cover_path is None
+
+
+def test_a_save_failure_finishes_the_job_and_keeps_the_song(
+    library: Library, root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def disk_full(dest: Path, data: bytes) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(art, "_write_atomically", disk_full)
+    jobs = JobStore()
+    with pytest.raises(OSError):
+        cover("t1", library, root, jobs=jobs)
+    assert jobs.list()[0].status == "failed"
+    assert art.cover_for("t1", library=library, root=root) == art.placeholder_path()
+
+
+def test_two_covers_for_the_same_track_at_once_do_not_collide(library: Library, root: Path) -> None:
+    import threading
+
+    barrier = threading.Barrier(2)
+
+    def slow_flux(prompt: str, *, seed: int | None = None) -> bytes:
+        barrier.wait(timeout=5)
+        return PNG
+
+    errors: list[BaseException] = []
+
+    def run() -> None:
+        try:
+            cover("t1", library, root, generate=slow_flux)
+        except BaseException as exc:  # noqa: BLE001 - collected for the assertion below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=run) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    assert errors == []
+    folder = root / "runtime" / "generated"
+    assert (folder / "t1.png").read_bytes() == PNG
+    assert [p.name for p in folder.iterdir() if p.suffix == ".tmp"] == []
+
+
+def test_a_briefly_locked_cover_file_is_retried(
+    library: Library, root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_replace = art.os.replace
+    calls = {"n": 0}
+
+    def flaky_replace(src, dst) -> None:
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise PermissionError(13, "Access is denied")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(art.os, "replace", flaky_replace)
+    monkeypatch.setattr(art.time, "sleep", lambda _s: None)
+    cover("t1", library, root)
+    assert calls["n"] == 3
+    assert (root / "runtime" / "generated" / "t1.png").read_bytes() == PNG
+
+
+def test_a_file_that_stays_locked_fails_the_job_and_leaves_no_temp_file(
+    library: Library, root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def locked(src, dst) -> None:
+        raise PermissionError(13, "Access is denied")
+
+    monkeypatch.setattr(art.os, "replace", locked)
+    monkeypatch.setattr(art.time, "sleep", lambda _s: None)
+    jobs = JobStore()
+    with pytest.raises(PermissionError):
+        cover("t1", library, root, jobs=jobs)
+    assert jobs.list()[0].status == "failed"
+    assert list((root / "runtime" / "generated").glob("*.tmp")) == []
+    assert library.get("t1").cover_path is None

@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
+import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,6 +41,9 @@ ChatFn = Callable[..., str]
 ImageFn = Callable[..., bytes]
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+_REPLACE_TRIES = 5
+_REPLACE_WAIT_S = 0.05
+_write_lock = threading.Lock()  # one swap at a time: Windows refuses two at once on the same file
 
 _PLACEHOLDER = re.compile(r"\{(title|style|mood|theme|lyrics_block)\}")
 _THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
@@ -195,11 +201,13 @@ def make_cover(
     relative = f"{COVER_DIR}/{track_id}.png"
     try:
         prompt = render_cover(track, Path(root) / relative, chat=chat, generate=generate)
-    except ServiceError as err:
+        updated = lib.attach_cover(track_id, relative, prompt)
+    except Exception as err:
+        # Any failure, not only a ServiceError, must finish the job so the UI never stays
+        # stuck on "Painting cover". JobStore.fail() shows only a safe message.
         if jobs and job:
             jobs.fail(job.id, err)
         raise
-    updated = lib.attach_cover(track_id, relative, prompt)
     if jobs and job:
         jobs.succeed(job.id, track_id)
     return updated
@@ -226,12 +234,29 @@ def placeholder_path() -> Path:
 
 
 def _write_atomically(dest: Path, data: bytes) -> None:
-    """Write via a temporary file so a reader never sees half an image."""
+    """Write via a uniquely named temporary file, then swap it in, so a reader never sees half an
+    image and two covers for the same track at once (Retry clicked twice) never collide."""
     dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".tmp")
+    fd, name = tempfile.mkstemp(dir=dest.parent, prefix=dest.name + ".", suffix=".tmp")
+    tmp = Path(name)
     try:
-        tmp.write_bytes(data)
-        os.replace(tmp, dest)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        with _write_lock:
+            _replace(tmp, dest)
     finally:
         if tmp.exists():
             tmp.unlink()
+
+
+def _replace(tmp: Path, dest: Path) -> None:
+    """os.replace, retried briefly: on Windows it fails with PermissionError while another
+    process (for example the browser loading the old cover) still has the file open."""
+    for attempt in range(_REPLACE_TRIES):
+        try:
+            os.replace(tmp, dest)
+            return
+        except PermissionError:
+            if attempt == _REPLACE_TRIES - 1:
+                raise
+            time.sleep(_REPLACE_WAIT_S)
