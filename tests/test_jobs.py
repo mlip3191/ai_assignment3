@@ -62,11 +62,35 @@ def test_fail_with_service_error_stores_the_user_message_only(store):
     assert failed.finished_at is not None
 
 
-def test_fail_with_text_is_redacted(store):
+RAW_FAILURES = [
+    "failed with key sk-abc123456 at /Users/lip/x.py line 3\nTraceback (most recent call last):",
+    "connection to http://user:pass@host:9001 failed",
+    "boom Authorization: Bearer sk-secret-123",
+]
+
+
+@pytest.mark.parametrize("raw", RAW_FAILURES)
+def test_fail_with_text_stores_only_the_generic_message(store, raw):
     job = store.create("song")
-    failed = store.fail(job.id, "boom Authorization: Bearer sk-secret-123")
-    assert "sk-secret-123" not in failed.error
-    assert failed.error.startswith("boom")
+    failed = store.fail(job.id, raw)
+    assert failed.status == "failed"
+    assert failed.error == "Something went wrong. Please try again."
+
+
+@pytest.mark.parametrize("raw", RAW_FAILURES)
+def test_fail_with_exception_stores_only_the_generic_message(store, raw):
+    job = store.create("song")
+    failed = store.fail(job.id, RuntimeError(raw))
+    assert failed.error == "Something went wrong. Please try again."
+
+
+def test_fail_does_not_log_the_error_text(store, caplog):
+    job = store.create("song")
+    with caplog.at_level("DEBUG", logger="jukebox"):
+        store.fail(job.id, RuntimeError("key sk-abc123456 at /Users/lip/x.py"))
+    assert "sk-abc123456" not in caplog.text
+    assert "/Users/lip" not in caplog.text
+    assert "RuntimeError" in caplog.text
 
 
 def test_failure_keeps_the_last_stage_for_context(store):

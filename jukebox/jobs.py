@@ -1,22 +1,27 @@
 """Job tracking for long-running generations (PROJECT.md 6.2, R5).
 
 Handlers create a job, move it through stages, and finish it as succeeded or failed. The UI reads
-`stage`, `status` and `error` to show progress. `error` only ever holds a user-facing message.
+`stage`, `status` and `error` to show progress. `error` only ever holds a user-facing message: the
+7.3 text for a ServiceError, or one fixed generic sentence for anything else.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import logging
 import threading
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import get_args
 
-from jukebox.errors import ServiceError, redact, user_message
+from jukebox.errors import ServiceError, user_message
 from jukebox.models import Job, JobKind
 
 FINISHED = ("succeeded", "failed")
+GENERIC_FAILURE = "Something went wrong. Please try again."
+
+log = logging.getLogger(__name__)
 
 
 class JobError(Exception):
@@ -79,9 +84,16 @@ class JobStore:
             job.finished_at = self._now()
             return dataclasses.replace(job)
 
-    def fail(self, job_id: str, error: ServiceError | str) -> Job:
-        """Finish as failed. A ServiceError becomes its 7.3 message; text is redacted. The stage stays."""
-        message = user_message(error) if isinstance(error, ServiceError) else redact(str(error))
+    def fail(self, job_id: str, error: ServiceError | BaseException | str) -> Job:
+        """Finish as failed. A ServiceError becomes its 7.3 message; anything else becomes a fixed
+        generic sentence, because free text can carry paths, keys or tracebacks. Only the error's type
+        is logged, never its text. The stage stays. Raises JobError if the job already finished."""
+        if isinstance(error, ServiceError):
+            message = user_message(error)
+        else:
+            message = GENERIC_FAILURE
+            kind = type(error).__name__ if isinstance(error, BaseException) else "text"
+            log.warning("job %s failed with an unexpected error (%s)", job_id, kind)
         with self._lock:
             job = self._open_job(job_id)
             job.status = "failed"

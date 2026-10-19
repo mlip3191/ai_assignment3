@@ -196,6 +196,16 @@ def test_missing_manifest_loads_nothing(root):
     assert lib.list() == []
 
 
+def test_manifest_with_a_utf8_bom_loads(root, make_track):
+    """Notepad and PowerShell 5 on Windows save UTF-8 files with a BOM."""
+    entries = [sample_entry(make_track, root, 1, title="Café Nights")]
+    path = root / "samples" / "manifest.json"
+    path.write_bytes(b"\xef\xbb\xbf" + json.dumps(entries, ensure_ascii=False).encode("utf-8"))
+    lib = Library(root=root)
+    assert lib.load_manifest(path) == 1
+    assert lib.get("sample_01").title == "Café Nights"
+
+
 def test_manifest_that_is_not_json_raises_clear_error(root):
     path = root / "samples" / "manifest.json"
     path.parent.mkdir(parents=True)

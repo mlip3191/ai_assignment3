@@ -64,7 +64,8 @@ class Library:
         if not path.is_file():
             return 0
         try:
-            entries = json.loads(path.read_text(encoding="utf-8"))
+            # utf-8-sig also reads files without a BOM; Windows editors often add one
+            entries = json.loads(path.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError) as exc:
             raise LibraryError(f"sample manifest {path.name} could not be read: {exc}") from exc
         if not isinstance(entries, list):
