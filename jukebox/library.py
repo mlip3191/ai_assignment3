@@ -5,7 +5,13 @@ handlers concurrently, so every read and write goes through one lock. Tracks are
 callers get copies so nothing mutates library state outside the lock.
 
 `samples/manifest.json` is written by lane C (`scripts/generate_samples.py`): a JSON list of Track
-records (the 6.1 fields), with `audio_path` and `cover_path` relative to the repository root.
+records (the 6.1 fields), with `audio_path` and `cover_path` relative to the repository root. Each
+sample's audio and cover files must exist when the manifest loads, or loading fails.
+
+Stored paths always use forward slashes (`Path.as_posix()`), whichever OS wrote them: the library turns
+any Windows backslashes into forward slashes when a track is added, a cover is attached or the manifest
+is loaded, so samples generated on Windows still resolve on macOS. Use `Library.resolve(path)` to get the
+real file for a stored path instead of building it yourself.
 """
 
 from __future__ import annotations
@@ -34,8 +40,13 @@ class Library:
     def add(self, track: Track) -> Track:
         """Add a track whose audio already exists. The cover may be missing and attached later."""
         with self._lock:
-            self._add_locked(track)
-        return dataclasses.replace(track)
+            stored = self._add_locked(track)
+        return dataclasses.replace(stored)
+
+    def resolve(self, stored_path: str) -> Path:
+        """The real file for a path stored on a Track (relative to the repo root, or absolute)."""
+        path = Path(_posix(stored_path))
+        return path if path.is_absolute() else self._root / path
 
     def get(self, track_id: str) -> Track | None:
         with self._lock:
@@ -53,6 +64,7 @@ class Library:
                 raise LibraryError(f"no track {track_id!r} in the library")
             try:
                 updated = dataclasses.replace(track, cover_path=cover_path, cover_prompt=cover_prompt)
+                updated = _normalised(updated)
             except ValueError as exc:
                 raise LibraryError(f"cover for track {track_id!r} is not usable: {exc}") from exc
             self._tracks[track_id] = updated
@@ -86,6 +98,12 @@ class Library:
                         f"sample manifest {path.name}: track {track.id!r} {field} must be a relative path "
                         f"inside the repo (no '..', drive letter or leading slash): {value!r}"
                     )
+            track = _normalised(track)
+            if track.cover_path is not None and not self.resolve(track.cover_path).is_file():
+                raise LibraryError(
+                    f"sample manifest {path.name}: track {track.id!r} has no cover file at "
+                    f"{track.cover_path!r}"
+                )
             tracks.append(track)
         with self._lock:
             staged = dict(self._tracks)
@@ -97,19 +115,28 @@ class Library:
             self._tracks = staged
         return len(tracks)
 
-    def _add_locked(self, track: Track, *, into: dict[str, Track] | None = None) -> None:
+    def _add_locked(self, track: Track, *, into: dict[str, Track] | None = None) -> Track:
         tracks = self._tracks if into is None else into
         if track.id in tracks:
             raise LibraryError(f"track {track.id!r} is already in the library")
         if _has_parent_segment(track.audio_path):
             raise LibraryError(f"track {track.id!r} audio_path must not contain '..': {track.audio_path!r}")
-        if not self._resolve(track.audio_path).is_file():
+        stored = _normalised(track)
+        if not self.resolve(stored.audio_path).is_file():
             raise LibraryError(f"track {track.id!r} has no audio file at {track.audio_path!r}")
-        tracks[track.id] = dataclasses.replace(track)
+        tracks[track.id] = stored
+        return stored
 
-    def _resolve(self, relative: str) -> Path:
-        path = Path(relative)
-        return path if path.is_absolute() else self._root / path
+
+def _posix(value: str) -> str:
+    """The same path with forward slashes, so `samples\\audio\\a.mp3` also works on macOS and Linux."""
+    return PureWindowsPath(value).as_posix()
+
+
+def _normalised(track: Track) -> Track:
+    """A copy of the track whose stored paths use forward slashes."""
+    cover = None if track.cover_path is None else _posix(track.cover_path)
+    return dataclasses.replace(track, audio_path=_posix(track.audio_path), cover_path=cover)
 
 
 def _has_parent_segment(value: str) -> bool:

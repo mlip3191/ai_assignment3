@@ -322,3 +322,84 @@ def test_attach_cover_with_an_empty_path_is_a_library_error_and_changes_nothing(
     with pytest.raises(LibraryError, match="t1"):
         lib.attach_cover("t1", bad)
     assert lib.get("t1").cover_path == "runtime/generated/t1.png"
+
+
+# ---- stored paths: forward slashes, whichever OS wrote them (review of #25 by lane C) -------------
+
+
+def test_resolve_joins_a_relative_path_to_the_root(root):
+    assert Library(root=root).resolve("runtime/generated/x.mp3") == root / "runtime" / "generated" / "x.mp3"
+
+
+def test_resolve_accepts_a_path_written_with_windows_backslashes(root):
+    lib = Library(root=root)
+    wanted = root / "runtime" / "generated" / "x.mp3"
+    assert lib.resolve("runtime\\generated\\x.mp3") == wanted
+    wanted.write_bytes(b"ID3")
+    assert lib.resolve("runtime\\generated\\x.mp3").is_file()
+
+
+def test_resolve_leaves_an_absolute_path_alone(root):
+    absolute = (root / "elsewhere.mp3").resolve()
+    assert Library(root=root).resolve(str(absolute)) == absolute
+
+
+def test_add_stores_a_backslash_path_with_forward_slashes(root, make_track):
+    lib = Library(root=root)
+    audio(root, "t1")
+    added = lib.add(make_track(id="t1", audio_path="runtime\\generated\\t1.mp3"))
+    assert added.audio_path == "runtime/generated/t1.mp3"
+    assert lib.get("t1").audio_path == "runtime/generated/t1.mp3"
+
+
+def test_attach_cover_stores_a_backslash_path_with_forward_slashes(root, make_track):
+    lib = Library(root=root)
+    lib.add(make_track(id="t1", audio_path=audio(root, "t1")))
+    assert lib.attach_cover("t1", "runtime\\generated\\t1.png").cover_path == "runtime/generated/t1.png"
+    assert lib.get("t1").cover_path == "runtime/generated/t1.png"
+
+
+def test_manifest_written_on_windows_loads_on_any_os(root, make_track):
+    """The samples are generated on Windows: backslash paths must still find the files on a Mac."""
+    entry = sample_entry(
+        make_track,
+        root,
+        1,
+        audio_path="samples\\audio\\sample_01.mp3",
+        cover_path="samples\\covers\\sample_01.png",
+    )
+    lib = Library(root=root)
+    assert lib.load_manifest(write_manifest(root, [entry])) == 1
+    track = lib.get("sample_01")
+    assert track.audio_path == "samples/audio/sample_01.mp3"
+    assert track.cover_path == "samples/covers/sample_01.png"
+    assert lib.resolve(track.audio_path).is_file()
+    assert lib.resolve(track.cover_path).is_file()
+
+
+# ---- a sample's cover must be in the package (review of #25 by lane C) ----------------------------
+
+
+def test_manifest_with_a_missing_cover_file_raises_and_adds_nothing(root, make_track):
+    good = sample_entry(make_track, root, 1)
+    bad = sample_entry(make_track, root, 2)
+    (root / bad["cover_path"]).unlink()
+    lib = Library(root=root)
+    with pytest.raises(LibraryError, match=r"sample_02.*cover"):
+        lib.load_manifest(write_manifest(root, [good, bad]))
+    assert lib.list() == []
+
+
+def test_manifest_entry_without_a_cover_still_loads(root, make_track):
+    """cover_path None is allowed: the UI shows the placeholder and offers Retry cover."""
+    entry = sample_entry(make_track, root, 1, cover_path=None)
+    lib = Library(root=root)
+    assert lib.load_manifest(write_manifest(root, [entry])) == 1
+    assert lib.get("sample_01").cover_path is None
+
+
+def test_add_still_allows_a_cover_that_does_not_exist_yet(root, make_track):
+    """Only the audio must exist when a generated track joins the library (PROJECT.md 6.3)."""
+    lib = Library(root=root)
+    lib.add(make_track(id="t1", audio_path=audio(root, "t1"), cover_path="runtime/generated/t1.png"))
+    assert lib.get("t1").cover_path == "runtime/generated/t1.png"
