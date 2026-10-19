@@ -12,6 +12,9 @@ Stored paths always use forward slashes (`Path.as_posix()`), whichever OS wrote 
 any Windows backslashes into forward slashes when a track is added, a cover is attached or the manifest
 is loaded, so samples generated on Windows still resolve on macOS. Use `Library.resolve(path)` to get the
 real file for a stored path instead of building it yourself.
+
+Path rules: no entry point (`add`, `attach_cover`, `load_manifest`) accepts a `..` step in an audio or
+cover path. Generated tracks may use absolute paths; sample manifest entries must be relative.
 """
 
 from __future__ import annotations
@@ -123,6 +126,8 @@ class Library:
             raise LibraryError(f"track {track.id!r} is already in the library")
         if _has_parent_segment(track.audio_path):
             raise LibraryError(f"track {track.id!r} audio_path must not contain '..': {track.audio_path!r}")
+        if track.cover_path is not None and _has_parent_segment(track.cover_path):
+            raise LibraryError(f"track {track.id!r} cover_path must not contain '..': {track.cover_path!r}")
         stored = _normalised(track)
         if not self.resolve(stored.audio_path).is_file():
             raise LibraryError(f"track {track.id!r} has no audio file at {track.audio_path!r}")
