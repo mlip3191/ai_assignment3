@@ -85,7 +85,7 @@ def _image_bytes(payload: Any) -> bytes:
         raise _bad("data[0].b64_json is empty")
     try:
         # Line breaks are legal in base64; anything else outside the alphabet is still rejected.
-        raw = base64.b64decode("".join(encoded.split()), validate=True)
+        raw = base64.b64decode(encoded.replace("\r", "").replace("\n", ""), validate=True)
     except (binascii.Error, ValueError):
         raise _bad("data[0].b64_json is not valid base64") from None
     if not raw.startswith(SIGNATURE):

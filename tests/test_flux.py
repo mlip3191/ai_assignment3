@@ -268,3 +268,22 @@ def test_base64_split_across_lines_is_still_decoded(client: ServiceClient) -> No
     wrapped = "\n".join(encoded[i : i + 20] for i in range(0, len(encoded), 20)) + "\r\n"
     respx.post(FLUX_URL).respond(200, json={"data": [{"b64_json": wrapped}]})
     assert flux.generate_image("a calm lake", client=client) == PNG
+
+
+@pytest.mark.parametrize("junk", ["\t", "\u00a0", " "])
+def test_other_whitespace_inside_the_base64_is_still_rejected(client: ServiceClient, junk: str) -> None:
+    encoded = base64.b64encode(PNG).decode("ascii")
+    broken = encoded[:10] + junk + encoded[10:]
+    with respx.mock:
+        respx.post(FLUX_URL).respond(200, json={"data": [{"b64_json": broken}]})
+        with pytest.raises(ServiceError) as exc:
+            flux.generate_image("a calm lake", client=client)
+    assert exc.value.kind == "bad_response"
+
+
+@respx.mock
+def test_a_reply_of_only_line_breaks_is_bad_response(client: ServiceClient) -> None:
+    respx.post(FLUX_URL).respond(200, json={"data": [{"b64_json": "\r\n\n"}]})
+    with pytest.raises(ServiceError) as exc:
+        flux.generate_image("a calm lake", client=client)
+    assert exc.value.kind == "bad_response"
