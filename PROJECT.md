@@ -363,7 +363,7 @@ IDs start with **DL** so they're never confused with the AI DJ issue keys (D1–
 | 10/12 | **Avoid an ffmpeg dependency** | One less system install for the grader; decode MP3/WAV with `soundfile` (wheels bundle libsndfile with MP3 support; verify in M0) | pydub/ffmpeg |
 | 10/12 | **Shared Claude Code skills, hooks, and permissions committed in `.claude/`** | Everyone's agent follows the same session routine and the same guardrails; a guard hook blocks the most damaging mistakes (touching `.env`, pushing to main, port 9000) even when a human forgets | Each member configuring Claude Code individually |
 | 10/12 | **Branch names carry the lane issue number and task key** (`feat/2-b4-acestep-client`) | Skills and the session hook find the lane and task automatically; PRs tie to the right checkbox | `feat/<area>-<desc>` |
-| 10/12 | **One GitHub issue per person (5 "lanes")**, each holding that person's task checklist (46 tasks total), owned files, and hand-offs | Each person has one clear place to look and a lane nobody else works in; GitHub shows "3 of 10 tasks" progress per person; still one branch + one PR per task, so reviews stay small | 45 separate issues (too much to track); one issue per feature with shared ownership |
+| 10/12 | **One GitHub issue per person (5 "lanes")**, each holding that person's task checklist (47 tasks total), owned files, and hand-offs | Each person has one clear place to look and a lane nobody else works in; GitHub shows "3 of 10 tasks" progress per person; still one branch + one PR per task, so reviews stay small | 45 separate issues (too much to track); one issue per feature with shared ownership |
 | 10/12 | **Task boxes tick automatically on merge** (`tick-task.yml` reads `Part of #N` + `Task: B4` from the PR) | Lane progress stays accurate without anyone remembering to update it | Manual ticking |
 | 10/12 | **Backlog lives in `scripts/github/issues.json`** and is created by `bootstrap.py` | One reviewed source for lanes, tasks, and dependencies; re-runnable | Typing issues by hand |
 | 10/12 | **Support macOS and native Windows equally** | The team (and probably the grader) uses both; anything that only works on one OS fails the independent-deploy test | Mac-only scripts; requiring WSL |
@@ -470,7 +470,7 @@ ai-jukebox/
 │   ├── check_models.py         # Fails if anything could use a model other than the four class models
 │   ├── scan_secrets.py         # Fails on key-like strings, .env, runtime/, stray audio, port 9000 (--zip for releases)
 │   └── github/
-│       ├── issues.json         # The backlog: 5 lanes, 46 tasks, owned files, hand-offs, dependencies
+│       ├── issues.json         # The backlog: 5 lanes, 47 tasks, owned files, hand-offs, dependencies
 │       ├── lanes.py            # Renders lane issue bodies (used by the two scripts below)
 │       ├── bootstrap.py        # Creates labels, the milestone, the 5 lane issues; invites team; protects main (§18)
 │       ├── assignments.py      # Prints the §19 lane tables from issues.json + team.json
@@ -639,10 +639,10 @@ Which feature may call which model:
 
 | Service | Port | Base URL env var | Method + path | Auth | Request body (key fields) | Response (key fields) | Typical latency | Timeout we set |
 |---|---|---|---|---|---|---|---|---|
-| Qwen3.6-35B-A3B | 9001 | `QWEN_BASE_URL` | TBD | TBD | TBD | TBD | measure | |
-| FLUX.2 klein 4B | 9006 | `FLUX_BASE_URL` | TBD | TBD | TBD | TBD (image bytes? base64? URL?) | measure | |
-| ACE-Step 1.5 XL Turbo | 9007 | `ACESTEP_BASE_URL` | TBD | TBD | TBD (tags, lyrics, duration, seed?) | TBD (format? wav/mp3?) | measure | |
-| Chatterbox Multilingual V3 | 9008 | `CHATTERBOX_BASE_URL` | TBD | TBD | TBD (text, language, voice reference field?) | TBD | measure | |
+| Qwen3.6-35B-A3B | 9001 | `QWEN_BASE_URL` | `POST /v1/chat/completions` (OpenAI-compatible, synchronous) | `Authorization: Bearer <key>` | `model` (`cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit`), `messages`, `max_tokens`, `temperature`, **`chat_template_kwargs: {"enable_thinking": false}`** (thinking is on by default), optional `response_format` (JSON schema) | `choices[0].message.content`; reasoning arrives separately in `message.reasoning`; `content` is `null` if thinking used up `max_tokens` | ~1.5 s for ~200 tokens with thinking off; ~10 s with it on (B1, 10/15) | 90 s for now (`QWEN_TIMEOUT_S`); 30 s would be ample. See [docs/spikes/B1-qwen.md](docs/spikes/B1-qwen.md) |
+| FLUX.2 klein 4B | 9006 | `FLUX_BASE_URL` | `POST /v1/images/generations` (OpenAI-style images API, synchronous) | `Authorization: Bearer <key>` | `prompt`, `model` (`black-forest-labs/FLUX.2-klein-4B`), `n` 1, `size` `"1024x1024"` (`WIDTHxHEIGHT`), `seed`, `response_format` `b64_json`, `output_format` `png`, **`output_compression` 1** (1.4 MB instead of 3.1 MB, lossless) | `data[0].b64_json`: base64 PNG; `url` not implemented; prompt not rewritten (`revised_prompt` empty). Same seed gives the same image | ~2.3 s per 1024x1024 image (0.95 s server generation), ~2.9 s with `output_compression` 1; single samples, one call each, empty queue (C1, 10/15) | 120 s for now (`FLUX_TIMEOUT_S`). See [docs/spikes/C1-flux.md](docs/spikes/C1-flux.md) |
+| ACE-Step 1.5 XL Turbo | 9007 | `ACESTEP_BASE_URL` | **Async job:** `POST /release_task` → poll `POST /query_result` `{"task_id_list": [id]}` → `GET /v1/audio?path=…` (the result's `file`) | `Authorization: Bearer <key>` | `prompt` (style tags), `lyrics` (`[verse]`/`[chorus]` tags; `"[Instrumental]"` or `""` for instrumental), `audio_duration` (docs: 10–600 s; 5 s was accepted), `audio_format` `mp3`, `inference_steps` 8, **`batch_size` 1** (default is 2), `seed` + `use_random_seed: false`; `model` is accepted, but any value still ran `acestep-v15-xl-turbo`, so check `dit_model` in the result instead. A fixed `seed` did **not** reproduce the same audio in the follow-up test | Submit: `data.task_id`. Poll: `data[0].status` integer 0 running / 1 done / 2 failed; `data[0].result` is a JSON **string** (parse again) with `file`, `metas.duration`, `seed_value`. Audio: MP3, 48 kHz, 128 kbps (~16 KB/s) | Server-reported 2–3 s for 30–60 s of audio; 4.8–7.2 s submit → file saved, empty queue (B2, 10/15) | 300 s for now (`ACESTEP_TIMEOUT_S`) until queueing under load is measured; needs a total-job deadline plus short per-poll timeouts. **Proposed:** never auto-retry the submit (conflicts with the §7.2 retry rule; raised for #9). See [docs/spikes/B2-acestep.md](docs/spikes/B2-acestep.md) |
+| Chatterbox Multilingual V3 | 9008 | `CHATTERBOX_BASE_URL` | `POST /v1/audio/speech` (JSON, synchronous; returns one complete audio file). Never `POST /v1/voices` (it saves the voice on the shared server) | `Authorization: Bearer <key>` | `model` (`chatterbox-v3`), `input` (1–4,096 chars), `voice: "default"`, `language_id: "en"`, `response_format: "mp3"`; custom voice: add `ref_audio` (base64 WAV or MP3, ≤20 MB, ≤60 s, >0.5 s) | Audio bytes (`audio/mpeg`; WAV is 24 kHz mono 16-bit); errors are `{"error":{"message","type","param","code"}}` | ~40 words: 3.4–4.0 s default voice, 4.8–6.8 s custom voice → ~11.5 s of speech (D1, 10/16) | 120 s for now (`CHATTERBOX_TIMEOUT_S`); 60 s would be ample. See [docs/spikes/D1-chatterbox.md](docs/spikes/D1-chatterbox.md) |
 
 Questions to answer for each service in M0:
 
@@ -682,10 +682,10 @@ Shared behavior in `clients/base.py` (owner A, built first):
 - **Only the four configured base URLs** (`QWEN_BASE_URL`, `FLUX_BASE_URL`, `ACESTEP_BASE_URL`, `CHATTERBOX_BASE_URL`) can be called; any other URL raises `ServiceError(kind="config")`. Each client is bound to its own service and puts its `*_MODEL` value in the request when the service's format has a model field.
 - Logs one line per request: `service → host:port, status, duration` (never headers or bodies). This log is TC-15's evidence.
 
-- Auth header from config. **Never** logged; the logger redacts `Authorization` and any key-like value.
-- Explicit connect/read timeouts per service (read timeout for ACE-Step will be long; set it from M0 measurements plus margin).
-- Retry **once** with backoff on timeouts, connection errors, and 502/503/504. No retry on 4xx.
-- Converts every failure into `ServiceError(service, kind, detail)`.
+- Auth header from config. **Never** logged; the key, `Authorization` and any key-like value are scrubbed from every record on any `jukebox.*` logger, so a plain `logging.getLogger(__name__)` in a client or service is safe.
+- Explicit connect/read timeouts per service (read timeout for ACE-Step will be long; set it from M0 measurements plus margin). `request(..., timeout=...)` overrides the timeout for one request (for example short polls inside a long job).
+- Retry **once** with backoff on timeouts, connection errors, and 502/503/504. No retry on 4xx. `request(..., retry=False)` makes exactly one attempt: use it for a call that starts work on the shared servers, where a timed-out request may already have been accepted (ACE-Step `/release_task` must never run twice).
+- Converts every failure into `ServiceError(service, kind, detail)`. HTTP 404 maps to `config` (a wrong path or base URL, not something the user typed). A client where 404 can legitimately mean "not found" (a stale ACE-Step task or audio file, a missing Chatterbox voice reference) **should** catch the `config` error for that call and raise its own kind, so the user is not told to check the settings.
 
 ### 7.3 Error model (R6)
 
@@ -700,7 +700,7 @@ User-facing messages (in `errors.py`, owner A). The UI shows these, never raw ex
 
 | kind | Message pattern | Recovery offered |
 |---|---|---|
-| config | "The {service} endpoint isn't configured. Check `.env` against `.env.example`." | — (startup check catches this first) |
+| config | "The {service} endpoint isn't configured. Check `.env` against `.env.example`." | — (startup check catches a malformed URL or the wrong port; an HTTP 404 at run time also lands here: it means a wrong path or base URL, which the startup check cannot see) |
 | auth | "The {service} service rejected our credentials. Check the API key in `.env`." | Fix and restart |
 | timeout | "The {service} service took too long to respond. The class servers may be busy." | **Retry** button |
 | unavailable | "The {service} service is unreachable right now." | **Retry** button |
@@ -728,6 +728,7 @@ Recovery rules:
 #   ACE-Step 1.5 XL Turbo       port 9007  music
 #   Chatterbox Multilingual V3  port 9008  DJ speech
 # Each *_BASE_URL must use its own port. Port 9000 is never used.
+# Enter only http://host:port. If class-endpoints.txt shows a trailing /v1, leave it out (it is removed if kept).
 CLASS_API_KEY=your-class-api-key-here
 QWEN_BASE_URL=http://CLASS_HOST:9001
 FLUX_BASE_URL=http://CLASS_HOST:9006
@@ -756,6 +757,7 @@ APP_PORT=7860
 - Fail fast with a clear message if any required variable is missing.
 - **Refuse to start if any service URL uses port 9000** (H5), **or if any `*_BASE_URL` doesn't use its own port**: Qwen 9001, FLUX 9006, ACE-Step 9007, Chatterbox 9008 (H1–H4, §7.0).
 - Refuse unknown `*_BASE_URL` variables (no fifth AI service).
+- A `*_BASE_URL` is `scheme://host:port` only; each client appends its own request path to it. `class-endpoints.txt` lists some URLs with a trailing `/v1`: that one lowercase suffix is removed automatically (and `check_config.py` says so on that row), because the request paths already include `/v1` where a service needs it (it is not uniform: ACE-Step's `/release_task` has none). Any other path, a query or a fragment is `INVALID`. `str(config)` shows the host as `****` and keeps the port.
 - Never print key values. Show `CLASS_API_KEY=****` (set) or `(missing)`.
 
 ---
@@ -1450,7 +1452,7 @@ Built-in commands worth knowing:
 | New branch before any change | Guard hook on Edit/Write + Bash guard + GitHub branch protection | On `main`, Claude can't edit repo files or commit; it's told to run `/start-session` to create a branch. GitHub rejects direct pushes to `main` from anyone. |
 | No pushes to main / force pushes / commits on main | Bash guard + permissions | Blocked; Claude is told to use the feature branch |
 | Every commit is summarized and approved | CLAUDE.md + `/finish-session` + Bash guard + permissions | Before any commit, Claude summarizes the changes, lists every file being committed, and waits for your yes; the guard stops every `git commit` for approval |
-| Every push is checked and approved | `/finish-session` + Bash guard + permissions + git pre-push hook | Before any push: `/check` passes, a review agent checks the diff, and you approve. Then git runs `scripts/prepush.py` (same checks as `/check`) on **every** push, from Claude or your own terminal, and blocks it on any failure. `setup_dev.py` turns this on; `doctor.py` FAILs if it's off. Claude can't use `--no-verify` or change `core.hooksPath`. |
+| Every push is checked and approved | `/finish-session` + Bash guard + permissions + git pre-push hook | Before any push: `/check` passes, a review agent checks the diff, and you approve. Then git runs `scripts/prepush.py` (same checks as `/check`) on **every** push, from Claude or your own terminal, and blocks it on any failure. `setup_dev.py` turns this on and makes sure the hook file is executable; `doctor.py` FAILs if it's off, or if git would skip the hook because it isn't executable (committed as mode `100644`; git for Windows ignores the bit, so doctor reads the mode from the git index). Claude can't use `--no-verify` or change `core.hooksPath`. |
 | No `git add` of `runtime/` or `-f` adds | Bash guard | Blocked |
 | No port 9000 | Bash guard + `scan_secrets.py` + config check | Blocked in commands; fails the scan in app code |
 | Only the four class models | `check_models.py` (`/check`, CI) + Bash guard + Claude can't edit `model_policy.json` | Banned AI packages can't be installed by Claude; any other model, provider, browser speech, or wrong feature→model wiring fails CI |
@@ -1705,7 +1707,7 @@ Each person owns one lane, and each lane is **one GitHub issue** (label `lane`) 
 
 | Lane | Owner | OS | Tasks | Reviewer of their PRs | Mission (short) |
 |---|---|---|---|---|---|
-| **A: Platform & Release** | TBD | TBD | 10 | E | Make it possible for everyone else to build, and make sure what we submit installs, passes, and arrives on Canvas correctly. |
+| **A: Platform & Release** | TBD | TBD | 11 | E | Make it possible for everyone else to build, and make sure what we submit installs, passes, and arrives on Canvas correctly. |
 | **B: Song Generation** | TBD | TBD | 10 | D | Turn a user's style, mood, duration, and theme into a playable song in the library: instrumental, or vocal with original AI-written lyrics. |
 | **C: Cover Art, Samples & Evidence** | TBD | TBD | 9 | B | Give every song its own matching FLUX cover, produce the three bundled sample songs and their generation log, and own the evidence the grader sees: starter prompt, screenshots, and the non-technical usability run. |
 | **D: AI DJ & Launchers** | TBD | TBD | 9 | C | Make the DJ talk: a short, song-specific intro written by Qwen and spoken by Chatterbox before each queued song, with an optional uploaded MP3/WAV voice. |
@@ -1727,6 +1729,7 @@ Each person owns one lane, and each lane is **one GitHub issue** (label `lane`) 
 | A4 | M0 (Wed 10/14) | Fill §7.1 endpoint contracts from class-endpoints.txt + scripts/check_endpoints.py | A2 |
 | A5 | M0 (Wed 10/14) | Ask the professor/team the section 14 open questions (Hermes, due date, repo access, network, Claude access) | — |
 | A6 | M1 (Sun 10/18) | Track/Job models, thread-safe library, sample manifest loader, job store | A2 |
+| A11 | M1 (Sun 10/18) | Make the pre-push hook executable in git and have doctor catch it | — |
 | A7 | M2 (Tue 10/20) | Integration: song → cover → library → queue → DJ prefetch | B7 (B), C4 (C), D3 (D), E4 (E) |
 | A8 | M3 (Wed 10/21) | Tag release candidate rc1 and fix deploy findings | A7, C6 (C), D6 (D) |
 | A9 | M4 (Thu 10/22) | README assembly: setup, architecture, safeguards, contributions | E7 (E) |
@@ -1817,7 +1820,7 @@ Each person owns one lane, and each lane is **one GitHub issue** (label `lane`) 
 | Checkpoint | A | B | C | D | E | Tasks |
 |---|---|---|---|---|---|---|
 | M0 Foundations & spikes (due Wed 10/14) | 5 | 2 | 2 | 1 | 2 | 12 |
-| M1 Vertical slices (due Sun 10/18) | 1 | 5 | 3 | 3 | 2 | 14 |
+| M1 Vertical slices (due Sun 10/18) | 2 | 5 | 3 | 3 | 2 | 15 |
 | M2 Integration & samples (due Tue 10/20) | 1 | 1 | 2 | 2 | 1 | 7 |
 | M3 Independent deploy test (due Wed 10/21) | 1 | 0 | 1 | 1 | 2 | 5 |
 | M4 Docs, evidence, submit (due Thu 10/22) | 2 | 2 | 1 | 2 | 1 | 8 |
