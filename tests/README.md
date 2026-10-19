@@ -19,6 +19,7 @@ One file per module, named `test_<module>.py`:
 | `test_lanes.py` | Lane issue generation |
 | `test_config.py` | `jukebox/config.py`: required variables, one port per service, no port 9000, no secrets in output |
 | `test_check_config.py` | `scripts/check_config.py`: OK/missing table that never prints values |
+| `test_art_prompt.py` | `jukebox/services/art.py` prompt builder (C3): the `cover_art.md` template, filled placeholders and lyrics excerpt, reply cleanup, the safety suffix added once, Qwen errors, never FLUX |
 | `test_<service>.py` | One per client in `jukebox/clients/` (added by lanes B, C, D) |
 
 A good test case covers the happy path, at least one failure path (service down, bad input, timeout), and each "Done when" criterion of its task.
