@@ -6,6 +6,7 @@ import dataclasses
 import typing
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Literal
 
 Source = Literal["sample", "generated"]
@@ -29,6 +30,23 @@ class Track:
     source: Source
     seed: int | None
     created_at: str  # ISO 8601
+
+    def __post_init__(self) -> None:
+        """Values, not just types (from_dict checks types). Each check skips a wrong type so that
+        from_dict reports it first, rather than failing here with an AttributeError."""
+        for name in ("id", "audio_path"):
+            value = getattr(self, name)
+            if isinstance(value, str) and not value.strip():
+                raise ValueError(f"Track.{name} has an invalid value: {value!r} (must not be empty)")
+        if isinstance(self.duration_s, int) and self.duration_s <= 0:
+            raise ValueError(f"Track.duration_s has an invalid value: {self.duration_s!r} (must be > 0)")
+        if isinstance(self.created_at, str):
+            try:
+                datetime.fromisoformat(self.created_at)
+            except ValueError:
+                raise ValueError(
+                    f"Track.created_at has an invalid value: {self.created_at!r} (must be ISO 8601)"
+                ) from None
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)

@@ -13,7 +13,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import threading
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from jukebox.config import ROOT
 from jukebox.models import Track
@@ -73,9 +73,17 @@ class Library:
         tracks: list[Track] = []
         for index, entry in enumerate(entries):
             try:
-                tracks.append(Track.from_dict(entry))
+                track = Track.from_dict(entry)
             except ValueError as exc:
                 raise LibraryError(f"sample manifest entry {index}: {exc}") from exc
+            for field in ("audio_path", "cover_path"):
+                value = getattr(track, field)
+                if value is not None and not _is_inside_repo(value):
+                    raise LibraryError(
+                        f"sample manifest {path.name}: track {track.id!r} {field} must be a relative path "
+                        f"inside the repo (no '..', drive letter or leading slash): {value!r}"
+                    )
+            tracks.append(track)
         with self._lock:
             staged = dict(self._tracks)
             try:
@@ -90,6 +98,8 @@ class Library:
         tracks = self._tracks if into is None else into
         if track.id in tracks:
             raise LibraryError(f"track {track.id!r} is already in the library")
+        if _has_parent_segment(track.audio_path):
+            raise LibraryError(f"track {track.id!r} audio_path must not contain '..': {track.audio_path!r}")
         if not self._resolve(track.audio_path).is_file():
             raise LibraryError(f"track {track.id!r} has no audio file at {track.audio_path!r}")
         tracks[track.id] = dataclasses.replace(track)
@@ -97,6 +107,19 @@ class Library:
     def _resolve(self, relative: str) -> Path:
         path = Path(relative)
         return path if path.is_absolute() else self._root / path
+
+
+def _has_parent_segment(value: str) -> bool:
+    """A '..' step, whether the path is written with / or \\ (a manifest may come from either OS)."""
+    return ".." in PurePosixPath(value).parts or ".." in PureWindowsPath(value).parts
+
+
+def _is_inside_repo(value: str) -> bool:
+    """A relative path with no '..', no drive letter or UNC share, and no leading slash."""
+    windows = PureWindowsPath(value)
+    if PurePosixPath(value).is_absolute() or windows.drive or windows.root:
+        return False
+    return not _has_parent_segment(value)
 
 
 _shared: Library | None = None

@@ -55,6 +55,16 @@ def test_add_refuses_track_without_audio(root, make_track):
     assert lib.list() == []
 
 
+def test_add_refuses_a_path_that_climbs_out_of_the_root(root, make_track):
+    repo = root / "repo"
+    repo.mkdir()
+    (root / "outside.mp3").write_bytes(b"ID3")
+    lib = Library(root=repo)
+    with pytest.raises(LibraryError, match=r"\.\."):
+        lib.add(make_track(id="t1", audio_path="../outside.mp3"))
+    assert lib.list() == []
+
+
 def test_add_rejects_duplicate_id(root, make_track):
     lib = Library(root=root)
     lib.add(make_track(id="t1", audio_path=audio(root, "t1")))
@@ -204,6 +214,34 @@ def test_manifest_with_a_utf8_bom_loads(root, make_track):
     lib = Library(root=root)
     assert lib.load_manifest(path) == 1
     assert lib.get("sample_01").title == "Café Nights"
+
+
+@pytest.mark.parametrize("field", ["audio_path", "cover_path"])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "../outside.mp3",
+        "samples/../../outside.mp3",
+        "..\\outside.mp3",
+        "C:\\music\\x.mp3",
+        "\\\\server\\share\\x.mp3",
+    ],
+)
+def test_manifest_paths_must_stay_inside_the_repo(root, make_track, field, bad):
+    (root / "outside.mp3").write_bytes(b"ID3")
+    path = write_manifest(root, [sample_entry(make_track, root, 1, **{field: bad})])
+    lib = Library(root=root)
+    with pytest.raises(LibraryError, match="relative"):
+        lib.load_manifest(path)
+    assert lib.list() == []
+
+
+def test_manifest_rejects_an_absolute_path_even_if_the_file_exists(root, make_track):
+    entry = sample_entry(make_track, root, 1)
+    entry["audio_path"] = str((root / entry["audio_path"]).resolve())
+    path = write_manifest(root, [entry])
+    with pytest.raises(LibraryError, match="relative"):
+        Library(root=root).load_manifest(path)
 
 
 def test_manifest_that_is_not_json_raises_clear_error(root):

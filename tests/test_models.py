@@ -116,3 +116,41 @@ def test_from_dict_rejects_wrong_types(make_track):
 def test_from_dict_rejects_non_mapping():
     with pytest.raises(ValueError):
         Track.from_dict(["not", "a", "dict"])  # type: ignore[arg-type]
+
+
+# ---- values, not just types ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("id", ""),
+        ("id", "   "),
+        ("audio_path", ""),
+        ("audio_path", "  "),
+        ("duration_s", 0),
+        ("duration_s", -5),
+        ("created_at", ""),
+        ("created_at", "garbage"),
+        ("created_at", "2026-13-45T99:00:00"),
+    ],
+)
+def test_from_dict_rejects_bad_values(make_track, field, value):
+    data = make_track().to_dict()
+    data[field] = value
+    with pytest.raises(ValueError, match=field):
+        Track.from_dict(data)
+
+
+def test_building_a_track_directly_rejects_bad_values_too(make_track):
+    with pytest.raises(ValueError, match="id"):
+        make_track(id="")
+    with pytest.raises(ValueError, match="duration_s"):
+        make_track(duration_s=-1)
+
+
+@pytest.mark.parametrize(
+    "stamp", ["2026-10-19T12:00:00+00:00", "2026-10-19T12:00:00Z", "2026-10-19T12:00:00"]
+)
+def test_iso_8601_timestamps_are_accepted(make_track, stamp):
+    assert make_track(created_at=stamp).created_at == stamp
