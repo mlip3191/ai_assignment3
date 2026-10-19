@@ -1,0 +1,3 @@
+# Runtime dependencies, pinned to exact versions. Owned by lane D (@dilloncsmart); lane D adds
+# gradio, soundfile and the rest. Added here by A3 because jukebox/clients/base.py needs httpx.
+httpx==0.28.1
