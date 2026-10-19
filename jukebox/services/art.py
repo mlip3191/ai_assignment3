@@ -1,19 +1,28 @@
 """Cover art (PROJECT.md 8.2): Qwen writes the FLUX image prompt, FLUX paints it.
 
-This file currently holds the prompt-building half (task C3). The cover job that calls FLUX,
-saves the image, and offers Retry cover is task C4.
+Two halves:
+  - The prompt builder (task C3): `write_cover_prompt()` turns a song's details into one FLUX prompt.
+  - The cover job (task C4): `make_cover()` / `retry_cover()` paint a cover for a track, save it as
+    `runtime/generated/{track_id}.png`, and attach it to the track by id. `cover_for()` gives the UI
+    the file to show, falling back to the team-made placeholder. A failed cover never removes the song.
 
 Allowed clients for this module: qwen and flux only (scripts/model_policy.json).
 """
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from jukebox.clients import flux
+from jukebox.config import ROOT
 from jukebox.errors import ServiceError
+from jukebox.jobs import JobStore
+from jukebox.library import Library, LibraryError, get_library
+from jukebox.models import Track
 
 TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "prompts" / "cover_art.md"
 SECTIONS = ("System", "User", "Suffix")
@@ -21,7 +30,14 @@ LYRICS_EXCERPT_CHARS = 600
 MAX_TOKENS = 300
 TEMPERATURE = 0.8
 
+COVER_DIR = "runtime/generated"  # relative to the repo root, forward slashes (works on every OS)
+PLACEHOLDER = "jukebox/assets/placeholder_cover.png"  # drawn by a person, not by any model (8.2)
+COVER_STAGE = "Painting cover…"
+
 ChatFn = Callable[..., str]
+ImageFn = Callable[..., bytes]
+
+_SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 _PLACEHOLDER = re.compile(r"\{(title|style|mood|theme|lyrics_block)\}")
 _THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
@@ -124,3 +140,98 @@ def _qwen_chat() -> ChatFn:
     from jukebox.clients import qwen  # imported on first use, so building messages needs no settings
 
     return qwen.chat
+
+
+# ---- the cover job (C4) -------------------------------------------------------------------------
+
+
+def render_cover(
+    track: Track, dest: Path, *, chat: ChatFn | None = None, generate: ImageFn | None = None
+) -> str:
+    """Write the prompt with Qwen, paint it with FLUX, save the image at `dest`. Returns the prompt.
+
+    Used by `make_cover()` for generated songs and by scripts/generate_samples.py for the samples.
+    Raises ServiceError on any service failure; nothing is left at `dest` in that case.
+    """
+    prompt = write_cover_prompt(
+        title=track.title,
+        style=track.style,
+        mood=track.mood,
+        theme=track.theme,
+        vocal=track.vocal,
+        lyrics=track.lyrics,
+        chat=chat,
+    )
+    image = (generate or flux.generate_image)(prompt, seed=track.seed)
+    _write_atomically(Path(dest), image)
+    return prompt
+
+
+def make_cover(
+    track_id: str,
+    *,
+    library: Library | None = None,
+    jobs: JobStore | None = None,
+    root: Path = ROOT,
+    chat: ChatFn | None = None,
+    generate: ImageFn | None = None,
+) -> Track:
+    """Paint a cover for the track and attach it. Returns the updated Track.
+
+    On a service failure the track keeps playing with no cover (the UI shows the placeholder and
+    "Retry cover"), the job (if given) records the plain-language message, and the ServiceError is
+    re-raised for the caller. Raises LibraryError for an unknown track, ValueError for an unsafe id.
+    """
+    if not _SAFE_ID.match(track_id):
+        raise ValueError(f"track id {track_id!r} can't be used as a file name")
+    lib = library or get_library()
+    track = lib.get(track_id)
+    if track is None:
+        raise LibraryError(f"no track {track_id!r} in the library")
+
+    job = jobs.create("cover", COVER_STAGE) if jobs else None
+    if jobs and job:
+        jobs.set_stage(job.id, COVER_STAGE, track_id)
+    relative = f"{COVER_DIR}/{track_id}.png"
+    try:
+        prompt = render_cover(track, Path(root) / relative, chat=chat, generate=generate)
+    except ServiceError as err:
+        if jobs and job:
+            jobs.fail(job.id, err)
+        raise
+    updated = lib.attach_cover(track_id, relative, prompt)
+    if jobs and job:
+        jobs.succeed(job.id, track_id)
+    return updated
+
+
+def retry_cover(track_id: str, **kwargs) -> Track:
+    """The "Retry cover" button: paint a fresh cover for the track (same rules as make_cover)."""
+    return make_cover(track_id, **kwargs)
+
+
+def cover_for(track_id: str, *, library: Library | None = None, root: Path = ROOT) -> Path:
+    """The image file to show for a track, always looked up by id: its cover, or the placeholder."""
+    track = (library or get_library()).get(track_id)
+    if track and track.cover_path:
+        path = Path(root) / track.cover_path.replace("\\", "/")
+        if path.is_file():
+            return path
+    return placeholder_path()
+
+
+def placeholder_path() -> Path:
+    """The committed, hand-drawn placeholder cover (never generated by a model)."""
+    return ROOT / PLACEHOLDER
+
+
+def _write_atomically(dest: Path, data: bytes) -> None:
+    """Write via a temporary file so a reader never sees half an image."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".tmp")
+    try:
+        tmp.write_bytes(data)
+        os.replace(tmp, dest)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
