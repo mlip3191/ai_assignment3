@@ -260,3 +260,11 @@ def test_key_and_image_data_never_reach_the_logs(
     assert KEY not in text
     assert base64.b64encode(PNG).decode("ascii") not in text
     assert "flux -> class.example:9006 200" in text
+
+
+@respx.mock
+def test_base64_split_across_lines_is_still_decoded(client: ServiceClient) -> None:
+    encoded = base64.b64encode(PNG).decode("ascii")
+    wrapped = "\n".join(encoded[i : i + 20] for i in range(0, len(encoded), 20)) + "\r\n"
+    respx.post(FLUX_URL).respond(200, json={"data": [{"b64_json": wrapped}]})
+    assert flux.generate_image("a calm lake", client=client) == PNG
