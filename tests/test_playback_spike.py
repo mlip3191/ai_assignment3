@@ -158,10 +158,29 @@ def test_play_event_stamps_start_without_advancing(tmp_path: Path, monkeypatch: 
     assert " playing: file=t1-clip-440hz.wav" in logged
 
 
+def _requirement_pins(text: str) -> list[str]:
+    """Non-comment, non-blank lines from a requirements file."""
+    pins: list[str] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        pins.append(line)
+    return pins
+
+
 def test_requirements_pin_is_exact_gradio() -> None:
-    pin = (ROOT / "requirements.txt").read_text(encoding="utf-8").strip()
-    assert "\n" not in pin
-    assert pin == f"gradio=={version('gradio')}"
-    name, exact = pin.split("==")
-    assert name == "gradio"
+    pins = _requirement_pins((ROOT / "requirements.txt").read_text(encoding="utf-8"))
+    assert pins
+    assert all(pin.count("==") == 1 for pin in pins)
+    gradio_pins = [pin for pin in pins if pin.startswith("gradio==")]
+    assert gradio_pins == [f"gradio=={version('gradio')}"]
+    _name, exact = gradio_pins[0].split("==")
     assert exact and all(part.isdigit() for part in exact.split("."))
+
+
+def test_requirement_pins_ignore_comments_and_other_packages() -> None:
+    pins = _requirement_pins(
+        "# Runtime dependencies, pinned to exact versions.\n\nhttpx==0.28.1\ngradio==6.30.0\n"
+    )
+    assert pins == ["httpx==0.28.1", "gradio==6.30.0"]
