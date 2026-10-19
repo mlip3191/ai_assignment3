@@ -11,6 +11,7 @@ or singing that starts at 0 s, came out garbled in the live tests (B2, B4).
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,14 +28,24 @@ MAX_INPUT_CHARS = 200  # style, mood and theme as sent to Qwen
 MAX_TITLE_CHARS = 60
 NO_THEME = "none given; choose a subject that fits the style and mood"
 
-# Section name variants Qwen writes, mapped to ACE-Step's tags. Checked in order, so pre-chorus comes first.
-_SECTION_NAMES = re.compile(
-    r"(pre[- ]?chorus|intro|verse|chorus|hook|refrain|bridge|outro)(?![a-z])", re.IGNORECASE
+# Section headers Qwen writes ("Final Chorus", "Verse Two", "Post-Chorus"), mapped to ACE-Step's tags.
+_HEAD = re.compile(
+    r"(?:(?:final|last|first|second|third|fourth|opening|closing)\s+)?"
+    r"(post[- ]?chorus|pre[- ]?chorus|intro|verse|chorus|hook|refrain|bridge|outro)(?![a-z])",
+    re.IGNORECASE,
 )
-_TAG_FOR = {"hook": "chorus", "refrain": "chorus"}
+# What may follow the name in an unbracketed header: a number, then a "- note" or "(note)", then ":".
+_HEAD_TAIL = re.compile(
+    r"\s*(?:\d+|one|two|three|four|five|i{1,3}|iv|v)?(?![a-z])\s*(?:[-–—]\s*[^:]*|\([^)]*\))?\s*:?\s*$",
+    re.IGNORECASE,
+)
+_TAG_FOR = {"hook": "chorus", "refrain": "chorus", "postchorus": "chorus", "prechorus": "pre-chorus"}
 _BRACKETED = re.compile(r"^\[([^\]]*)\]$")
 _PARENTHESIZED = re.compile(r"^\(([^)]*)\)$")
-_BARE_HEADER = re.compile(r"^([a-z][a-z -]*?)[\s\d]*:?$", re.IGNORECASE)
+# Repeat marks such as "(x2)", "[x3]" or "(Repeat chorus)": the prompt asks for repeats written out in full.
+_REPEAT_MARK = re.compile(r"\s*[(\[]\s*(?:x\s*\d+|\d+\s*x|repeat\b[^)\]]*)\s*[)\]]\s*$", re.IGNORECASE)
+_BARE_REPEAT = re.compile(r"^x\s*\d+$", re.IGNORECASE)
+_LENIENT_JSON = json.JSONDecoder(strict=False)  # allows real line breaks inside strings
 _TITLE_LINE = re.compile(r"^[\s*_#>]*title[\s*_]*[:\-][\s*_]*(.+)$", re.IGNORECASE | re.MULTILINE)
 _LYRICS_LABEL = re.compile(r"^[\s*_#>]*lyrics[\s*_]*:?[\s*_]*$", re.IGNORECASE)
 _FENCE = re.compile(r"^\s*```")
@@ -72,12 +83,17 @@ def load_prompt(name: str) -> Prompt:
 def plan_sections(duration_s: int) -> list[tuple[str, int]]:
     """The song's sections and how many lines each gets, scaled to the duration.
 
-    Roughly two sung sections per 30 s (PROJECT.md 8.1). Starting points, to be tuned by ear:
-    under 40 s, one verse and chorus; under 75 s, two of each and an outro; from 75 s, a bridge before the
-    last chorus, and one more verse and chorus per extra minute, up to two more.
+    Roughly two sung sections per 30 s (PROJECT.md 8.1). Tuned by ear at 30 s and 60 s (B5): under 20 s,
+    a 2-line verse; under 30 s, 2-line verse and chorus; under 40 s, one verse and chorus; under 75 s, two
+    of each and an outro; from 75 s, a bridge before the last chorus, and one more verse and chorus per
+    extra minute, up to two more.
     """
     verse, chorus, bridge, outro = ("verse", 4), ("chorus", 4), ("bridge", 4), ("outro", 2)
-    if duration_s < 40:
+    if duration_s < 20:
+        body = [("verse", 2)]
+    elif duration_s < 30:
+        body = [("verse", 2), ("chorus", 2)]
+    elif duration_s < 40:
         body = [verse, chorus]
     elif duration_s < 75:
         body = [verse, chorus, verse, chorus, outro]
@@ -137,13 +153,14 @@ def write_song_text(*, style: str, mood: str, theme: str | None, duration_s: int
 def parse_song_reply(text: str, *, vocal: bool) -> SongText:
     """Read Qwen's reply: JSON `{"title", "lyrics"}` first, then a plain-text "Title: ..." fallback.
 
-    Lyrics are normalized to ACE-Step's tags. Raises `ServiceError(kind="bad_response")` if there is no
-    title, or a vocal song has no usable lyrics. The reply's text is never copied into the error.
+    JSON with real line breaks inside a string (a common model mistake) is still read as JSON. Lyrics are
+    normalized to ACE-Step's tags. Raises `ServiceError(kind="bad_response")` if there is no title, or a
+    vocal song has no usable lyrics. The reply's text is never copied into the error.
     """
     try:
         data = qwen.parse_json_reply(text)
     except ServiceError:
-        data = _parse_plain_text(text)
+        data = _parse_lenient_json(text) or _parse_plain_text(text)
     title = clean_title(data.get("title"))
     if not title:
         raise _bad_response("the reply had no title")
@@ -151,21 +168,55 @@ def parse_song_reply(text: str, *, vocal: bool) -> SongText:
         return SongText(title, None)
     lyrics = data.get("lyrics")
     if isinstance(lyrics, list):
-        lyrics = "\n".join(str(line) for line in lyrics)
+        lyrics = "\n".join(line for line in lyrics if isinstance(line, str))
     if not isinstance(lyrics, str) or not lyrics.strip():
         raise _bad_response("the reply had no lyrics")
-    return SongText(title, normalize_lyrics(lyrics))
+    return SongText(title, normalize_lyrics(_without_leading_title(lyrics, title)))
+
+
+def _parse_lenient_json(text: str) -> dict | None:
+    """The first JSON object in the reply, allowing real line breaks inside strings, or None."""
+    cleaned = qwen.strip_think(text)
+    start = cleaned.find("{")
+    while start != -1:
+        try:
+            value, _end = _LENIENT_JSON.raw_decode(cleaned, start)
+        except ValueError:
+            value = None
+        if isinstance(value, dict):
+            return value
+        start = cleaned.find("{", start + 1)
+    return None
 
 
 def _parse_plain_text(text: str) -> dict[str, str]:
-    """`Title: ...` on one line, and everything after it as the lyrics."""
+    """`Title: ...` on one line, and the lyrics after it.
+
+    The lyrics start at the first section header and stop at a code fence, so "Here are your lyrics:" and
+    text after the fence are not sung. A last paragraph with no section header ("Hope you enjoy this
+    song!") is the model's sign-off and is dropped too.
+    """
     cleaned = qwen.strip_think(text)
     match = _TITLE_LINE.search(cleaned)
     if not match:
         raise _bad_response("the reply was neither JSON nor 'Title: ...' text")
-    rest = cleaned[match.end() :].splitlines()
-    lines = [line for line in rest if not _LYRICS_LABEL.match(line) and not _FENCE.match(line)]
-    return {"title": match.group(1), "lyrics": "\n".join(lines)}
+    lines = cleaned[match.end() :].splitlines()
+    start = next((i for i, line in enumerate(lines) if _section_tag(line)), 0)
+    lines = lines[start:]
+    end = next((i for i, line in enumerate(lines) if _FENCE.match(line)), len(lines))
+    lines = [line for line in lines[:end] if not _LYRICS_LABEL.match(line)]
+    paragraphs = re.split(r"\n\s*\n", "\n".join(lines).strip())
+    if len(paragraphs) > 1 and not any(_section_tag(line) for line in paragraphs[-1].splitlines()):
+        paragraphs.pop()
+    return {"title": match.group(1), "lyrics": "\n\n".join(paragraphs)}
+
+
+def _without_leading_title(lyrics: str, title: str) -> str:
+    """Lyrics without the title repeated above them ("Open Road", "**Open Road**", "Title: Open Road")."""
+    lines = lyrics.splitlines()
+    while lines and (not lines[0].strip() or clean_title(lines[0]).lower() == title.lower()):
+        lines.pop(0)
+    return "\n".join(lines)
 
 
 def clean_title(raw: object) -> str:
@@ -177,31 +228,33 @@ def clean_title(raw: object) -> str:
     title = re.sub(r"^title\s*[:\-]\s*", "", title.strip("#*_ "), flags=re.IGNORECASE)
     title = title.strip("\"'“”‘’*_ .").strip()
     if len(title) > MAX_TITLE_CHARS:
-        title = title[: MAX_TITLE_CHARS + 1].rsplit(" ", 1)[0].rstrip(" ,;:-")
+        cut = title[: MAX_TITLE_CHARS + 1]
+        cut = cut.rsplit(" ", 1)[0] if " " in cut else cut
+        title = cut[:MAX_TITLE_CHARS].rstrip(" ,;:-")
     return title
 
 
 def normalize_lyrics(text: str) -> str:
     """Rewrite lyrics in ACE-Step's format.
 
-    Section headers in any common form (`[Verse 1]`, `**[CHORUS]**`, `Pre-Chorus:`, `## Hook`, `(Bridge)`)
-    become lowercase tags; other bracketed lines (`[Guitar Solo]`) are dropped. Lines before the first tag
-    become a verse, and empty sections are dropped. The song always starts with an empty `[intro]`.
+    Section headers in any common form (`[Verse 1]`, `**[CHORUS]**`, `**Verse 1**:`, `Final Chorus:`,
+    `## Hook`, `(Bridge)`, `Chorus (x2)`) become lowercase tags; other bracketed lines (`[Guitar Solo]`)
+    and repeat marks (`(x2)`, `(Repeat chorus)`) are dropped. Lines before the first tag become a verse,
+    and empty sections are dropped. The song always starts with an empty `[intro]`.
     Raises `ServiceError(kind="bad_response")` if there are no section tags or no sung lines.
     """
     sections: list[tuple[str, list[str]]] = []
     loose: list[str] = []
     found_tag = False
     for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line:
+        line = _REPEAT_MARK.sub("", raw_line).strip()
+        if not line or _BARE_REPEAT.match(line):
             continue
-        header = line.strip("*_#> ").strip()
-        tag = _section_tag(header)
+        tag = _section_tag(line)
         if tag:
             found_tag = True
             sections.append((tag, []))
-        elif _BRACKETED.match(header):
+        elif _BRACKETED.match(_header_text(line)):
             continue  # an instrumental or performance note, not a sung line
         elif sections:
             sections[-1][1].append(line)
@@ -218,23 +271,28 @@ def normalize_lyrics(text: str) -> str:
     return "\n\n".join(blocks)
 
 
-def _section_tag(header: str) -> str | None:
-    """The ACE-Step tag a header line stands for, or None if the line is not a section header."""
-    for pattern, whole_line in ((_BRACKETED, False), (_PARENTHESIZED, True), (_BARE_HEADER, True)):
-        match = pattern.match(header)
-        if not match:
-            continue
-        name = match.group(1).strip().lower()
-        found = _SECTION_NAMES.match(name)
-        if not found:
-            return None
-        # A bracket may carry a note ("[Verse 2 - softer]"); other forms must be just the name and a number.
-        if whole_line and name[found.end() :].strip(" 0123456789:"):
-            return None
-        word = re.sub(r"[- ]", "", found.group(1).lower())
-        word = "pre-chorus" if word == "prechorus" else word
-        return _TAG_FOR.get(word, word)
-    return None
+def _header_text(line: str) -> str:
+    """A line without markdown: `**Verse 1**:` becomes `Verse 1:`, `## Hook` becomes `Hook`."""
+    return re.sub(r"[*_]", "", line).strip().lstrip("#>").strip()
+
+
+def _section_tag(line: str) -> str | None:
+    """The ACE-Step tag a line stands for, or None if it is not a section header.
+
+    A bracketed header may carry any note after the name ("[Verse 2 - softer]"). Other forms must be just
+    the name, a number, and a "- note" or "(note)", so a sung line like "Chorus of angels" stays a lyric.
+    """
+    text = _header_text(line)
+    bracketed = _BRACKETED.match(text)
+    parenthesized = _PARENTHESIZED.match(text)
+    content = (bracketed or parenthesized).group(1).strip() if bracketed or parenthesized else text
+    head = _HEAD.match(content)
+    if not head:
+        return None
+    if not bracketed and not _HEAD_TAIL.match(content, head.end()):
+        return None
+    word = re.sub(r"[- ]", "", head.group(1).lower())
+    return _TAG_FOR.get(word, word)
 
 
 def _bad_response(detail: str) -> ServiceError:

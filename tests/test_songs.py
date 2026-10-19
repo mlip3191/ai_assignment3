@@ -141,7 +141,15 @@ def test_user_text_is_tidied_and_capped() -> None:
 
 def test_short_song_structure() -> None:
     assert songs.plan_sections(30) == [("intro", 0), ("verse", 4), ("chorus", 4)]
-    assert songs.plan_sections(10) == songs.plan_sections(39)
+    assert songs.plan_sections(30) == songs.plan_sections(39)
+
+
+def test_very_short_songs_get_fewer_lines() -> None:
+    """B4's live test: 8 lines in 10 s came out as gibberish."""
+    assert songs.plan_sections(10) == [("intro", 0), ("verse", 2)]
+    assert songs.plan_sections(19) == songs.plan_sections(10)
+    assert songs.plan_sections(20) == [("intro", 0), ("verse", 2), ("chorus", 2)]
+    assert songs.plan_sections(29) == songs.plan_sections(20)
 
 
 def test_medium_song_structure() -> None:
@@ -208,6 +216,34 @@ def test_falls_back_to_plain_text_title_and_lyrics() -> None:
 def test_plain_text_fallback_skips_thinking() -> None:
     reply = "<think>Let me plan a song.</think>\nTitle: Open Road\n" + GOOD_LYRICS
     assert songs.parse_song_reply(reply, vocal=True) == SongText("Open Road", GOOD_LYRICS)
+
+
+def test_parses_json_with_raw_newlines_in_the_lyrics() -> None:
+    """A common model mistake: real line breaks inside the JSON string instead of \\n."""
+    reply = '{"title": "Open Road", "lyrics": "' + GOOD_LYRICS + '"}'
+    assert songs.parse_song_reply(reply, vocal=True) == SongText("Open Road", GOOD_LYRICS)
+    fenced = "Sure!\n```json\n" + reply + "\n```"
+    assert songs.parse_song_reply(fenced, vocal=True) == SongText("Open Road", GOOD_LYRICS)
+
+
+def test_plain_text_fallback_drops_commentary() -> None:
+    body = GOOD_LYRICS.replace("[intro]\n\n", "")
+    reply = "Title: Open Road\nHere are your lyrics:\n" + body + "\n\nHope you enjoy this song!"
+    assert songs.parse_song_reply(reply, vocal=True) == SongText("Open Road", GOOD_LYRICS)
+    fenced = "Title: Open Road\n```\n" + body + "\n```\nEnjoy!"
+    assert songs.parse_song_reply(fenced, vocal=True) == SongText("Open Road", GOOD_LYRICS)
+
+
+def test_null_items_in_a_lyrics_list_are_skipped() -> None:
+    reply = json.dumps({"title": "Open Road", "lyrics": [*GOOD_LYRICS.split("\n")[:4], None, 7]})
+    lyrics = songs.parse_song_reply(reply, vocal=True).lyrics
+    assert "None" not in lyrics and "7" not in lyrics
+
+
+def test_title_repeated_at_the_top_of_the_lyrics_is_not_sung() -> None:
+    for top in ("Open Road\n\n", "**Open Road**\n", "Title: Open Road\n"):
+        reply = json.dumps({"title": "Open Road", "lyrics": top + GOOD_LYRICS})
+        assert songs.parse_song_reply(reply, vocal=True).lyrics == GOOD_LYRICS
 
 
 def test_instrumental_reply_ignores_lyrics() -> None:
@@ -281,6 +317,51 @@ def test_normalizes_section_tags() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("header", "tag"),
+    [
+        ("[Final Chorus]", "chorus"),
+        ("[Post-Chorus]", "chorus"),
+        ("[Chorus - Repeat]", "chorus"),
+        ("Final Chorus:", "chorus"),
+        ("Verse Two:", "verse"),
+        ("Verse 1 (softer)", "verse"),
+        ("Verse 1 - Open Road", "verse"),
+        ("Chorus (x2)", "chorus"),
+        ("**Verse 1**:", "verse"),
+        ("**Chorus**:", "chorus"),
+        ("__Bridge__", "bridge"),
+        ("### Pre Chorus", "pre-chorus"),
+    ],
+)
+def test_recognizes_common_header_forms(header: str, tag: str) -> None:
+    lyrics = songs.normalize_lyrics(f"{header}\nA line to sing")
+    assert lyrics == f"[intro]\n\n[{tag}]\nA line to sing"
+
+
+def test_repeat_marks_are_dropped() -> None:
+    lyrics = songs.normalize_lyrics(
+        "[verse]\nWindows down (x2)\nRadio on [x3]\n\n(Repeat chorus)\n[Repeat Chorus]\nx2\n[chorus]\nKeep it free"
+    )
+    assert sung_lines(lyrics) == ["Windows down", "Radio on", "Keep it free"]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Chorus of angels singing",
+        "Hook, line and sinker",
+        "Bridge over the water",
+        "Verse 1: the windows down",
+        "Outro of the night we had",
+        "Tonight",
+        "(oh-oh)",
+    ],
+)
+def test_lyric_lines_starting_with_a_section_word_are_kept(line: str) -> None:
+    assert sung_lines(songs.normalize_lyrics(f"[verse]\n{line}")) == [line]
+
+
 def test_lyric_lines_that_look_like_words_are_kept() -> None:
     lyrics = songs.normalize_lyrics("[verse]\nChorus of angels singing\nTonight\n(oh-oh)\n[chorus]\nHold on")
     assert sung_lines(lyrics) == ["Chorus of angels singing", "Tonight", "(oh-oh)", "Hold on"]
@@ -329,6 +410,10 @@ def test_long_title_is_capped_at_a_word_boundary() -> None:
     assert 0 < len(title) <= songs.MAX_TITLE_CHARS
     assert title.startswith("A Very Long Title A Very")
     assert title.split()[-1] in {"A", "Very", "Long", "Title"}  # never cut mid-word
+
+
+def test_title_without_spaces_is_hard_capped() -> None:
+    assert songs.clean_title("A" * 100) == "A" * songs.MAX_TITLE_CHARS
 
 
 # ---- write_song_text with a mocked Qwen ----------------------------------------------------------
