@@ -26,7 +26,8 @@ Rules:
   the music.
 - Everything must be original. Never mention or imitate real artists, bands, albums, brands,
   logos, or existing artworks, and never ask for a real person or a recognizable public figure.
-  People may appear only as anonymous figures, silhouettes, or from behind.
+  Prefer scenes without people. If a figure really helps the image, show
+  only a distant silhouette or a figure seen from behind, with no visible face.
 - Never ask for text, words, letters, numbers, titles, or signatures in the image. Do not put the
   song title in the image.
 - Write one paragraph of 40 to 70 words, in plain English.

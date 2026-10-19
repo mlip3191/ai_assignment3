@@ -77,7 +77,7 @@ def test_template_has_system_user_and_suffix_sections() -> None:
 
 def test_template_system_rules_forbid_text_real_people_and_real_artists() -> None:
     system = art.load_template().system.lower()
-    for phrase in ("text", "real artists", "real person", "original"):
+    for phrase in ("text", "real artists", "real person", "original", "no visible face"):
         assert phrase in system
 
 
