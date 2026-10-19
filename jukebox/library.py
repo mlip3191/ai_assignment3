@@ -6,7 +6,8 @@ callers get copies so nothing mutates library state outside the lock.
 
 `samples/manifest.json` is written by lane C (`scripts/generate_samples.py`): a JSON list of Track
 records (the 6.1 fields), with `audio_path` and `cover_path` relative to the repository root. Each
-sample's audio and cover files must exist when the manifest loads, or loading fails.
+sample's audio file must exist when the manifest loads, and so must its cover file if it lists a
+`cover_path` (a null cover is allowed and shows the placeholder); otherwise loading fails.
 
 Stored paths always use forward slashes (`Path.as_posix()`), whichever OS wrote them: the library turns
 any Windows backslashes into forward slashes when a track is added, a cover is attached or the manifest

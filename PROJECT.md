@@ -583,7 +583,7 @@ class Job:
 - Thread-safe (`threading.Lock`), because Gradio runs handlers concurrently.
 - A track joins the library only when its **audio** succeeded. A missing cover does not block it (the UI shows a placeholder and a "Retry cover" button).
 - **Stored paths** (`audio_path`, `cover_path`) are relative to the repo root and always use forward slashes (`Path.as_posix()`), whichever OS wrote them. The library converts Windows backslashes when a track is added, a cover is attached or the manifest is loaded, so samples generated on Windows still resolve on macOS. Use `Library.resolve(path)` to turn a stored path into the real file; don't build it yourself. No path may contain a `..` step. Generated tracks may use absolute paths; sample manifest entries must be relative.
-- A sample in `samples/manifest.json` must have its audio **and** cover files present when the manifest loads, or loading fails (this catches a ZIP packaged without the images). A generated track only needs its audio; its cover can be attached later.
+- A sample in `samples/manifest.json` must have its audio file present when the manifest loads, and its cover file too if it lists a `cover_path` (a `null` cover is allowed and shows the placeholder), or loading fails (this catches a ZIP packaged without the images). A generated track only needs its audio; its cover can be attached later.
 
 ---
 
