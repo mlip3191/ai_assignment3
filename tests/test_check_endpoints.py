@@ -272,6 +272,30 @@ def test_summary_counts_failures(tmp_path: Path, capsys: pytest.CaptureFixture[s
     respx.get(url("flux")).respond(503)
     run(tmp_path)
     assert "1 of 4" in capsys.readouterr().out
+    assert len(respx.calls) == 4
+
+
+@respx.mock
+def test_a_503_gets_one_request_not_two(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """One tiny request per service: the shared client's retry is off, so a 503 isn't asked twice and the
+    latency shown is a single attempt, not two attempts plus the backoff."""
+    mock_all_ok()
+    respx.get(url("flux")).respond(503)
+    assert run(tmp_path) == 1
+    assert "FAIL" in row(capsys.readouterr().out, "flux")
+    assert len(respx.calls) == 4
+
+
+@respx.mock
+@pytest.mark.parametrize("error", [httpx.ReadTimeout("slow"), httpx.ConnectError("down")])
+def test_a_timeout_or_refused_connection_is_not_retried(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], error: httpx.HTTPError
+) -> None:
+    mock_all_ok()
+    route = respx.get(url("qwen")).mock(side_effect=error)
+    assert run(tmp_path) == 1
+    assert "FAIL" in row(capsys.readouterr().out, "qwen")
+    assert route.call_count == 1
 
 
 # ---- configuration problems -------------------------------------------------------------------
@@ -312,7 +336,7 @@ def test_a_service_url_on_the_wrong_port_is_refused_before_any_request(
 
 
 @respx.mock
-def test_the_key_and_host_never_appear_in_output_or_logs(
+def test_the_key_never_appears_in_output_or_logs_and_the_host_never_in_stdout_or_stderr(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture
 ) -> None:
     mock_all_ok()
@@ -324,3 +348,5 @@ def test_the_key_and_host_never_appear_in_output_or_logs(
     everything = captured.out + captured.err + caplog.text
     assert KEY not in everything
     assert HOST not in captured.out
+    assert HOST not in captured.err
+    # caplog is not checked for the host: the client's one-line request log (service -> host:port) is TC-15 evidence

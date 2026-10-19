@@ -20,7 +20,7 @@ This is the team's working plan. It is the single source of truth for scope, own
 | **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation. |
 | **Latest release** | none (will be the `v1.0` tag) |
 | **Due date** | Assumed Fri 10/23/2026; not yet confirmed (§14 Q2) |
-| **Blockers** | None on formats: §7.1 is filled for all four services (§14 Q3). Still open: the professor's answers (§14 Q1, Q2, Q5–Q7). |
+| **Blockers** | None on formats: §7.1 is filled for all four services (§14 Q3). Still open: the professor's answers (§14 Q1, Q2, Q5–Q9). |
 
 ### 0.2 Notes for AI assistants reading this file
 
@@ -645,7 +645,7 @@ Which feature may call which model:
 | ACE-Step 1.5 XL Turbo | 9007 | `ACESTEP_BASE_URL` | **Async job:** `POST /release_task` → poll `POST /query_result` `{"task_id_list": [id]}` → `GET /v1/audio?path=…` (the result's `file`) | `Authorization: Bearer <key>` | `prompt` (style tags), `lyrics` (`[verse]`/`[chorus]` tags; `"[Instrumental]"` or `""` for instrumental), `audio_duration` (docs: 10–600 s; 5 s was accepted), `audio_format` `mp3`, `inference_steps` 8, **`batch_size` 1** (default is 2), `seed` + `use_random_seed: false`; `model` is accepted, but any value still ran `acestep-v15-xl-turbo`, so check `dit_model` in the result instead. A fixed `seed` did **not** reproduce the same audio in the follow-up test | Submit: `data.task_id`. Poll: `data[0].status` integer 0 running / 1 done / 2 failed; `data[0].result` is a JSON **string** (parse again) with `file`, `metas.duration`, `seed_value`. Audio: MP3, 48 kHz, 128 kbps (~16 KB/s) | Server-reported 2–3 s for 30–60 s of audio; 4.8–7.2 s submit → file saved, empty queue (B2, 10/15) | 300 s for now (`ACESTEP_TIMEOUT_S`) until queueing under load is measured; needs a total-job deadline plus short per-poll timeouts. **Proposed:** never auto-retry the submit (conflicts with the §7.2 retry rule; raised for #9). See [docs/spikes/B2-acestep.md](docs/spikes/B2-acestep.md) |
 | Chatterbox Multilingual V3 | 9008 | `CHATTERBOX_BASE_URL` | `POST /v1/audio/speech` (JSON, synchronous; returns one complete audio file). Never `POST /v1/voices` (it saves the voice on the shared server) | `Authorization: Bearer <key>` | `model` (`chatterbox-v3`), `input` (1–4,096 chars), `voice: "default"`, `language_id: "en"`, `response_format: "mp3"`; custom voice: add `ref_audio` (base64 WAV or MP3, ≤20 MB, ≤60 s, >0.5 s) | Audio bytes (`audio/mpeg`; WAV is 24 kHz mono 16-bit); errors are `{"error":{"message","type","param","code"}}` | ~40 words: 3.4–4.0 s default voice, 4.8–6.8 s custom voice → ~11.5 s of speech (D1, 10/16) | 120 s for now (`CHATTERBOX_TIMEOUT_S`); 60 s would be ample. See [docs/spikes/D1-chatterbox.md](docs/spikes/D1-chatterbox.md) |
 
-**Base URLs and `/v1`.** `class-endpoints.txt` gives the Qwen and FLUX base URLs with a trailing `/v1` (A4 live run, 10/18). `jukebox/config.py` removes that suffix (§7.4), so every `*_BASE_URL` is `scheme://host:port`, and the paths in the table are full paths that include `/v1` where the service needs it. `scripts/check_endpoints.py` relies on that: it always requests `/v1/models` from the stripped base.
+**Base URLs and `/v1`.** `class-endpoints.txt` gives the Qwen and FLUX base URLs with a trailing `/v1` (seen when the author set up `.env` for the A4 live run, 10/19). `jukebox/config.py` removes that suffix (§7.4), so every `*_BASE_URL` is `scheme://host:port`, and the paths in the table are full paths that include `/v1` where the service needs it. `scripts/check_endpoints.py` relies on that: it always requests `/v1/models` from the stripped base.
 
 **Exact model identifiers.** All four services take the one `CLASS_API_KEY`, sent as `Authorization: Bearer <key>` (§14 Q4).
 
@@ -656,7 +656,7 @@ Which feature may call which model:
 | ACE-Step 1.5 XL Turbo | `ACE-Step/acestep-v15-xl-turbo` (as `class-endpoints.txt` spells it) | `acestep/acestep-v15-xl-turbo` (different prefix) | `dit_model` in each result: `acestep-v15-xl-turbo`. The request's `model` is ignored |
 | Chatterbox Multilingual V3 | `chatterbox-v3` | the same | n/a (one model) |
 
-`scripts/check_endpoints.py` sends `GET /v1/models` to each service (one small request each; no generation) and prints PASS or FAIL with the latency. A service FAILs if it doesn't list its expected model, if a configured `*_MODEL` isn't one it offers (compared without the `org/` prefix, so the two ACE-Step spellings match), or if it errors. It assumes the OpenAI-style body `{"data": [{"id": ...}]}`. The first live run (A4, 10/18) confirmed that shape: all four services passed.
+`scripts/check_endpoints.py` sends `GET /v1/models` to each service (one small request each, one attempt with no retry, so a slow or failing service shows its true time; no generation) and prints PASS or FAIL with the latency. A service FAILs if it doesn't list its expected model, if a configured `*_MODEL` isn't one it offers (compared without the `org/` prefix, so the two ACE-Step spellings match), or if it errors. It assumes the OpenAI-style body `{"data": [{"id": ...}]}`. The author's live run on 10/19 (A4) passed all four services, so that shape is confirmed (about 160–230 ms each).
 
 Questions to answer for each service in M0:
 

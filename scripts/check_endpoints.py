@@ -4,7 +4,7 @@
   python scripts/check_endpoints.py
   python scripts/check_endpoints.py --env-file path/to/settings
 
-Sends one small request to each of the four services (GET /v1/models; it uses no GPU time) and checks
+Sends one small request to each of the four services (GET /v1/models; it generates nothing) and checks
 that the port answers as the model PROJECT.md section 7.0 expects. A port serving a different model
 is a FAIL. Never prints the key or the server addresses. Exit code 0 when all four pass, else 1.
 Same command on macOS and Windows.
@@ -89,7 +89,7 @@ def check_service(
     started = time.perf_counter()
     try:
         with ServiceClient(service, dataclasses.replace(config, **{service: quick}), sleep=sleep) as client:  # type: ignore[arg-type]
-            response = client.request("GET", MODELS_PATH)
+            response = client.request("GET", MODELS_PATH, retry=False)  # one attempt, so the latency is real
             elapsed = round((time.perf_counter() - started) * 1000)
             body = client.json_body(response)
     except ServiceError as e:
