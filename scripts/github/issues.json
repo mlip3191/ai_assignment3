@@ -398,6 +398,24 @@
             "§16.5"
           ],
           "depends": []
+        },
+        {
+          "key": "A12",
+          "title": "Make the pre-push gate run the tests the way CI does",
+          "milestone": "M2",
+          "goal": "A push that passes the pre-push gate must also pass CI's test step. Today scripts/prepush.py runs `python -m pytest -q`, which puts the current directory on sys.path, while .github/workflows/ci.yml runs plain `pytest -q`, which does not. A test file that imports jukebox without setting sys.path passes the gate and then fails in CI (this happened on PR #25; issue #26).",
+          "criteria": [
+            "The gate runs the suite so the test command does NOT put the repo root on sys.path, the same behavior as CI's plain `pytest -q` (for example `python -P -m pytest -q`, or the venv's pytest executable), and finds the venv's pytest on macOS and Windows (Git Bash)",
+            "A test proves the gate's pytest command fails a test file that imports jukebox with no sys.path setup (the PR #25 failure), using a throwaway project folder and a clean environment",
+            "A test fails if the gate's pytest command and the one in .github/workflows/ci.yml stop behaving the same way on sys.path",
+            "PROJECT.md section 16.5 and tests/README.md say the gate runs the suite the way CI does",
+            "Full pytest suite (run as plain `pytest -q`), ruff and scan_secrets pass; the hook is never bypassed to get there"
+          ],
+          "reqs": [],
+          "refs": [
+            "§16.5"
+          ],
+          "depends": []
         }
       ]
     },
@@ -735,7 +753,7 @@
           "milestone": "M1",
           "goal": "Wrap the image service behind the §7.2 interface.",
           "criteria": [
-            "jukebox/clients/flux.py implements generate_image() returning PNG bytes",
+            "jukebox/clients/flux.py implements generate_image() returning JPEG bytes (release lead's choice on #4)",
             "Request follows the documented format from C1",
             "respx tests for success and each error kind",
             "Talks only to FLUX.2 klein 4B on FLUX_BASE_URL (port 9006)"
@@ -781,7 +799,7 @@
           "milestone": "M1",
           "goal": "Every song shows its own cover, and a failed cover is recoverable.",
           "criteria": [
-            "jukebox/services/art.py saves runtime/generated/{track_id}.png and sets cover_path + cover_prompt",
+            "jukebox/services/art.py saves runtime/generated/{track_id}.jpg and sets cover_path + cover_prompt",
             "Library, now-playing, and queue look up covers by track_id",
             "Team-made placeholder image committed; Retry cover button works",
             "Song stays playable when the cover fails",

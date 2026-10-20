@@ -26,6 +26,7 @@
 /jukebox/clients/flux.py        @felcervino
 /jukebox/services/art.py        @felcervino
 /jukebox/prompts/cover_art.md   @felcervino
+/jukebox/assets/placeholder_cover.png @felcervino
 /scripts/generate_samples.py    @felcervino
 /samples/                       @felcervino
 /docs/STARTER_PROMPT.md         @felcervino
