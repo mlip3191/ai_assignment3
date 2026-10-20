@@ -3,7 +3,7 @@
 Two halves:
   - The prompt builder (task C3): `write_cover_prompt()` turns a song's details into one FLUX prompt.
   - The cover job (task C4): `make_cover()` / `retry_cover()` paint a cover for a track, save it as
-    `runtime/generated/{track_id}.png`, and attach it to the track by id. `cover_for()` gives the UI
+    `runtime/generated/{track_id}.jpg`, and attach it to the track by id. `cover_for()` gives the UI
     the file to show, falling back to the team-made placeholder. A failed cover never removes the song.
 
 Allowed clients for this module: qwen and flux only (scripts/model_policy.json).
@@ -33,6 +33,7 @@ LYRICS_EXCERPT_CHARS = 600
 MAX_TOKENS = 300
 TEMPERATURE = 0.8
 
+COVER_EXT = "jpg"  # FLUX returns JPEG (C2; release lead's decision on #4)
 COVER_DIR = "runtime/generated"  # relative to the repo root, forward slashes (works on every OS)
 PLACEHOLDER = "jukebox/assets/placeholder_cover.png"  # drawn by a person, not by any model (8.2)
 COVER_STAGE = "Painting cover…"
@@ -198,7 +199,7 @@ def make_cover(
     job = jobs.create("cover", COVER_STAGE) if jobs else None
     if jobs and job:
         jobs.set_stage(job.id, COVER_STAGE, track_id)
-    relative = f"{COVER_DIR}/{track_id}.png"
+    relative = f"{COVER_DIR}/{track_id}.{COVER_EXT}"
     try:
         prompt = render_cover(track, Path(root) / relative, chat=chat, generate=generate)
         updated = lib.attach_cover(track_id, relative, prompt)

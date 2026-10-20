@@ -20,7 +20,7 @@ from jukebox.jobs import JobStore  # noqa: E402
 from jukebox.library import Library, LibraryError  # noqa: E402
 from jukebox.services import art  # noqa: E402
 
-PNG = b"\x89PNG\r\n\x1a\n" + b"fake image body"
+IMAGE = b"\xff\xd8\xff\xe0" + b"fake jpeg body"
 SUFFIX = "square album cover, no text, no letters, no logos, no real people"
 
 
@@ -38,7 +38,7 @@ class FakeFlux:
         self.calls.append({"prompt": prompt, "seed": seed})
         if self.fail:
             raise self.fail
-        return PNG
+        return IMAGE
 
 
 @pytest.fixture
@@ -70,16 +70,16 @@ def cover(track_id: str, library: Library, root: Path, **kw):
 
 def test_cover_is_saved_as_runtime_generated_track_id_png(library: Library, root: Path) -> None:
     cover("t2", library, root)
-    assert (root / "runtime" / "generated" / "t2.png").read_bytes() == PNG
+    assert (root / "runtime" / "generated" / "t2.jpg").read_bytes() == IMAGE
 
 
 def test_track_gets_its_cover_path_and_the_exact_flux_prompt(library: Library, root: Path) -> None:
     flux = FakeFlux()
     updated = cover("t2", library, root, generate=flux)
-    assert updated.cover_path == "runtime/generated/t2.png"
+    assert updated.cover_path == "runtime/generated/t2.jpg"
     assert updated.cover_prompt == flux.calls[0]["prompt"]
     assert updated.cover_prompt == f"A quiet scene for Song t2, {SUFFIX}"
-    assert library.get("t2").cover_path == "runtime/generated/t2.png"
+    assert library.get("t2").cover_path == "runtime/generated/t2.jpg"
 
 
 def test_the_tracks_seed_is_passed_to_flux(library: Library, root: Path) -> None:
@@ -91,7 +91,7 @@ def test_the_tracks_seed_is_passed_to_flux(library: Library, root: Path) -> None
 def test_cover_for_looks_up_by_track_id_not_position(library: Library, root: Path) -> None:
     cover("t2", library, root)
     placeholder = art.placeholder_path()
-    assert art.cover_for("t2", library=library) == root / "runtime" / "generated" / "t2.png"
+    assert art.cover_for("t2", library=library) == root / "runtime" / "generated" / "t2.jpg"
     assert art.cover_for("t1", library=library) == placeholder
     assert art.cover_for("t3", library=library) == placeholder
 
@@ -100,14 +100,14 @@ def test_each_track_keeps_its_own_cover_after_several_generations(library: Libra
     for track_id in ("t3", "t1", "t2"):
         cover(track_id, library, root)
     for track_id in ("t1", "t2", "t3"):
-        assert art.cover_for(track_id, library=library).name == f"{track_id}.png"
+        assert art.cover_for(track_id, library=library).name == f"{track_id}.jpg"
         assert f"Song {track_id}," in library.get(track_id).cover_prompt
 
 
 def test_render_cover_writes_to_any_destination_for_the_samples(library: Library, root: Path) -> None:
-    dest = root / "samples" / "covers" / "sample_01.png"
+    dest = root / "samples" / "covers" / "sample_01.jpg"
     prompt = art.render_cover(library.get("t1"), dest, chat=fake_chat, generate=FakeFlux())
-    assert dest.read_bytes() == PNG
+    assert dest.read_bytes() == IMAGE
     assert prompt.endswith(SUFFIX)
 
 
@@ -120,7 +120,7 @@ def test_flux_failure_keeps_the_song_and_shows_the_placeholder(library: Library,
     assert (exc.value.service, exc.value.kind) == ("flux", "timeout")
     track = library.get("t1")
     assert track is not None and track.cover_path is None
-    assert not (root / "runtime" / "generated" / "t1.png").exists()
+    assert not (root / "runtime" / "generated" / "t1.jpg").exists()
     assert art.cover_for("t1", library=library) == art.placeholder_path()
 
 
@@ -140,20 +140,20 @@ def test_retry_cover_replaces_the_placeholder(library: Library, root: Path) -> N
     with pytest.raises(ServiceError):
         cover("t1", library, root, generate=FakeFlux(fail=ServiceError("flux", "unavailable", "down")))
     updated = art.retry_cover("t1", library=library, root=root, chat=fake_chat, generate=FakeFlux())
-    assert updated.cover_path == "runtime/generated/t1.png"
-    assert art.cover_for("t1", library=library).name == "t1.png"
+    assert updated.cover_path == "runtime/generated/t1.jpg"
+    assert art.cover_for("t1", library=library).name == "t1.jpg"
 
 
 def test_a_cover_file_that_disappeared_falls_back_to_the_placeholder(library: Library, root: Path) -> None:
     cover("t1", library, root)
-    (root / "runtime" / "generated" / "t1.png").unlink()
+    (root / "runtime" / "generated" / "t1.jpg").unlink()
     assert art.cover_for("t1", library=library) == art.placeholder_path()
 
 
 def test_a_cover_path_written_with_backslashes_still_resolves(library: Library, root: Path) -> None:
-    (root / "runtime" / "generated" / "t3.png").write_bytes(PNG)
-    library.attach_cover("t3", "runtime\\generated\\t3.png", "p")
-    assert art.cover_for("t3", library=library) == root / "runtime" / "generated" / "t3.png"
+    (root / "runtime" / "generated" / "t3.jpg").write_bytes(IMAGE)
+    library.attach_cover("t3", "runtime\\generated\\t3.jpg", "p")
+    assert art.cover_for("t3", library=library) == root / "runtime" / "generated" / "t3.jpg"
 
 
 def test_unknown_track_shows_the_placeholder_and_cannot_get_a_cover(library: Library, root: Path) -> None:
@@ -242,7 +242,7 @@ def test_two_covers_for_the_same_track_at_once_do_not_collide(library: Library, 
 
     def slow_flux(prompt: str, *, seed: int | None = None) -> bytes:
         barrier.wait(timeout=5)
-        return PNG
+        return IMAGE
 
     errors: list[BaseException] = []
 
@@ -259,7 +259,7 @@ def test_two_covers_for_the_same_track_at_once_do_not_collide(library: Library, 
         t.join(timeout=10)
     assert errors == []
     folder = root / "runtime" / "generated"
-    assert (folder / "t1.png").read_bytes() == PNG
+    assert (folder / "t1.jpg").read_bytes() == IMAGE
     assert [p.name for p in folder.iterdir() if p.suffix == ".tmp"] == []
 
 
@@ -279,7 +279,7 @@ def test_a_briefly_locked_cover_file_is_retried(
     monkeypatch.setattr(art.time, "sleep", lambda _s: None)
     cover("t1", library, root)
     assert calls["n"] == 3
-    assert (root / "runtime" / "generated" / "t1.png").read_bytes() == PNG
+    assert (root / "runtime" / "generated" / "t1.jpg").read_bytes() == IMAGE
 
 
 def test_a_file_that_stays_locked_fails_the_job_and_leaves_no_temp_file(
