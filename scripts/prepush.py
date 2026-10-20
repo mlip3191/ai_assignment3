@@ -31,7 +31,7 @@ CHECKS = [
     ("Secret scan", [PY, "scripts/scan_secrets.py"]),
     ("Only the four class models", [PY, "scripts/check_models.py"]),
     ("Config check", [PY, "scripts/check_config.py"]),
-    ("All test cases (full pytest suite)", [PY, "-m", "pytest", "-q"]),
+    ("All test cases (full pytest suite)", [PY, "-P", "-m", "pytest", "-q"]),
 ]
 
 
