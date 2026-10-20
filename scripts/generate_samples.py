@@ -86,6 +86,7 @@ class Entry:
     track: Track
     calls: list[Call] = field(default_factory=list)
     seconds: float = 0.0
+    song_prompt: list[dict[str, str]] | None = None  # the Qwen title/lyrics messages, when known
 
 
 def song_style(spec: SampleSpec) -> str:
@@ -100,6 +101,26 @@ def default_make_song(spec: SampleSpec) -> Track:
     )
 
 
+DescribePrompt = Callable[[SampleSpec], list[dict[str, str]] | None]
+
+
+def default_describe_prompt(spec: SampleSpec) -> list[dict[str, str]] | None:
+    """The exact Qwen messages the song pipeline sends for this spec (B5's build_messages), for the log.
+    None if B5 isn't available, so the log says the prompt wasn't recorded instead of failing."""
+    try:
+        from jukebox.services import songs
+
+        return songs.build_messages(
+            "lyrics" if spec.vocal else "title",
+            style=song_style(spec),
+            mood=spec.mood,
+            theme=spec.theme,
+            duration_s=spec.duration_s,
+        )
+    except (ImportError, AttributeError):
+        return None
+
+
 def default_make_cover(track: Track, dest: Path) -> str:
     from jukebox.services import art
 
@@ -112,6 +133,7 @@ def build_samples(
     root: Path = ROOT,
     make_song: MakeSong = default_make_song,
     make_cover: MakeCover = default_make_cover,
+    describe_prompt: DescribePrompt | None = default_describe_prompt,
     operator: str,
     commit: str,
     models: dict[str, str | None],
@@ -124,6 +146,8 @@ def build_samples(
     out = staging / "samples"
     try:
         entries = [_build_one(spec, root, out, make_song, make_cover, now) for spec in specs]
+        for entry in entries:
+            entry.song_prompt = describe_prompt(entry.spec) if describe_prompt else None
         _write_manifest(out / "manifest.json", [e.track for e in entries])
         (out / "GENERATION_LOG.md").write_text(
             render_log(entries, operator=operator, commit=commit, models=models, date=now()[:10]),
@@ -275,7 +299,14 @@ def render_log(
             f"| {i} | {SERVICE_NAMES.get(c.service, c.service)} | {c.port} | {c.status} | {c.ms} ms |"
             for i, c in enumerate(e.calls, 1)
         ] or ["| | (no calls recorded) | | | |"]
-        lines += ["", "**Lyrics** (exactly as generated, unedited)", ""]
+        what = "title and lyrics" if s.vocal else "title"
+        lines += ["", f"**Qwen song prompt** ({what}; system and user, exactly as sent)", ""]
+        if e.song_prompt:
+            for message in e.song_prompt:
+                lines += [f"{message['role'].capitalize()}:", "", "```", message["content"], "```", ""]
+        else:
+            lines += ["Qwen song prompt not recorded (the song pipeline's prompt builder was unavailable).", ""]
+        lines += ["**Lyrics** (exactly as generated, unedited)", ""]
         lines += ["```", t.lyrics, "```"] if t.lyrics else ["Instrumental: no lyrics."]
         lines += [
             "",

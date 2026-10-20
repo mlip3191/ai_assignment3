@@ -218,3 +218,28 @@ def test_default_song_step_says_clearly_that_it_waits_for_b6() -> None:
 def test_the_script_uses_no_client_directly() -> None:
     source = (ROOT / "scripts" / "generate_samples.py").read_text(encoding="utf-8")
     assert "jukebox.clients" not in source.replace('"jukebox.clients"', "")
+
+
+# ---- the Qwen title/lyrics prompt in the log (B5's build_messages) ------------------------------
+
+
+def fake_prompt(spec: gs.SampleSpec) -> list[dict]:
+    kind = "lyrics" if spec.vocal else "title"
+    return [
+        {"role": "system", "content": f"You write the {kind} for one new, original song."},
+        {"role": "user", "content": f"Style: {gs.song_style(spec)}\nMood: {spec.mood}"},
+    ]
+
+
+def test_log_records_the_exact_qwen_song_prompt_when_available(tmp_path: Path) -> None:
+    build(tmp_path, describe_prompt=fake_prompt)
+    log = (tmp_path / "samples" / "GENERATION_LOG.md").read_text(encoding="utf-8")
+    assert "You write the title for one new, original song." in log
+    assert "You write the lyrics for one new, original song." in log
+    assert "Style: upbeat pop, summery, bright synths, catchy chorus, warm natural female vocals" in log
+
+
+def test_log_says_so_when_the_song_prompt_is_not_available(tmp_path: Path) -> None:
+    build(tmp_path, describe_prompt=None)
+    log = (tmp_path / "samples" / "GENERATION_LOG.md").read_text(encoding="utf-8")
+    assert "song prompt not recorded" in log
