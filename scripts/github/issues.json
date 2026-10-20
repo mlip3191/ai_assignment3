@@ -735,7 +735,7 @@
           "milestone": "M1",
           "goal": "Wrap the image service behind the §7.2 interface.",
           "criteria": [
-            "jukebox/clients/flux.py implements generate_image() returning PNG bytes",
+            "jukebox/clients/flux.py implements generate_image() returning JPEG bytes (release lead's choice on #4)",
             "Request follows the documented format from C1",
             "respx tests for success and each error kind",
             "Talks only to FLUX.2 klein 4B on FLUX_BASE_URL (port 9006)"
@@ -781,7 +781,7 @@
           "milestone": "M1",
           "goal": "Every song shows its own cover, and a failed cover is recoverable.",
           "criteria": [
-            "jukebox/services/art.py saves runtime/generated/{track_id}.png and sets cover_path + cover_prompt",
+            "jukebox/services/art.py saves runtime/generated/{track_id}.jpg and sets cover_path + cover_prompt",
             "Library, now-playing, and queue look up covers by track_id",
             "Team-made placeholder image committed; Retry cover button works",
             "Song stays playable when the cover fails",
