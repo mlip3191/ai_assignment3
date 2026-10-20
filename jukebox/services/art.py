@@ -121,6 +121,6 @@ def _clean(reply: str | None, suffix: str) -> str:
 
 
 def _qwen_chat() -> ChatFn:
-    from jukebox.clients import qwen  # B3; imported here so C3 can be built and tested first
+    from jukebox.clients import qwen  # imported on first use, so building messages needs no settings
 
     return qwen.chat

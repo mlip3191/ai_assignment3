@@ -1,7 +1,8 @@
 """Tests for the cover-art prompt builder in jukebox/services/art.py (task C3).
 
-Qwen is mocked: a fake `chat(messages, *, max_tokens, temperature) -> str` matching PROJECT.md 7.2
-stands in until the real client (B3) lands. No class service is ever called.
+Qwen is mocked: most tests pass a fake `chat(messages, *, max_tokens, temperature) -> str` matching
+PROJECT.md 7.2, and one checks the default path really calls `jukebox.clients.qwen.chat` (B3) with
+those arguments. No class service is ever called.
 """
 
 from __future__ import annotations
@@ -185,3 +186,22 @@ def test_the_builder_never_calls_flux() -> None:
     source = (ROOT / "jukebox" / "services" / "art.py").read_text(encoding="utf-8")
     builder = source.split("def write_cover_prompt", 1)[1].split("\ndef ", 1)[0]
     assert "flux" not in builder.lower()
+
+
+def test_by_default_the_real_qwen_client_writes_the_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    from jukebox.clients import qwen
+
+    calls: list[dict] = []
+
+    def recording_chat(messages: list[dict], *, max_tokens: int, temperature: float) -> str:
+        calls.append({"messages": messages, "max_tokens": max_tokens, "temperature": temperature})
+        return "A misty harbor at dawn"
+
+    monkeypatch.setattr(qwen, "chat", recording_chat)
+    prompt = art.write_cover_prompt(**POP)
+    assert prompt == f"A misty harbor at dawn, {SUFFIX}"
+    assert len(calls) == 1
+    assert calls[0]["max_tokens"] == art.MAX_TOKENS == 300
+    assert calls[0]["temperature"] == art.TEMPERATURE == 0.8
+    assert [m["role"] for m in calls[0]["messages"]] == ["system", "user"]
+    assert "Windows Down" in calls[0]["messages"][-1]["content"]
