@@ -296,3 +296,40 @@ def test_a_file_that_stays_locked_fails_the_job_and_leaves_no_temp_file(
     assert jobs.list()[0].status == "failed"
     assert list((root / "runtime" / "generated").glob("*.tmp")) == []
     assert library.get("t1").cover_path is None
+
+
+# ---- start_cover(track) for the song pipeline (B6) ----------------------------------------------
+
+
+def test_start_cover_returns_at_once_and_paints_in_the_background(library: Library, root: Path) -> None:
+    import threading
+
+    release = threading.Event()
+
+    def slow_flux(prompt: str, *, seed: int | None = None) -> bytes:
+        release.wait(timeout=5)
+        return IMAGE
+
+    thread = art.start_cover(
+        library.get("t1"), library=library, root=root, chat=fake_chat, generate=slow_flux
+    )
+    assert library.get("t1").cover_path is None  # not painted yet: the caller wasn't blocked
+    release.set()
+    thread.join(timeout=5)
+    assert library.get("t1").cover_path == "runtime/generated/t1.jpg"
+
+
+def test_a_background_cover_failure_never_reaches_the_caller(library: Library, root: Path) -> None:
+    jobs = JobStore()
+    thread = art.start_cover(
+        library.get("t1"),
+        library=library,
+        jobs=jobs,
+        root=root,
+        chat=fake_chat,
+        generate=FakeFlux(fail=ServiceError("flux", "unavailable", "down")),
+    )
+    thread.join(timeout=5)
+    assert jobs.list()[0].status == "failed"
+    assert library.get("t1").cover_path is None
+    assert art.cover_for("t1", library=library) == art.placeholder_path()

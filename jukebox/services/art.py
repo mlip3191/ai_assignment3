@@ -11,6 +11,7 @@ Allowed clients for this module: qwen and flux only (scripts/model_policy.json).
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import tempfile
@@ -26,6 +27,8 @@ from jukebox.errors import ServiceError
 from jukebox.jobs import JobStore
 from jukebox.library import Library, LibraryError, get_library
 from jukebox.models import Track
+
+_log = logging.getLogger(__name__)
 
 TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "prompts" / "cover_art.md"
 SECTIONS = ("System", "User", "Suffix")
@@ -49,7 +52,13 @@ _write_lock = threading.Lock()  # one swap at a time: Windows refuses two at onc
 _PLACEHOLDER = re.compile(r"\{(title|style|mood|theme|lyrics_block)\}")
 _THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
 _EDGE_PUNCT = " \t\n.,;:"
-_QUOTES = "\"'“”‘’"
+_QUOTE_PAIRS = {'"': '"', "'": "'", "“": "”", "‘": "’"}
+_TAG_LINE = re.compile(r"^\s*\[[^\]]*\]\s*$")
+# A chatty opener such as "Here is your prompt:" or "Sure! Here's the image prompt:" (only these forms,
+# so a real prompt with a colon in it, like "A quiet room: soft light", is left alone).
+_LEAD_IN = re.compile(
+    r"^(?:(?:sure|okay|ok|certainly)[!,.]?\s+)?(?:here(?:'s| is)|this is)\b[^:]{0,60}:\s*", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True)
@@ -128,19 +137,34 @@ def write_cover_prompt(
 def _lyrics_block(vocal: bool, lyrics: str | None) -> str:
     if not vocal:
         return "Instrumental track, no lyrics."
-    text = (lyrics or "").strip()
+    # Section tags ([verse], [chorus]) and blank lines carry no imagery, so they don't use up the excerpt.
+    lines = [
+        line.strip() for line in (lyrics or "").splitlines() if line.strip() and not _TAG_LINE.match(line)
+    ]
+    text = "\n".join(lines)
     if not text:
         return "Vocal track, lyrics not available."
-    return "Lyrics (excerpt):\n" + text[:LYRICS_EXCERPT_CHARS].rstrip()
+    if len(text) > LYRICS_EXCERPT_CHARS:
+        cut = text[: LYRICS_EXCERPT_CHARS + 1]
+        text = cut[: max(cut.rfind(" "), cut.rfind("\n"))].rstrip() or text[:LYRICS_EXCERPT_CHARS]
+    return "Lyrics (excerpt):\n" + text
 
 
 def _clean(reply: str | None, suffix: str) -> str:
     text = _THINK.sub(" ", reply or "")
-    text = " ".join(text.split()).strip(_QUOTES + " ")
-    text = text.strip(_EDGE_PUNCT)
+    text = _LEAD_IN.sub("", " ".join(text.split()))
+    text = _unquote(text).strip(_EDGE_PUNCT)
     if text.lower().endswith(suffix.lower()):
         text = text[: -len(suffix)]
-    return text.strip(_EDGE_PUNCT + _QUOTES)
+    return text.strip(_EDGE_PUNCT)
+
+
+def _unquote(text: str) -> str:
+    """Remove one pair of quotes around the whole reply; a lone quote inside it is left alone."""
+    core = text.strip().rstrip(".,;: ")
+    if len(core) >= 2 and core[0] in _QUOTE_PAIRS and core[-1] == _QUOTE_PAIRS[core[0]]:
+        return core[1:-1]
+    return text
 
 
 def _qwen_chat() -> ChatFn:
@@ -212,6 +236,26 @@ def make_cover(
     if jobs and job:
         jobs.succeed(job.id, track_id)
     return updated
+
+
+def start_cover(track: Track, **kwargs) -> threading.Thread:
+    """Start painting the track's cover on a background thread and return at once (for B6).
+
+    The song is already in the library and playable; the cover appears when ready. A failure never
+    reaches the caller: make_cover() records it on the job (if `jobs` is given) and the UI shows the
+    placeholder with "Retry cover". Only the error's type is logged, never its text. Takes the same
+    keyword arguments as make_cover(). Returns the thread, so tests and callers can wait for it.
+    """
+
+    def run() -> None:
+        try:
+            make_cover(track.id, **kwargs)
+        except Exception as err:
+            _log.warning("cover for track %s failed in the background (%s)", track.id, type(err).__name__)
+
+    thread = threading.Thread(target=run, name=f"cover-{track.id}", daemon=True)
+    thread.start()
+    return thread
 
 
 def retry_cover(track_id: str, **kwargs) -> Track:

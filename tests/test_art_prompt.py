@@ -205,3 +205,46 @@ def test_by_default_the_real_qwen_client_writes_the_prompt(monkeypatch: pytest.M
     assert calls[0]["temperature"] == art.TEMPERATURE == 0.8
     assert [m["role"] for m in calls[0]["messages"]] == ["system", "user"]
     assert "Windows Down" in calls[0]["messages"][-1]["content"]
+
+
+# ---- review nits from #33 (@gunnaroc) ---------------------------------------------------------
+
+
+def test_the_lyrics_excerpt_skips_section_tags_and_blank_lines() -> None:
+    song = dict(
+        POP, lyrics="[intro]\n\n[verse]\nSun on the dashboard\nWheels on the road\n\n[chorus]\nWindows down"
+    )
+    excerpt = art.build_messages(**song)[1]["content"].split("Lyrics (excerpt):", 1)[1]
+    assert "[" not in excerpt
+    assert "\n\n" not in excerpt.strip()
+    assert "Sun on the dashboard\nWheels on the road\nWindows down" in excerpt
+
+
+def test_a_long_excerpt_is_cut_at_a_word_boundary() -> None:
+    song = dict(POP, lyrics="[verse]\n" + " ".join(["wonderful"] * 200))
+    excerpt = art.build_messages(**song)[1]["content"].split("Lyrics (excerpt):", 1)[1].strip()
+    assert len(excerpt) <= art.LYRICS_EXCERPT_CHARS
+    assert excerpt.split()[-1] == "wonderful"
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        'Here is your prompt: "A sunlit field at golden hour"',
+        "Here's the image prompt: A sunlit field at golden hour",
+        "Sure! Here is the prompt: 'A sunlit field at golden hour.'",
+    ],
+)
+def test_a_chatty_lead_in_is_removed(reply: str) -> None:
+    prompt = art.write_cover_prompt(**LOFI, chat=FakeQwen(reply=reply))
+    assert prompt == f"A sunlit field at golden hour, {SUFFIX}"
+
+
+def test_a_colon_inside_a_real_prompt_is_kept() -> None:
+    prompt = art.write_cover_prompt(**LOFI, chat=FakeQwen(reply="A quiet room: soft lamp light"))
+    assert prompt == f"A quiet room: soft lamp light, {SUFFIX}"
+
+
+def test_an_unmatched_quote_inside_the_prompt_is_kept() -> None:
+    prompt = art.write_cover_prompt(**LOFI, chat=FakeQwen(reply='A sign that reads nothing, a "quiet street'))
+    assert prompt == f'A sign that reads nothing, a "quiet street, {SUFFIX}'
