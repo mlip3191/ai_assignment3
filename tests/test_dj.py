@@ -176,6 +176,56 @@ def test_cleanup_removes_what_tts_would_read_aloud(fake_qwen, raw: str, expected
     assert dj.write_script(TRACK) == expected
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Five * two is ten, and a 3*4 groove keeps it moving.",
+        "A song (written for night drives) with a 2*2 beat.",
+    ],
+)
+def test_cleanup_keeps_ordinary_text(text: str) -> None:
+    assert dj.clean_script(text) == text
+
+
+@pytest.mark.parametrize(
+    "direction", ["(laughs)", "(Pauses for effect)", "(upbeat music)", "*clears throat*"]
+)
+def test_cleanup_drops_spoken_stage_directions(direction: str) -> None:
+    assert dj.clean_script(f"{direction} Here comes the next one.") == "Here comes the next one."
+
+
+@pytest.mark.parametrize(
+    ("title", "reply_title"),
+    [
+        ("Midnight [Remix]", "Midnight"),
+        ("*Starlit* Avenue", "Starlit Avenue"),
+        ("Glow (Live)", "Glow (Live)"),
+    ],
+)
+def test_titles_with_brackets_or_asterisks_can_still_match(fake_qwen, title: str, reply_title: str) -> None:
+    track = SimpleNamespace(**{**vars(TRACK), "title": title})
+    reply = f"Next up on the AI Jukebox is {reply_title}, a mellow acoustic folk tune for the road home. Enjoy it."
+    qwen = fake_qwen(reply)
+    assert dj.write_script(track)
+    assert len(qwen.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("title", "partial", "whole"),
+    [
+        (
+            "Run",
+            "Running late? This mellow folk tune slows you down.",
+            "Run is a mellow folk tune to slow you down.",
+        ),
+        ("Glow", "Feel the glowing warmth of this folk tune.", "Feel the warmth of Glow, a folk tune."),
+    ],
+)
+def test_title_must_appear_as_whole_words(title: str, partial: str, whole: str) -> None:
+    assert dj.script_problem(partial, title) is not None
+    assert dj.script_problem(whole, title) is None
+
+
 def test_title_match_ignores_case_and_quote_style(fake_qwen) -> None:
     fake_qwen(GOOD.replace("Midnight Lanterns", "‘midnight lanterns’"))
     assert "midnight lanterns" in dj.write_script(TRACK)

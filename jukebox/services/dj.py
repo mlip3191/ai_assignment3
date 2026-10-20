@@ -88,7 +88,15 @@ def build_messages(track: TrackInfo, previous: TrackInfo | None = None) -> list[
 # ---- script ------------------------------------------------------------------------------------
 
 _EMOJI = re.compile("[\U0001f000-\U0001faff\U00002600-\U000027bf\U0001f1e6-\U0001f1ff‍️⭐⭕⤴⤵]")
-_STAGE = re.compile(r"\*[^*]*\*|\[[^\]]*\]")
+# *stage direction* (no space just inside the asterisks, so "5 * 2" and "3*4" survive), [tag], and
+# (laughs)-style parentheticals that start with a performance cue. Other parentheses are kept.
+_STAGE = re.compile(
+    r"\*[^\s*](?:[^*\n]{0,58}[^\s*])?\*"
+    r"|\[[^\]\n]{1,60}\]"
+    r"|\((?:laugh|chuckl|giggl|paus|sigh|whisper|cheer|applau|music|beat|cough|clears|excited|softly|upbeat)"
+    r"[^)\n]{0,40}\)",
+    re.IGNORECASE,
+)
 _LABEL = re.compile(r"^\s*(?:dj|intro|announcer|host)\s*:\s*", re.IGNORECASE)
 _QUOTES = "\"'“”‘’"
 
@@ -116,7 +124,10 @@ def script_problem(script: str, title: str) -> str | None:
     words = len(script.split())
     if words > MAX_WORDS:
         return f"it was {words} words; keep it to {MAX_WORDS} words or fewer"
-    if _normalize(title) and _normalize(title) not in _normalize(script):
+    # The title goes through the same cleanup as the script ("Midnight [Remix]" is spoken as
+    # "Midnight"), and must appear as whole words ("Run" doesn't match "Running").
+    wanted = _normalize(clean_script(title))
+    if wanted and f" {wanted} " not in f" {_normalize(script)} ":
         return f'it didn\'t say the song title, "{title}"'
     return None
 
@@ -166,7 +177,11 @@ def make_clip(
     previous: TrackInfo | None = None,
     out_dir: Path | None = None,
 ) -> DjClip:
-    """Write and speak the intro for `track`, save it, and return where it is."""
+    """Write and speak the intro for `track`, save it, and return where it is.
+
+    Raises ServiceError when Qwen or Chatterbox fails, and OSError when the clip can't be written
+    (disk full, or on Windows the old clip still open). The caller treats both as "skip the DJ clip".
+    """
     script = write_script(track, previous)
     audio, ext = chatterbox.speak(
         script, voice_ref_path=voice_ref_path, exaggeration=DJ_EXAGGERATION, cfg_weight=DJ_CFG_WEIGHT
