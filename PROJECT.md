@@ -454,7 +454,7 @@ ai-jukebox/
 │       └── dj_settings.py
 ├── samples/                    # COMMITTED: the 3 pre-generated songs
 │   ├── audio/                  # sample_01.mp3 …
-│   ├── covers/                 # sample_01.png …
+│   ├── covers/                 # sample_01.jpg …
 │   ├── manifest.json           # Track records for the samples
 │   └── GENERATION_LOG.md       # Exact prompts, lyrics, seeds, params, dates, who ran it
 ├── runtime/                    # GITIGNORED: created at startup
@@ -802,7 +802,7 @@ APP_PORT=7860
 
 1. Qwen writes a **FLUX image prompt** from title + style + mood + theme (+ a lyrics summary if vocal). It describes visual subject, palette, composition, and art style.
 2. Append fixed suffixes: square album cover, **no text, no letters, no logos, no real people**. (Image models render text badly, and this keeps the output clear of trademarks.)
-3. FLUX → image, saved to `runtime/generated/{track_id}.png`. The track's `cover_path` and `cover_prompt` are updated.
+3. FLUX → image (JPEG, quality 90; #4, 10/20), saved to `runtime/generated/{track_id}.jpg`. The track's `cover_path` and `cover_prompt` are updated.
 4. The UI shows the cover in the library row, the now-playing panel, and the queue, always looked up by `track_id`, never by list position. This is how you guarantee "displayed with the correct track."
 
 **Models:** Qwen (image prompt) + FLUX (image). Nothing else.

@@ -1,7 +1,8 @@
 """Tests for jukebox/clients/flux.py: the FLUX.2 klein 4B image client (task C2).
 
-Covers are JPEG (release lead's decision on #4, 10/20). All HTTP is mocked with respx. No real class service is ever called. The request and reply
-shapes follow docs/spikes/C1-flux.md and the FLUX row of PROJECT.md 7.1.
+Covers are JPEG (release lead's decision on #4, 10/20). All HTTP is mocked with respx; no real
+class service is ever called. The request and reply shapes follow docs/spikes/C1-flux.md and the
+FLUX row of PROJECT.md 7.1.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 
 from jukebox.clients import flux  # noqa: E402
 from jukebox.clients.base import ServiceClient  # noqa: E402
-from jukebox.config import Config, load_config  # noqa: E402
+from jukebox.config import Config, ConfigError, load_config  # noqa: E402
 from jukebox.errors import ServiceError  # noqa: E402
 
 KEY = "test-key-0123456789"
@@ -288,3 +289,61 @@ def test_a_reply_of_only_line_breaks_is_bad_response(client: ServiceClient) -> N
     with pytest.raises(ServiceError) as exc:
         flux.generate_image("a calm lake", client=client)
     assert exc.value.kind == "bad_response"
+
+
+# ---- the shared default client ----------------------------------------------------------------
+
+
+@pytest.fixture
+def fresh_default(monkeypatch: pytest.MonkeyPatch):
+    """Start each of these tests with no shared client, and restore whatever was there."""
+    monkeypatch.setattr(flux, "_default", None)
+    yield
+
+
+def test_missing_settings_become_a_flux_config_error(fresh_default, monkeypatch: pytest.MonkeyPatch) -> None:
+    def broken_settings() -> ServiceClient:
+        raise ConfigError(["FLUX_BASE_URL: (missing)"])
+
+    monkeypatch.setattr(flux, "_make_default_client", broken_settings)
+    with pytest.raises(ServiceError) as exc:
+        flux.generate_image("a calm lake")
+    assert (exc.value.service, exc.value.kind) == ("flux", "config")
+    assert "FLUX_BASE_URL" in exc.value.detail
+
+
+def test_a_settings_problem_is_not_cached_so_a_fix_and_retry_works(
+    fresh_default, monkeypatch: pytest.MonkeyPatch, cfg: Config
+) -> None:
+    attempts = {"n": 0}
+
+    def settings_fixed_on_second_try() -> ServiceClient:
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise ConfigError(["FLUX_BASE_URL: (missing)"])
+        return ServiceClient("flux", cfg, sleep=lambda _s: None)
+
+    monkeypatch.setattr(flux, "_make_default_client", settings_fixed_on_second_try)
+    with pytest.raises(ServiceError):
+        flux.generate_image("a calm lake")
+    with respx.mock:
+        respx.post(FLUX_URL).respond(200, json=_reply())
+        assert flux.generate_image("a calm lake") == JPEG
+
+
+def test_the_shared_client_is_built_once_and_reused(
+    fresh_default, monkeypatch: pytest.MonkeyPatch, cfg: Config
+) -> None:
+    built = {"n": 0}
+
+    def make() -> ServiceClient:
+        built["n"] += 1
+        return ServiceClient("flux", cfg, sleep=lambda _s: None)
+
+    monkeypatch.setattr(flux, "_make_default_client", make)
+    with respx.mock:
+        route = respx.post(FLUX_URL).respond(200, json=_reply())
+        flux.generate_image("a calm lake")
+        flux.generate_image("a quiet forest")
+    assert built["n"] == 1
+    assert route.call_count == 2

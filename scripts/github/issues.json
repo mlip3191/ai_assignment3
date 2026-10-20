@@ -781,7 +781,7 @@
           "milestone": "M1",
           "goal": "Every song shows its own cover, and a failed cover is recoverable.",
           "criteria": [
-            "jukebox/services/art.py saves runtime/generated/{track_id}.png and sets cover_path + cover_prompt",
+            "jukebox/services/art.py saves runtime/generated/{track_id}.jpg and sets cover_path + cover_prompt",
             "Library, now-playing, and queue look up covers by track_id",
             "Team-made placeholder image committed; Retry cover button works",
             "Song stays playable when the cover fails",
