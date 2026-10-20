@@ -10,7 +10,14 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from jukebox.config import Config, ConfigError, _hide_host, evaluate, load_config  # noqa: E402
+from jukebox.config import (  # noqa: E402
+    Config,
+    ConfigError,
+    _hide_host,
+    evaluate,
+    load_config,
+    parse_env_file,
+)
 
 KEY = "test-key-0123456789"
 FORBIDDEN_PORT = 9 * 1000  # built from a number so no literal URL with this port appears in the repo
@@ -87,6 +94,40 @@ def test_model_is_optional(tmp_path: Path) -> None:
 def test_model_placeholder_counts_as_not_set(tmp_path: Path) -> None:
     env = good_env() | {"FLUX_MODEL": "REPLACE_WITH_FLUX.2_KLEIN_4B_NAME_FROM_DOCS"}
     assert load(env, tmp_path).flux.model is None
+
+
+# ---- the committed template -------------------------------------------------------------------
+
+EXAMPLE = ROOT / ".env.example"
+# The model names the template ships with (PROJECT.md 7.1, spikes B1, B2, C1, D1)
+TEMPLATE_MODELS = {
+    "qwen": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+    "flux": "black-forest-labs/FLUX.2-klein-4B",
+    "acestep": "ACE-Step/acestep-v15-xl-turbo",
+    "chatterbox": "chatterbox-v3",
+}
+
+
+def template_env() -> dict[str, str]:
+    """The committed template with only the host and the key filled in, as a user would do."""
+    values = parse_env_file(EXAMPLE)
+    values["CLASS_API_KEY"] = KEY
+    for var in ("QWEN_BASE_URL", "FLUX_BASE_URL", "ACESTEP_BASE_URL", "CHATTERBOX_BASE_URL"):
+        values[var] = values[var].replace("CLASS_HOST", "class.example")
+    return values
+
+
+def test_template_sets_the_confirmed_model_for_every_service(tmp_path: Path) -> None:
+    cfg = load(template_env(), tmp_path)
+    assert {s: getattr(cfg, s).model for s in TEMPLATE_MODELS} == TEMPLATE_MODELS
+
+
+def test_template_matches_project_md() -> None:
+    """PROJECT.md section 7.4 shows a copy of the template; the two must not drift apart."""
+    plan = (ROOT / "PROJECT.md").read_text(encoding="utf-8").splitlines()
+    for line in EXAMPLE.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            assert line in plan, f".env.example line is missing or different in PROJECT.md: {line!r}"
 
 
 # ---- sources ----------------------------------------------------------------------------------
