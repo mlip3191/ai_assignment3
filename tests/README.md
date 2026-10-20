@@ -20,6 +20,7 @@ One file per module, named `test_<module>.py`:
 | `test_config.py` | `jukebox/config.py`: required variables, one port per service, no port 9000, no secrets in output |
 | `test_check_config.py` | `scripts/check_config.py`: OK/missing table that never prints values |
 | `test_chatterbox.py` | `jukebox/clients/chatterbox.py`: `speak()` request format (default and reference voice), local input checks, each error kind with no retry, speech endpoint on 9008 only |
+| `test_dj.py` | `jukebox/services/dj.py` and `prompts/dj.md`: song-specific script (title, word limit, cleanup, one retry), clip saved under `runtime/generated/`, only the Qwen and Chatterbox clients |
 | `test_<service>.py` | One per client in `jukebox/clients/` (added by lanes B, C, D) |
 
 A good test case covers the happy path, at least one failure path (service down, bad input, timeout), and each "Done when" criterion of its task.
