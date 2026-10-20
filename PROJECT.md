@@ -1465,6 +1465,7 @@ Built-in commands worth knowing:
 Guardrails are a safety net, not permission to stop paying attention.
 - They need bash (built into macOS; Git Bash on Windows) and Python. `scripts/doctor.py` checks both.
 - If the guard can't find Python, it **fails closed**: every command is blocked until you fix it (§16.9). It never silently stops protecting you.
+- The pre-push gate runs the test suite the way CI does: plain `pytest -q`, with the repo root **not** on `sys.path` (the gate uses `python -P -m pytest`). A test that only works under `python -m pytest` therefore fails in the gate, not just later in CI. Run plain `pytest -q` yourself while you work.
 - On Windows, the repo turns off Claude Code's separate PowerShell tool so all commands go through Git Bash, exactly as on macOS. If someone turns it back on, the guard covers PowerShell commands too (`Get-Content .env` is blocked like `cat .env`).
 - **Don't** switch on modes that skip permission prompts for git or GitHub actions.
 - **Don't** edit `.claude/settings.json` locally to get around a block. Personal tweaks go in `.claude/settings.local.json` (gitignored), and never to weaken a team rule.
