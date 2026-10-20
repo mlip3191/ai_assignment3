@@ -241,13 +241,13 @@
         },
         {
           "key": "A5",
-          "title": "Ask the professor/team the section 14 open questions (Hermes, due date, repo access, network, Claude access)",
+          "title": "Answer the section 14 open questions (Hermes, due date, repo access, network, Claude access)",
           "milestone": "M0",
           "goal": "Remove the biggest unknowns: Claude Code vs Hermes, due date, repo visibility, grader environment.",
           "criteria": [
-            "Q1, Q2, Q5, Q6, Q7, Q9 sent to the professor; Q8 (Claude Code access per teammate) answered at kickoff",
-            "Answers recorded in section 14; schedule in section 10 and section 0.1 status updated if the due date differs",
-            "If Hermes is required, the Hermes contingency in section 2 is activated and the team is told how the workflow changes"
+            "Q1, Q2, Q6, Q7, Q8, Q9 answered by the release lead (not the professor) and recorded in section 14; Q5 (public repo, or add the professor) is left open as a follow-up that must be settled before A10",
+            "Schedule in section 10 and section 0.1 status updated to the confirmed due date",
+            "The Hermes contingency in section 2 stays off because Q1 was answered 'Claude Code is acceptable'; if that changes, activate it and tell the team how the workflow changes"
           ],
           "reqs": [],
           "refs": [

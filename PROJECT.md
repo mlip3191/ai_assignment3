@@ -15,7 +15,7 @@ This is the team's working plan. It is the single source of truth for scope, own
 
 | | |
 |---|---|
-| **Phase** | Planning done; **M0 starts Tue 10/20**. |
+| **Phase** | Build under way: spikes, config, the client layer and prompts are merged; feature PRs are in review. Integration (A7) is not done. The original M0 and M1 dates have passed (the whole schedule moved +7 days on 10/20, §14 Q2). |
 | **Is the app built?** | **No.** There is nothing to run yet. Path 1 below describes the finished app (v1.0) and is the contract the team builds to. |
 | **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation. |
 | **Latest release** | none (will be the `v1.0` tag) |
@@ -53,7 +53,7 @@ If someone asks you to read this file and tell them what to do, follow these rul
 #### 0.4.1 What you need
 
 - A computer running **Windows 10/11** or **macOS 13 or newer**.
-- An internet connection that can reach the class servers. Whether this needs the campus network or a VPN is still open (§14 Q7).
+- An internet connection that can reach the class servers. A VPN or the campus network was not needed when tested from a home Wi-Fi network (§14 Q7); a restrictive network could still differ.
 - The **class credentials**: `class-endpoints.txt` from the course materials. Ask the instructors if you don't have it.
 - The **app ZIP file**: from the Canvas submission (grader), or from the `v1.0` release on GitHub (teammates: the repo's **Releases** or **Tags** page → **Source code (zip)**).
 
@@ -127,7 +127,7 @@ Songs you generate stay in the library **until you stop the app**. The 3 samples
 | "Python was not found" / `py` not recognized | Re-run the Python installer (Windows: tick **Add python.exe to PATH**), then open a **new** Terminal window. |
 | The launcher says `.env` is missing or still has placeholders | Fill in `.env` as in §0.4.4 and save. On macOS, Finder hides files whose names start with a dot. Press **Cmd+Shift+.** to show them. |
 | "The ... service rejected our credentials" | A value in `.env` is wrong. Re-copy it from `class-endpoints.txt` carefully (no extra spaces). |
-| "... is unreachable" / "took too long" | The class servers may be busy or need the campus network/VPN (§14 Q7). Click **Retry**, or try again later. |
+| "... is unreachable" / "took too long" | The class servers may be busy, or your network may block them (a VPN was not needed from a home network, §14 Q7). Click **Retry**, or try again later. |
 | Nothing happens for a long time after Generate | Check the status line; generation can take minutes. If it shows an error, use **Retry**. |
 | No sound | Click anywhere on the page first (browsers block sound until you interact), and check your volume and output device. |
 | Browser shows "can't connect" | The launcher window must still be open. Restart the launcher. |
@@ -357,7 +357,7 @@ IDs start with **DL** so they're never confused with the AI DJ issue keys (D1–
 |---|---|---|---|
 | 10/12 | **Gradio** (Blocks API) for the UI and server | All-Python, built-in audio/image/file components, server-side handlers keep credentials off the browser, generator functions give live status updates | Streamlit: full-script rerun on every interaction fights continuous playback. FastAPI+JS and Node+React: more code to write. |
 | 10/12 | **Python venv + one launch script** for deployment | Fewest moving parts for the grader; no Docker requirement | Docker Compose |
-| 10/12 | **Claude Code** as the team's coding agent | Team choice | Hermes. **Action:** confirm with the professor that Claude Code is acceptable in place of Hermes (see §14 Q1). |
+| 10/12 | **Claude Code** as the team's coding agent | Team choice | Hermes. Confirmed acceptable 10/20 by the release lead (§14 Q1, A5). |
 | 10/12 | **Split by feature**, 5 owners | Maps 1:1 to the graded features; clean PR boundaries | Split by layer |
 | 10/12 | **No Git LFS** for sample assets | GitHub "Download ZIP" archives contain LFS *pointer files*, not the audio, unless a repo setting is enabled; that would silently break the grader's deploy | LFS |
 | 10/12 | **Avoid an ffmpeg dependency** | One less system install for the grader; decode MP3/WAV with `soundfile` (wheels bundle libsndfile with MP3 support; verify in M0) | pydub/ffmpeg |
@@ -373,7 +373,7 @@ IDs start with **DL** so they're never confused with the AI DJ issue keys (D1–
 | 10/12 | **DJ speaks before every queued song, including the first** | Satisfies "commentary between queued songs" with a consistent pattern; the first intro opens the show. Each intro is specific to the song that follows it. | Commentary only after the first song |
 | 10/12 | **Launchers create `.env` from the template on first run and open it in a plain-text editor** | Non-coders can't see dot-files in Finder, and Notepad can save `.env.txt`; this removes both traps (§0.4.4) | Telling users to copy the file themselves |
 | 10/12 | **Generated songs live for the life of the server process** | Meets "remain available during the session"; simple and reliable; documented in README | Persisting to disk across restarts |
-| 10/12 | **Hermes contingency**: if the professor requires Hermes (§14 Q1), use it with `docs/STARTER_PROMPT.md` to build the first version as the assignment describes. Commit its output through a PR, then keep the same issues, reviews, and tests; follow CLAUDE.md's rules by hand. | Keeps the plan valid either way | — |
+| 10/12 | **Hermes contingency** (not triggered: §14 Q1 was answered 10/20, Claude Code is acceptable): if the professor requires Hermes, use it with `docs/STARTER_PROMPT.md` to build the first version as the assignment describes. Commit its output through a PR, then keep the same issues, reviews, and tests; follow CLAUDE.md's rules by hand. | Keeps the plan valid either way | — |
 | 10/12 | **Only the four class models, each locked to its feature, with no optional AI features and no fallback models** (§7.0), enforced by `model_policy.json` + `check_models.py` + guard hook + config port checks | The assignment grades use of the required class services; an AI agent will "helpfully" add an SDK or a browser-voice fallback unless something stops it | Allowing other class endpoints for optional features (permitted by the assignment, but adds risk for no grade) |
 | 10/18 | **`check_endpoints.py` compares model ids without their `org/` prefix** (`ACE-Step/x` matches `acestep/x`) | `class-endpoints.txt` spells the ACE-Step model `ACE-Step/acestep-v15-xl-turbo`, but the server lists `acestep/acestep-v15-xl-turbo`. Comparing the part after the last `/` accepts both spellings and still FAILs a port that serves a different model (A4, §7.1). | Exact string match (fails on the documented spelling); skipping the check for ACE-Step |
 | TBD (M0) | Player approach: **Option A** (native `gr.Audio` + end event) or **Option B** (custom HTML5 player) | Decided by the playback spike, see §8 | — |
@@ -634,7 +634,7 @@ Which feature may call which model:
 | Reviews | `/review-pr` and the PR template check "right model for the feature, no fallback model" on every PR |
 | TC-15 | A full run whose request log shows only the class host on 9001/9006/9007/9008 |
 
-(Claude Code is the team's *development* tool, not an app feature; this rule covers the app, its scripts, and the bundled samples. Whether Claude Code may be used at all is §14 Q1.)
+(Claude Code is the team's *development* tool, not an app feature; this rule covers the app, its scripts, and the bundled samples. Whether Claude Code may be used at all was settled in §14 Q1: yes.)
 
 ### 7.1 Endpoint contracts
 
@@ -965,7 +965,7 @@ The plan was written Mon 10/12. It aims to be **submission-ready Thu 10/29 eveni
 | Chatterbox: one call with default voice + one with a WAV reference | D |
 | **Playback spike** (Option A vs B), written up in §2 | E |
 | Augmented starter prompt in `docs/STARTER_PROMPT.md` (§15), reviewed by all **before any app code** (assignment: add instructions before beginning the build). Do it in the kickoff call. | C + all |
-| Email/ask the professor the §14 questions | A |
+| Answer the §14 open questions (release lead; Q5 stays open) | A |
 
 **Exit criteria:** all 4 services answer from at least one teammate's machine via `check_endpoints.py`; the player approach is decided; the shared client base is merged.
 
@@ -1125,8 +1125,8 @@ Status values: **Pass / Fail / Not tested**. Fill "Actual" with what really happ
 | Gaps or waits between songs because TTS is slow | Medium | Medium | DJ prefetch + cache; never block a song on the DJ | D, E |
 | Grader deploy fails (missing file, unpinned dep, OS difference) | Medium | **Very high** | Pinned deps; run scripts for both OSes; M3 clean-machine test from the GitHub ZIP | A, E |
 | Works on one OS, breaks on the other (paths, encodings, line endings, launchers) | Medium | **Very high** | pathlib + UTF-8 rules (§16.8), `.gitattributes`, Python-only scripts, cross-platform CI, TC-10a and TC-10b | A, D, E |
-| A teammate has no Claude Code access (it needs a paid Claude plan) | Medium | High | Ask in kickoff (§14 Q8); pair that person with a teammate who has access, or route them to testing, docs, and samples work (§0.5); Hermes as fallback | A |
-| Class servers need the campus network/VPN, and the grader or a teammate can't reach them | Medium | High | Ask early (§14 Q7); document it in README Setup; `check_endpoints.py` gives a clear message | A |
+| A teammate has no Claude Code access (it needs a paid Claude plan) | Medium | High | Answered 10/20 (§14 Q8): four teammates use Claude Code and `afondale` uses Grok, so for that lane follow CLAUDE.md by hand and rely on the pre-push gate, CI, and review; pair or route to testing, docs, and samples work if anyone is blocked (§0.5) | A |
+| Class servers need the campus network/VPN, and the grader or a teammate can't reach them | Medium | High | Tested from a home network with no VPN (§14 Q7, one network only); document it in README Setup; `check_endpoints.py` gives a clear message | A |
 | Grader thinks the app froze during long generations | Medium | Medium | Staged status + elapsed time + "usually takes ~N s" hint in the UI; expected waits in README | B, E |
 | ZIP on Canvas doesn't match the submitted commit | Low | **Very high** | Download the ZIP from the `v1.0` tag; verify the SHA; never push to the tag (A10) | A |
 | The coding agent adds another model (an SDK, `gr.load`, browser speech) or a "fallback" model | Medium | **Very high** | §7.0 rule in CLAUDE.md and the starter prompt; `check_models.py` blocks merge in CI; guard hook blocks installs; Claude can't edit `model_policy.json`; reviewers check | A, all |
@@ -1134,7 +1134,7 @@ Status values: **Pass / Fail / Not tested**. Fill "Actual" with what really happ
 | Qwen thinking tokens or chatter in lyrics/DJ scripts | Medium | Medium | Disable per docs, strip `<think>`, JSON output + parser, unit tests | B, D |
 | Sample files too large for the repo/ZIP | Low | Medium | ~60 s samples, MP3 if possible, no LFS | C |
 | Merge conflicts in `app.py` / UI | Medium | Low | UI split into `ui/*.py` modules; `app.py` stays thin; E owns `app.py`; file ownership per lane (§19) | E |
-| Professor disallows Claude Code instead of Hermes | Low | High | Ask in M0 (§14 Q1) | A |
+| Professor disallows Claude Code instead of Hermes | Low | High | Answered 10/20 (§14 Q1): Claude Code is acceptable. If that changes, activate the §2 Hermes contingency | A |
 
 ---
 
@@ -1148,7 +1148,7 @@ Status values: **Pass / Fail / Not tested**. Fill "Actual" with what really happ
 | Q4 | Do all four services share one credential? | Class materials | Answered 10/18 (A4): yes, one `CLASS_API_KEY` as a bearer token works on all four (spikes B1, B2, C1, D1) |
 | Q5 | Is a public repo okay, or should we add the professor as a collaborator? | Professor | **Still open** (not answered in A5). Must be settled before A10 (DL12). |
 | Q6 | Python version and OS on the grader's machine? (affects run scripts) | Professor | Answered 10/20 (A5), by the release lead: support macOS and Windows with Python 3.11+. |
-| Q7 | Do the class endpoints require the campus network or a VPN? | Professor / class materials | Answered 10/20 (A5): no. `scripts/check_endpoints.py` passed on all four ports from the release lead's home Wi-Fi, off campus with no VPN. This is one home network; a restrictive network could still differ. |
+| Q7 | Do the class endpoints require the campus network or a VPN? | Professor / class materials | Answered 10/20 (A5), by the release lead: no, from one network. `scripts/check_endpoints.py` passed on all four ports from the release lead's home Wi-Fi, off campus with no VPN. A restrictive network could still differ. |
 | Q8 | Does every teammate have Claude Code access (paid Claude plan)? If not, who pairs with whom? | Team, at kickoff | Answered 10/20 (A5): four teammates use paid Claude Code. `afondale` (Lane E) uses paid Grok. Claude Code's hooks, skills and `CLAUDE.md` rules do not apply to Grok; the pre-push gate, CI and review still do. |
 | Q9 | Can we resubmit before the deadline? (The assignment says the version in the final submission is graded.) | Professor | Answered 10/20 (A5), by the release lead: yes. |
 
@@ -1746,7 +1746,7 @@ Each person owns one lane, and each lane is **one GitHub issue** (label `lane`) 
 | A2 | M0 (Wed 10/21) | Config loader, .env.example, and scripts/check_config.py | A1, C0 (C) |
 | A3 | M0 (Wed 10/21) | Shared HTTP client base + ServiceError and user-facing error messages | A2 |
 | A4 | M0 (Wed 10/21) | Fill §7.1 endpoint contracts from class-endpoints.txt + scripts/check_endpoints.py | A2 |
-| A5 | M0 (Wed 10/21) | Ask the professor/team the section 14 open questions (Hermes, due date, repo access, network, Claude access) | — |
+| A5 | M0 (Wed 10/21) | Answer the section 14 open questions (Hermes, due date, repo access, network, Claude access) | — |
 | A6 | M1 (Sun 10/25) | Track/Job models, thread-safe library, sample manifest loader, job store | A2 |
 | A11 | M1 (Sun 10/25) | Make the pre-push hook executable in git and have doctor catch it | — |
 | A12 | M2 (Tue 10/27) | Make the pre-push gate run the tests the way CI does | — |
