@@ -15,7 +15,7 @@ This is the team's working plan. It is the single source of truth for scope, own
 
 | | |
 |---|---|
-| **Phase** | Build under way: spikes, config, the client layer and prompts are merged; feature PRs are in review. Integration (A7) is not done. The original M0 and M1 dates have passed (the whole schedule moved +7 days on 10/20, §14 Q2). |
+| **Phase** | Build under way (as of 10/20). Merged: the four service spikes, config, the client layer, the library, and the song prompts. In review: the playback spike, the app shell, the cover and DJ prompts, the song pipeline, and the queue. Integration (A7) is not done. The original M0 and M1 dates have passed (the whole schedule moved +7 days on 10/20, §14 Q2). |
 | **Is the app built?** | **No.** There is nothing to run yet. Path 1 below describes the finished app (v1.0) and is the contract the team builds to. |
 | **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation. |
 | **Latest release** | none (will be the `v1.0` tag) |
@@ -31,7 +31,7 @@ If someone asks you to read this file and tell them what to do, follow these rul
 3. **Follow the matching path exactly, one step at a time.** For each step, say what to do, the exact command or click for their OS, and what they should see if it worked. Wait for them to confirm before the next step. Don't skip or reorder steps.
 4. **Assume no technical background** unless they show otherwise. Explain terms with the glossary (§0.8), and use the terminal primer (§0.7) the first time they need a terminal.
 5. **Never ask them to paste their API key, `.env` contents, or `class-endpoints.txt`** into the chat. They type secrets only into `.env`, on their own machine.
-6. **Don't invent anything this file marks TBD**, such as endpoint formats, wait times, or the due date. Say it's not decided yet and who owns it.
+6. **Don't invent anything this file marks TBD**, such as wait times (§0.4.6) or the public-repo question (§14 Q5). Say it's not decided yet and who owns it.
 7. **If a step fails,** check §0.4.7 (app users) or §16.9 (teammates) for that symptom first. If it isn't there, ask for the exact error text.
 8. **For teammates who will build the app,** your job is Path 2. Get them set up, find their **lane** (one GitHub issue per person, §19) and its task checklist, and point them to the sections for their part (§0.5 step 4). The work itself happens in Claude Code with `/start-session <task key>`.
 

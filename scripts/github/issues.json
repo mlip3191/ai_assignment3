@@ -243,7 +243,7 @@
           "key": "A5",
           "title": "Answer the section 14 open questions (Hermes, due date, repo access, network, Claude access)",
           "milestone": "M0",
-          "goal": "Remove the biggest unknowns: Claude Code vs Hermes, due date, repo visibility, grader environment.",
+          "goal": "Remove the biggest unknowns: Claude Code vs Hermes, due date, network access, grader environment. Repo visibility (Q5) is left open as a follow-up.",
           "criteria": [
             "Q1, Q2, Q6, Q7, Q8, Q9 answered by the release lead (not the professor) and recorded in section 14; Q5 (public repo, or add the professor) is left open as a follow-up that must be settled before A10",
             "Schedule in section 10 and section 0.1 status updated to the confirmed due date",
