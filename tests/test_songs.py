@@ -234,6 +234,39 @@ def test_plain_text_fallback_drops_commentary() -> None:
     assert songs.parse_song_reply(fenced, vocal=True) == SongText("Open Road", GOOD_LYRICS)
 
 
+def test_plain_text_fallback_keeps_sections_split_by_blank_lines() -> None:
+    blank_after_headers = (
+        "Title: Open Road\n\n[verse]\n\nWindows down\nRadio on\n\n[chorus]\n\nKeep it rolling\nKeep it free"
+    )
+    lyrics = songs.parse_song_reply(blank_after_headers, vocal=True).lyrics
+    assert sung_lines(lyrics) == ["Windows down", "Radio on", "Keep it rolling", "Keep it free"]
+    blank_inside_last = (
+        "Title: Open Road\n[verse]\nWindows down\n[chorus]\nKeep it rolling\n\nOne more time\nKeep it free"
+    )
+    lyrics = songs.parse_song_reply(blank_inside_last, vocal=True).lyrics
+    assert sung_lines(lyrics) == ["Windows down", "Keep it rolling", "One more time", "Keep it free"]
+    one_last_line = "Title: Open Road\n[verse]\nWindows down\n[chorus]\nKeep it rolling\n\nKeep it free"
+    assert sung_lines(songs.parse_song_reply(one_last_line, vocal=True).lyrics)[-1] == "Keep it free"
+    chat_word = "Title: Open Road\n[verse]\nWindows down\n[chorus]\nKeep it rolling\n\nEnjoy the ride tonight"
+    assert sung_lines(songs.parse_song_reply(chat_word, vocal=True).lyrics)[-1] == "Enjoy the ride tonight"
+
+
+def test_a_stray_json_object_before_the_song_is_skipped() -> None:
+    reply = '{"thought": "plan\nit"}\n{"title": "Open Road", "lyrics": "' + GOOD_LYRICS + '"}'
+    assert songs.parse_song_reply(reply, vocal=True) == SongText("Open Road", GOOD_LYRICS)
+    valid_json = '{"thought": "plan"}\n' + json.dumps({"title": "Open Road", "lyrics": GOOD_LYRICS})
+    assert songs.parse_song_reply(valid_json, vocal=True) == SongText("Open Road", GOOD_LYRICS)
+
+
+def test_a_sung_line_that_matches_the_title_is_kept() -> None:
+    reply = json.dumps({"title": "Hold On", "lyrics": "Hold on\nHold on to me\n[chorus]\nKeep it free"})
+    assert sung_lines(songs.parse_song_reply(reply, vocal=True).lyrics) == [
+        "Hold on",
+        "Hold on to me",
+        "Keep it free",
+    ]
+
+
 def test_null_items_in_a_lyrics_list_are_skipped() -> None:
     reply = json.dumps({"title": "Open Road", "lyrics": [*GOOD_LYRICS.split("\n")[:4], None, 7]})
     lyrics = songs.parse_song_reply(reply, vocal=True).lyrics

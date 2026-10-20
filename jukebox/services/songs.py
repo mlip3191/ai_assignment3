@@ -46,6 +46,11 @@ _PARENTHESIZED = re.compile(r"^\(([^)]*)\)$")
 _REPEAT_MARK = re.compile(r"\s*[(\[]\s*(?:x\s*\d+|\d+\s*x|repeat\b[^)\]]*)\s*[)\]]\s*$", re.IGNORECASE)
 _BARE_REPEAT = re.compile(r"^x\s*\d+$", re.IGNORECASE)
 _LENIENT_JSON = json.JSONDecoder(strict=False)  # allows real line breaks inside strings
+# A closing chat line such as "Hope you enjoy this song!": a chat word and a word about the song.
+_SIGN_OFF = re.compile(
+    r"^(?=.*\b(?:hope|enjoy|let me know|feel free|happy to|like)\b)(?=.*\b(?:song|lyrics|track)\b)",
+    re.IGNORECASE,
+)
 _TITLE_LINE = re.compile(r"^[\s*_#>]*title[\s*_]*[:\-][\s*_]*(.+)$", re.IGNORECASE | re.MULTILINE)
 _LYRICS_LABEL = re.compile(r"^[\s*_#>]*lyrics[\s*_]*:?[\s*_]*$", re.IGNORECASE)
 _FENCE = re.compile(r"^\s*```")
@@ -158,8 +163,10 @@ def parse_song_reply(text: str, *, vocal: bool) -> SongText:
     vocal song has no usable lyrics. The reply's text is never copied into the error.
     """
     try:
-        data = qwen.parse_json_reply(text)
+        data: dict | None = qwen.parse_json_reply(text)
     except ServiceError:
+        data = None
+    if data is None or "title" not in data:
         data = _parse_lenient_json(text) or _parse_plain_text(text)
     title = clean_title(data.get("title"))
     if not title:
@@ -175,7 +182,10 @@ def parse_song_reply(text: str, *, vocal: bool) -> SongText:
 
 
 def _parse_lenient_json(text: str) -> dict | None:
-    """The first JSON object in the reply, allowing real line breaks inside strings, or None."""
+    """The first JSON object with a "title" in the reply, allowing real line breaks inside strings.
+
+    Skips other objects (`{"thought": ...}`) so the song after them is still found. None if there is none.
+    """
     cleaned = qwen.strip_think(text)
     start = cleaned.find("{")
     while start != -1:
@@ -183,7 +193,7 @@ def _parse_lenient_json(text: str) -> dict | None:
             value, _end = _LENIENT_JSON.raw_decode(cleaned, start)
         except ValueError:
             value = None
-        if isinstance(value, dict):
+        if isinstance(value, dict) and "title" in value:
             return value
         start = cleaned.find("{", start + 1)
     return None
@@ -193,8 +203,8 @@ def _parse_plain_text(text: str) -> dict[str, str]:
     """`Title: ...` on one line, and the lyrics after it.
 
     The lyrics start at the first section header and stop at a code fence, so "Here are your lyrics:" and
-    text after the fence are not sung. A last paragraph with no section header ("Hope you enjoy this
-    song!") is the model's sign-off and is dropped too.
+    text after the fence are not sung. A last single line that reads like chat ("Hope you enjoy this
+    song!") is the model's sign-off and is dropped too; blank lines inside the lyrics change nothing.
     """
     cleaned = qwen.strip_think(text)
     match = _TITLE_LINE.search(cleaned)
@@ -205,16 +215,23 @@ def _parse_plain_text(text: str) -> dict[str, str]:
     lines = lines[start:]
     end = next((i for i, line in enumerate(lines) if _FENCE.match(line)), len(lines))
     lines = [line for line in lines[:end] if not _LYRICS_LABEL.match(line)]
-    paragraphs = re.split(r"\n\s*\n", "\n".join(lines).strip())
-    if len(paragraphs) > 1 and not any(_section_tag(line) for line in paragraphs[-1].splitlines()):
-        paragraphs.pop()
-    return {"title": match.group(1), "lyrics": "\n\n".join(paragraphs)}
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if len(lines) > 1 and _SIGN_OFF.match(lines[-1]) and not _section_tag(lines[-1]):
+        lines.pop()
+    return {"title": match.group(1), "lyrics": "\n".join(lines)}
 
 
 def _without_leading_title(lyrics: str, title: str) -> str:
-    """Lyrics without the title repeated above them ("Open Road", "**Open Road**", "Title: Open Road")."""
+    """Lyrics without the title repeated above them ("Open Road", "**Open Road**", "Title: Open Road").
+
+    Only when a section header comes next, so a first sung line that matches the title is kept.
+    """
     lines = lyrics.splitlines()
-    while lines and (not lines[0].strip() or clean_title(lines[0]).lower() == title.lower()):
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    following = [line for line in lines[1:] if line.strip()]
+    if lines and clean_title(lines[0]).lower() == title.lower() and following and _section_tag(following[0]):
         lines.pop(0)
     return "\n".join(lines)
 
