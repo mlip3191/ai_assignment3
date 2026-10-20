@@ -10,7 +10,6 @@ from __future__ import annotations
 import ast
 import json
 import sys
-import types
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -21,18 +20,8 @@ import respx
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-try:
-    import jukebox.clients.qwen  # noqa: E402,F401
-except ImportError:  # B3 (#21) isn't on this branch yet; every test replaces qwen.chat anyway
-    _stub = types.ModuleType("jukebox.clients.qwen")
-
-    def _unpatched_chat(*args, **kwargs):
-        raise AssertionError("tests must replace qwen.chat")
-
-    _stub.chat = _unpatched_chat
-    sys.modules["jukebox.clients.qwen"] = _stub
-
 import jukebox.clients.chatterbox as chatterbox  # noqa: E402
+import jukebox.clients.qwen as qwen  # noqa: E402
 import jukebox.services.dj as dj  # noqa: E402
 from jukebox.clients.base import ServiceClient  # noqa: E402
 from jukebox.config import load_config  # noqa: E402
@@ -363,6 +352,36 @@ def test_end_to_end_with_the_real_speech_client(
     body = json.loads(route.calls.last.request.content)
     assert body["input"] == GOOD
     assert (body["exaggeration"], body["cfg_weight"]) == (dj.DJ_EXAGGERATION, dj.DJ_CFG_WEIGHT)
+    assert clip.audio_path.read_bytes() == MP3
+
+
+@respx.mock
+def test_end_to_end_with_both_real_clients(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env = {"CLASS_API_KEY": "test-key-0123456789"}
+    for service, port in {"qwen": 9001, "flux": 9006, "acestep": 9007, "chatterbox": 9008}.items():
+        env[f"{service.upper()}_BASE_URL"] = f"http://class.example:{port}"
+    cfg = load_config(env=env, env_file=tmp_path / "missing-file")
+    monkeypatch.setattr(qwen, "_default", qwen.QwenClient(cfg, sleep=lambda s: None))
+    monkeypatch.setattr(
+        chatterbox, "_new_client", lambda: ServiceClient("chatterbox", cfg, sleep=lambda s: None)
+    )
+    reply = {
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": GOOD}, "finish_reason": "stop"}]
+    }
+    chat = respx.post("http://class.example:9001/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json=reply)
+    )
+    speech = respx.post("http://class.example:9008/v1/audio/speech").mock(
+        return_value=httpx.Response(200, content=MP3)
+    )
+
+    clip = dj.make_clip(TRACK, out_dir=tmp_path / "gen")
+
+    sent = json.loads(chat.calls.last.request.content)
+    assert TRACK.title in sent["messages"][-1]["content"]
+    assert sent["max_tokens"] == dj.QWEN_MAX_TOKENS
+    assert json.loads(speech.calls.last.request.content)["input"] == GOOD
+    assert clip.script == GOOD
     assert clip.audio_path.read_bytes() == MP3
 
 
