@@ -116,7 +116,18 @@ read the repository (for example Hermes) gets both files attached.
   batch_size 1. Still send a fixed seed with use_random_seed false and
   record it in samples/GENERATION_LOG.md (PROJECT.md §8.5), but don't
   rely on it to reproduce the audio (not yet cleanly tested); commit the
-  generated sample files instead (B2).
+  generated sample files instead (B2). Never auto-retry the
+  /release_task submit (send it with retry=False): a retried submit can
+  start a second job on the shared GPU. Polling and the download may
+  retry.
+- FLUX: POST /v1/images/generations returns the image as base64 in
+  data[0].b64_json; the prompt is not rewritten, and a fixed seed
+  reproduces the same cover, so sample covers are repeatable (C1).
+- Chatterbox: POST /v1/audio/speech with model, language_id, and
+  response_format sent explicitly; a custom voice sends the recording as
+  base64 ref_audio on each request. Never POST /v1/voices (it saves the
+  voice on the shared class server). No auto-retry on speech timeouts
+  (D1).
 - Request details live in PROJECT.md §7.1.
 
 ## Models
