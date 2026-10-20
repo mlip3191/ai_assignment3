@@ -17,7 +17,7 @@ This is the team's working plan. It is the single source of truth for scope, own
 |---|---|
 | **Phase** | Build under way (as of 10/20). Merged: the four service spikes, config, the client layer, the library, and the song prompts. In review: the playback spike, the app shell, the cover and DJ prompts, the song pipeline, and the queue. Integration (A7) is not done. The original M0 and M1 dates have passed (the whole schedule moved +7 days on 10/20, §14 Q2). |
 | **Is the app built?** | **No.** There is nothing to run yet. Path 1 below describes the finished app (v1.0) and is the contract the team builds to. |
-| **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation. |
+| **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation, and CI (Ubuntu on every PR; Windows and macOS after each merge to `main`). |
 | **Latest release** | none (will be the `v1.0` tag) |
 | **Due date** | Fri 10/30/2026 (§14 Q2, answered 10/20) |
 | **Blockers** | None on formats: §7.1 is filled for all four services (§14 Q3). Still open: §14 Q5 (public repo, or add the professor as a collaborator). |
@@ -388,7 +388,7 @@ Fill in names, GitHub handles, and OS (macOS/Windows) at kickoff, here and in `.
 
 | Role | Member | GitHub | OS | Owns | Reviews PRs from |
 |---|---|---|---|---|---|
-| **A — Platform & Release lead** | Michael Lippert | mlip3191 | Windows | Repo setup, config/credentials, shared HTTP client base and error model, library/job store, launch scripts, endpoint checks, secret scanning, README assembly, final ZIP & submission | E |
+| **A — Platform & Release lead** | Michael Lippert | mlip3191 | macOS | Repo setup, config/credentials, shared HTTP client base and error model, library/job store, launch scripts, endpoint checks, secret scanning, README assembly, final ZIP & submission | E |
 | **B — Song Generation** | Gunnar O'Connor | gunnaroc | TBD | F1, F1a, F1b: generation form, Qwen lyrics/title, ACE-Step client, song job pipeline | C |
 | **C — Cover Art, Samples & Evidence** | Felipe | felcervino | TBD | F2: FLUX client, art-prompt builder, cover display & retry; R1/DL2: sample generation script, manifest, generation log; screenshots | D |
 | **D — AI DJ & Launchers** | Dillon Smart | dilloncsmart | TBD | F3, F3a, F3b: Qwen commentary, Chatterbox client, voice upload validation, DJ prefetch | B |
