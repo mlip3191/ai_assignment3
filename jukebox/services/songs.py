@@ -166,6 +166,131 @@ def write_song_text(*, style: str, mood: str, theme: str | None, duration_s: int
     return parse_song_reply(reply, vocal=vocal)
 
 
+# ---- the real-artist safeguard (B8) -------------------------------------------------------------
+
+# Words that describe a sound rather than name someone, so "in the style of Latin jazz" or "Retro style
+# synths" are kept. Anything else after a pointer phrase ("in the style of", "sounds like", ...) is
+# treated as a name and removed. Bare names with no pointer phrase are not caught.
+_SOUND_WORDS = frozenset(
+    """
+    pop rock jazz blues soul funk disco house techno trance edm electronic electronica dance ambient
+    classical orchestral orchestra cinematic folk country bluegrass americana punk metal grunge emo indie
+    alternative hip hop hip-hop rap trap drill r&b rnb gospel reggae reggaeton ska dub dubstep drum bass
+    jungle garage grime lo-fi lofi chillhop chillwave synthwave vaporwave synth synths synth-pop synthpop
+    wave shoegaze dream psychedelic psych prog progressive post-rock krautrock industrial gothic goth
+    darkwave latin salsa bossa nova samba tango flamenco mariachi cumbia afrobeat afrobeats highlife
+    celtic irish bollywood k-pop j-pop kpop jpop anime chiptune 8-bit baroque opera choral acoustic
+    electric piano guitar guitars strings brass lounge swing bebop big band music beats
+    retro vintage classic modern old new epic dreamy dark soft heavy chill upbeat mellow warm bright
+    moody lush minimal experimental instrumental vocal vocals live raw smooth funky jazzy groovy early late
+    """.split()
+)
+_CONNECTORS = frozenset({"of", "the", "and", "&", "de", "la", "del", "van", "von", "da", "y"})
+_CAP = r"[A-ZÀ-ÖØ-Þ][\w'’.&+-]*"
+_NAME = rf"(?:[Tt]he\s+)?{_CAP}(?:\s+(?:(?:of|the|and|&|de|la|del|van|von|da|y)\s+)*{_CAP})*"
+_NAME_AT_START = re.compile(_NAME)
+_POINTER = re.compile(
+    r"\b(?:in\s+the\s+(?:style|vein|spirit)\s+of|sounds?\s+like|inspired\s+by|influenced\s+by"
+    r"|reminiscent\s+of|similar\s+to|(?:à|a)\s+la)\s+",
+    re.IGNORECASE,
+)
+_NAME_STYLE = re.compile(rf"(?<![\w'’-])({_NAME})(?:-|\s+)(?i:style|esque|inspired)\b")
+_LIKE_NAME = re.compile(rf"(?i:\blike)\s+({_NAME})")
+_ERA = re.compile(r"'?\d{2,4}s")
+
+
+@dataclass(frozen=True)
+class StyleCheck:
+    """Style or theme text with anything pointing at a real artist removed (PROJECT.md 8.1, H10)."""
+
+    text: str
+    removed: tuple[str, ...] = ()
+
+    @property
+    def warning(self) -> str | None:
+        """What the UI shows when something was removed, or None."""
+        if not self.removed:
+            return None
+        quoted = [f"“{phrase}”" for phrase in self.removed]
+        listed = quoted[0] if len(quoted) == 1 else ", ".join(quoted[:-1]) + " and " + quoted[-1]
+        return f"Removed {listed}. Songs are original and never imitate real artists."
+
+
+def check_style(text: str) -> StyleCheck:
+    """Remove "in the style of <name>", "sounds like <name>", "<Name>-esque", "like <Name>" and similar.
+
+    Genres and eras after such a phrase are kept ("in the style of 80s synthwave" becomes "80s synthwave").
+    B7's form shows `.warning`; `generate_song()` applies this to the style and theme as well.
+    """
+    if not isinstance(text, str) or not text.strip():
+        return StyleCheck(text if isinstance(text, str) else "")
+    removed: list[str] = []
+    parts = re.split(r"([,;])", text)
+    screened = [part if part in (",", ";") else _screen_part(part, removed) for part in parts]
+    if screened == parts:
+        return StyleCheck(text)
+    joined = re.sub(r"\s+", " ", "".join(screened))
+    joined = re.sub(r"\s*([,;])\s*", r"\1 ", joined)
+    joined = re.sub(r"(?:[,;]\s*){2,}", ", ", joined)
+    return StyleCheck(joined.strip(" ,;-"), tuple(removed))
+
+
+def _screen_part(part: str, removed: list[str]) -> str:
+    """One comma-separated part of the style, with any pointer at a real artist taken out."""
+    start = 0
+    while match := _POINTER.search(part, start):
+        rest = part[match.end() :]
+        name = _NAME_AT_START.match(rest)
+        if name and not _is_sound(name.group(0)):
+            removed.append(part[match.start() : match.end() + name.end()].strip())
+            part = part[: match.start()] + rest[name.end() :]
+        elif name:
+            part = part[: match.start()] + rest  # a genre ("Latin jazz"): keep it, drop the pointer words
+        else:
+            words = rest.split()
+            first_sound = next((i for i, word in enumerate(words) if _is_sound(word)), len(words))
+            if first_sound:
+                removed.append((match.group(0) + " ".join(words[:first_sound])).strip())
+            part = part[: match.start()] + " ".join(words[first_sound:])
+        start = match.start()
+    for pattern in (_NAME_STYLE, _LIKE_NAME):
+        part = pattern.sub(lambda m: _drop_name(m, removed), part)
+    return part
+
+
+def _drop_name(match: re.Match[str], removed: list[str]) -> str:
+    if _is_sound(match.group(1)):
+        return match.group(0)
+    removed.append(match.group(0).strip())
+    return ""
+
+
+def _is_sound(phrase: str) -> bool:
+    """True if every word describes a sound (a genre, era or descriptor), so it isn't a name."""
+    words = [w.lower().strip(".,'’\"()") for w in phrase.split()]
+    words = [w for w in words if w and w not in _CONNECTORS]
+    return bool(words) and all(_is_sound_word(w) for w in words)
+
+
+def _is_sound_word(word: str) -> bool:
+    if word in _SOUND_WORDS or _ERA.fullmatch(word):
+        return True
+    return "-" in word and all(p in _SOUND_WORDS or _ERA.fullmatch(p) for p in word.split("-") if p)
+
+
+def _screen_artists(style: str, theme: str | None) -> tuple[str, str | None]:
+    """Apply check_style to the style and theme before any model call. A style that named only an artist
+    is refused; a theme that named only an artist becomes no theme."""
+    if isinstance(style, str):
+        checked = check_style(style)
+        if checked.removed and not checked.text:
+            raise _bad_input("Describe the style without naming real artists.")
+        style = checked.text
+    if isinstance(theme, str):
+        theme = check_style(theme).text or None
+    return style, theme
+
+
 # ---- the pipeline (B6) --------------------------------------------------------------------------
 
 STAGE_QUEUED = "Queued"
@@ -215,6 +340,7 @@ def generate_song(
     track: Track | None = None
     try:
         yield job
+        style, theme = _screen_artists(style, theme)
         duration_s, seed = _check_inputs(style, mood, duration_s, seed)
         library = get_library() if library is None else library
         yield jobs.set_stage(job.id, STAGE_LYRICS if vocal else STAGE_TITLE)
