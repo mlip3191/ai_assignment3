@@ -221,23 +221,30 @@ def test_yields_are_snapshots(env: dict) -> None:
 
 @respx.mock
 def test_cover_job_starts_without_waiting(env: dict) -> None:
+    """The song finishes while the cover is still running, on another thread."""
     mock_qwen()
     mock_acestep()
-    started, release = threading.Event(), threading.Event()
-    seen: list[Track] = []
+    started, release, finished = threading.Event(), threading.Event(), threading.Event()
+    seen: list[tuple[Track, threading.Thread]] = []
 
     def slow_cover(track: Track) -> None:
-        seen.append(track)
+        seen.append((track, threading.current_thread()))
         started.set()
-        release.wait(5)
+        release.wait(10)
+        finished.set()
 
-    updates = run(env, start_cover=slow_cover)
-    assert updates[-1].status == "succeeded"  # the song finished while the cover was still running
-    assert started.wait(5)
-    assert not release.is_set()
-    assert seen[0].id == updates[-1].track_id
-    assert env["library"].get(seen[0].id) is not None  # the track is already in the library
-    release.set()
+    try:
+        updates = run(env, start_cover=slow_cover)
+        assert updates[-1].status == "succeeded"
+        assert not finished.is_set()  # a cover run inline would have finished before the song did
+        assert started.wait(5)
+        track, thread = seen[0]
+        assert thread is not threading.current_thread()
+        assert track.id == updates[-1].track_id
+        assert env["library"].get(track.id) is not None  # the track is already in the library
+    finally:
+        release.set()
+    assert finished.wait(5)
 
 
 @respx.mock
@@ -359,6 +366,53 @@ def test_blank_style_or_mood_fails_before_any_call(env: dict, field: str, messag
     assert updates[-1].status == "failed"
     assert updates[-1].error == f"ACE-Step couldn't process that request: {message}."
     assert qwen_route.call_count == 0
+
+
+@respx.mock
+def test_whole_number_floats_from_the_ui_are_accepted(env: dict) -> None:
+    """A Gradio slider or number box may send 60.0 instead of 60."""
+    mock_qwen()
+    submit, _ = mock_acestep()
+    updates = run(env, duration_s=30.0, seed=7.0)
+    assert updates[-1].status == "succeeded"
+    track = env["library"].get(updates[-1].track_id)
+    assert track.duration_s == 30 and isinstance(track.duration_s, int)
+    assert track.seed == 7 and isinstance(track.seed, int)
+    body = json.loads(submit.calls[0].request.content)
+    assert body["audio_duration"] == 30 and body["seed"] == 7
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"duration_s": 30.5}, "Duration must be a whole number of seconds"),
+        ({"duration_s": "30"}, "Duration must be a whole number of seconds"),
+        ({"duration_s": True}, "Duration must be a whole number of seconds"),
+        ({"seed": 7.5}, "Seed must be a whole number"),
+        ({"seed": "7"}, "Seed must be a whole number"),
+    ],
+)
+def test_fractional_or_non_numeric_inputs_fail_before_any_call(
+    env: dict, overrides: dict, message: str
+) -> None:
+    qwen_route = mock_qwen()
+    submit, _ = mock_acestep()
+    updates = run(env, **overrides)
+    assert [u.status for u in updates] == ["queued", "failed"]
+    assert updates[-1].error == f"ACE-Step couldn't process that request: {message}."
+    assert qwen_route.call_count == 0 and submit.call_count == 0
+
+
+@respx.mock
+def test_closing_right_after_queued_fails_the_job(env: dict) -> None:
+    mock_qwen()
+    updates = songs.generate_song(**SONG, library=env["library"], jobs=env["jobs"])
+    first = next(updates)
+    updates.close()
+    stored = env["jobs"].get(first.id)
+    assert stored.status == "failed"
+    assert stored.finished_at is not None
 
 
 @respx.mock

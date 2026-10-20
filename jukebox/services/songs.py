@@ -211,11 +211,11 @@ def generate_song(
     """
     jobs = JOBS if jobs is None else jobs
     job = jobs.create("song", STAGE_QUEUED)
-    yield job
     saved: Path | None = None
     track: Track | None = None
     try:
-        _check_inputs(style, mood, duration_s)
+        yield job
+        duration_s, seed = _check_inputs(style, mood, duration_s, seed)
         library = get_library() if library is None else library
         yield jobs.set_stage(job.id, STAGE_LYRICS if vocal else STAGE_TITLE)
         text = write_song_text(style=style, mood=mood, theme=theme, duration_s=duration_s, vocal=vocal)
@@ -260,16 +260,38 @@ def generate_song(
     yield jobs.succeed(job.id, track.id)
 
 
-def _check_inputs(style: str, mood: str, duration_s: int) -> None:
-    """Refuse what ACE-Step can't make before spending a Qwen call on it."""
+def _check_inputs(style: str, mood: str, duration_s: object, seed: object) -> tuple[int, int | None]:
+    """Refuse what ACE-Step can't make before spending a Qwen call on it.
+
+    Returns the duration and seed as ints: a Gradio slider or number box may send 60.0 for 60, and the
+    Track needs whole numbers (PROJECT.md 6.1).
+    """
     if not isinstance(style, str) or not style.strip():
         raise _bad_input("Choose a style.")
     if not isinstance(mood, str) or not mood.strip():
         raise _bad_input("Choose a mood.")
-    if not acestep.MIN_DURATION_S <= duration_s <= acestep.MAX_DURATION_S:
+    duration = _whole_number(duration_s)
+    if duration is None:
+        raise _bad_input("Duration must be a whole number of seconds.")
+    if not acestep.MIN_DURATION_S <= duration <= acestep.MAX_DURATION_S:
         raise _bad_input(
             f"Duration must be between {acestep.MIN_DURATION_S} and {acestep.MAX_DURATION_S} seconds."
         )
+    whole_seed = None if seed is None else _whole_number(seed)
+    if seed is not None and whole_seed is None:
+        raise _bad_input("Seed must be a whole number.")
+    return duration, whole_seed
+
+
+def _whole_number(value: object) -> int | None:
+    """`value` as an int if it is a whole number (60 or 60.0), else None. True and "60" are not numbers."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return None
 
 
 def _bad_input(reason: str) -> ServiceError:
@@ -432,10 +454,10 @@ def normalize_lyrics(text: str) -> str:
             sections.append((tag, []))
         elif _BRACKETED.match(_header_text(line)):
             continue  # an instrumental or performance note, not a sung line
-        elif sections:
-            sections[-1][1].append(line)
         else:
-            loose.append(line)
+            sung = _without_unmatched_brackets(line)
+            if sung:
+                (sections[-1][1] if sections else loose).append(sung)
     if not found_tag:
         raise _bad_response("the lyrics had no section tags")
     if loose:
@@ -445,6 +467,17 @@ def normalize_lyrics(text: str) -> str:
     kept = [(tag, lines) for tag, lines in sections if lines and tag != "intro"]
     blocks = ["[intro]"] + ["\n".join([f"[{tag}]", *lines]) for tag, lines in kept]
     return "\n\n".join(blocks)
+
+
+def _without_unmatched_brackets(line: str) -> str:
+    """A sung line without stray brackets ("Corporate chains are tight]", seen live in B6).
+
+    Matched pairs like "(with me)" stay; if a line's [ and ] (or ( and )) don't pair up, they all go.
+    """
+    for opening, closing in ("[]", "()"):
+        if line.count(opening) != line.count(closing):
+            line = line.replace(opening, "").replace(closing, "")
+    return " ".join(line.split())
 
 
 def _header_text(line: str) -> str:

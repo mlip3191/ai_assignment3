@@ -397,6 +397,19 @@ def test_lyric_lines_starting_with_a_section_word_are_kept(line: str) -> None:
     assert sung_lines(songs.normalize_lyrics(f"[verse]\n{line}")) == [line]
 
 
+def test_unmatched_brackets_are_removed_from_sung_lines() -> None:
+    """Seen live (B6): a reply ended its last line with a stray "]"."""
+    lyrics = songs.normalize_lyrics(
+        "[verse]\nCorporate chains are tight]\n[Oh yeah\n(Hold on\nStay (with me) tonight"
+    )
+    assert sung_lines(lyrics) == [
+        "Corporate chains are tight",
+        "Oh yeah",
+        "Hold on",
+        "Stay (with me) tonight",
+    ]
+
+
 def test_lyric_lines_that_look_like_words_are_kept() -> None:
     lyrics = songs.normalize_lyrics("[verse]\nChorus of angels singing\nTonight\n(oh-oh)\n[chorus]\nHold on")
     assert sung_lines(lyrics) == ["Chorus of angels singing", "Tonight", "(oh-oh)", "Hold on"]
