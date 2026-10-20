@@ -1,6 +1,6 @@
 """Tests for jukebox/clients/flux.py: the FLUX.2 klein 4B image client (task C2).
 
-All HTTP is mocked with respx. No real class service is ever called. The request and reply
+Covers are JPEG (release lead's decision on #4, 10/20). All HTTP is mocked with respx. No real class service is ever called. The request and reply
 shapes follow docs/spikes/C1-flux.md and the FLUX row of PROJECT.md 7.1.
 """
 
@@ -29,7 +29,8 @@ HOST = "class.example"
 PORTS = {"qwen": 9001, "flux": 9006, "acestep": 9007, "chatterbox": 9008}
 MODEL = "black-forest-labs/FLUX.2-klein-4B"
 FLUX_URL = f"http://{HOST}:{PORTS['flux']}/v1/images/generations"
-PNG = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + b"\x00" * 32
+JPEG = b"\xff\xd8\xff\xe0" + b"\x00\x10JFIF\x00" + b"\x00" * 32
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + b"\x00" * 32  # the wrong format now
 
 
 def _env(model: str | None = MODEL) -> dict[str, str]:
@@ -54,11 +55,11 @@ def client(cfg: Config):
     c.close()
 
 
-def _reply(raw: bytes = PNG, **extra: object) -> dict:
+def _reply(raw: bytes = JPEG, **extra: object) -> dict:
     return {
         "created": 1,
         "data": [{"b64_json": base64.b64encode(raw).decode("ascii"), "url": None, "revised_prompt": None}],
-        "output_format": "png",
+        "output_format": "jpeg",
         **extra,
     }
 
@@ -71,9 +72,9 @@ def _sent(route: respx.Route) -> dict:
 
 
 @respx.mock
-def test_success_returns_the_decoded_png_bytes(client: ServiceClient) -> None:
+def test_success_returns_the_decoded_jpeg_bytes(client: ServiceClient) -> None:
     respx.post(FLUX_URL).respond(200, json=_reply())
-    assert flux.generate_image("a calm lake", client=client) == PNG
+    assert flux.generate_image("a calm lake", client=client) == JPEG
 
 
 @respx.mock
@@ -87,8 +88,8 @@ def test_sends_the_documented_fields(client: ServiceClient) -> None:
         "size": "768x512",
         "seed": 42,
         "response_format": "b64_json",
-        "output_format": "png",
-        "output_compression": 1,
+        "output_format": "jpeg",
+        "output_compression": 90,
     }
     assert route.calls[0].request.headers["Authorization"] == f"Bearer {KEY}"
 
@@ -114,7 +115,7 @@ def test_model_field_is_left_out_when_flux_model_is_not_set(tmp_path: Path) -> N
 @respx.mock
 def test_builds_its_own_flux_client_from_config(cfg: Config) -> None:
     route = respx.post(FLUX_URL).respond(200, json=_reply())
-    assert flux.generate_image("a calm lake", config=cfg) == PNG
+    assert flux.generate_image("a calm lake", config=cfg) == JPEG
     assert route.call_count == 1
 
 
@@ -202,7 +203,7 @@ def test_a_pasted_v1_base_url_still_calls_the_documented_path(tmp_path: Path) ->
     env["FLUX_BASE_URL"] = f"http://{HOST}:{PORTS['flux']}/v1"
     cfg = load_config(env=env, env_file=tmp_path / "missing-file")
     route = respx.post(FLUX_URL).respond(200, json=_reply())
-    assert flux.generate_image("a calm lake", config=cfg) == PNG
+    assert flux.generate_image("a calm lake", config=cfg) == JPEG
     assert route.call_count == 1
 
 
@@ -239,8 +240,8 @@ def test_malformed_reply_becomes_bad_response(client: ServiceClient, body: objec
 
 
 @respx.mock
-def test_bytes_that_are_not_a_png_become_bad_response(client: ServiceClient) -> None:
-    respx.post(FLUX_URL).respond(200, json=_reply(raw=b"\xff\xd8\xff\xe0 a jpeg"))
+def test_bytes_that_are_not_a_jpeg_become_bad_response(client: ServiceClient) -> None:
+    respx.post(FLUX_URL).respond(200, json=_reply(raw=PNG))
     with pytest.raises(ServiceError) as exc:
         flux.generate_image("a calm lake", client=client)
     assert exc.value.kind == "bad_response"
@@ -258,21 +259,21 @@ def test_key_and_image_data_never_reach_the_logs(
         flux.generate_image("a calm lake", client=client)
     text = caplog.text
     assert KEY not in text
-    assert base64.b64encode(PNG).decode("ascii") not in text
+    assert base64.b64encode(JPEG).decode("ascii") not in text
     assert "flux -> class.example:9006 200" in text
 
 
 @respx.mock
 def test_base64_split_across_lines_is_still_decoded(client: ServiceClient) -> None:
-    encoded = base64.b64encode(PNG).decode("ascii")
+    encoded = base64.b64encode(JPEG).decode("ascii")
     wrapped = "\n".join(encoded[i : i + 20] for i in range(0, len(encoded), 20)) + "\r\n"
     respx.post(FLUX_URL).respond(200, json={"data": [{"b64_json": wrapped}]})
-    assert flux.generate_image("a calm lake", client=client) == PNG
+    assert flux.generate_image("a calm lake", client=client) == JPEG
 
 
 @pytest.mark.parametrize("junk", ["\t", "\u00a0", " "])
 def test_other_whitespace_inside_the_base64_is_still_rejected(client: ServiceClient, junk: str) -> None:
-    encoded = base64.b64encode(PNG).decode("ascii")
+    encoded = base64.b64encode(JPEG).decode("ascii")
     broken = encoded[:10] + junk + encoded[10:]
     with respx.mock:
         respx.post(FLUX_URL).respond(200, json={"data": [{"b64_json": broken}]})

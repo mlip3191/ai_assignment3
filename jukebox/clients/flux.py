@@ -17,11 +17,11 @@ from jukebox.config import Config
 from jukebox.errors import ServiceError
 
 PATH = "/v1/images/generations"
-OUTPUT_FORMAT = "png"
-# 1 is the strongest PNG compression: about 1.4 MB per 1024x1024 cover instead of 3.1 MB,
-# lossless, for about 0.6 s extra (C1).
-OUTPUT_COMPRESSION = 1
-SIGNATURE = b"\x89PNG\r\n\x1a\n"
+OUTPUT_FORMAT = "jpeg"
+# For JPEG this is the encoder quality. 90 gives about 0.15 MB per 1024x1024 cover instead of
+# about 1.4 MB as compressed PNG, at the same speed (C1 follow-up on #4; release lead's choice).
+OUTPUT_COMPRESSION = 90
+SIGNATURE = b"\xff\xd8\xff"  # every JPEG starts with an SOI marker followed by another marker
 
 
 def generate_image(
@@ -33,7 +33,7 @@ def generate_image(
     config: Config | None = None,
     client: ServiceClient | None = None,
 ) -> bytes:
-    """Generate one image and return its PNG bytes, or raise ServiceError(service="flux").
+    """Generate one image and return its JPEG bytes, or raise ServiceError(service="flux").
 
     `config` and `client` are for tests and callers that already hold one; by default a FLUX client
     is built from the app's settings and closed afterwards.
