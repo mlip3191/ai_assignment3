@@ -1,0 +1,119 @@
+"""The shared data shapes (PROJECT.md 6.1 Track, 6.2 Job). Changes require a PR to PROJECT.md first."""
+
+from __future__ import annotations
+
+import dataclasses
+import functools
+import typing
+from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Literal
+
+Source = Literal["sample", "generated"]
+JobKind = Literal["song", "cover", "dj"]
+JobStatus = Literal["queued", "running", "succeeded", "failed"]
+
+
+@dataclass
+class Track:
+    id: str  # uuid4 hex; samples use "sample_01".."sample_03"
+    title: str
+    style: str  # genre/style tags, e.g. "lo-fi hip hop, jazzy keys"
+    mood: str  # e.g. "mellow", "triumphant"
+    theme: str | None  # optional user idea, e.g. "road trip"; feeds lyrics, cover, and DJ
+    duration_s: int  # requested duration
+    vocal: bool
+    lyrics: str | None  # None for instrumentals
+    audio_path: str  # path under samples/ or runtime/generated/
+    cover_path: str | None  # None until cover succeeds -> UI shows placeholder + retry
+    cover_prompt: str | None  # the exact FLUX prompt used (for docs/evidence)
+    source: Source
+    seed: int | None
+    created_at: str  # ISO 8601
+
+    def __post_init__(self) -> None:
+        """Hold a Track built directly to the same rules as one built by from_dict: every field has the
+        right type, then the values other code relies on make sense."""
+        _check_types(type(self), {f.name: getattr(self, f.name) for f in dataclasses.fields(self)})
+        for name in ("id", "audio_path"):
+            if not getattr(self, name).strip():
+                raise _invalid("Track", name, getattr(self, name), "must not be empty")
+        if self.cover_path is not None and not self.cover_path.strip():
+            raise _invalid("Track", "cover_path", self.cover_path, "must be a non-empty string or None")
+        if self.duration_s <= 0:
+            raise _invalid("Track", "duration_s", self.duration_s, "must be greater than 0")
+        try:
+            datetime.fromisoformat(self.created_at)
+        except ValueError:
+            raise _invalid("Track", "created_at", self.created_at, "must be an ISO 8601 string") from None
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Track:
+        return cls(**_checked_fields(cls, data))
+
+
+@dataclass
+class Job:
+    id: str
+    kind: JobKind
+    status: JobStatus
+    stage: str  # human-readable, e.g. "Writing lyrics…", "Composing music…"
+    track_id: str | None
+    error: str | None  # user-facing message (7.3), never a raw traceback or secret
+    started_at: str
+    finished_at: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Job:
+        return cls(**_checked_fields(cls, data))
+
+
+def _invalid(cls_name: str, field: str, value: Any, why: str) -> ValueError:
+    return ValueError(f"{cls_name}.{field} has an invalid value: {value!r} ({why})")
+
+
+def _checked_fields(cls: type, data: Mapping[str, Any]) -> dict[str, Any]:
+    """Return `data` as constructor arguments, or raise ValueError naming the first problem."""
+    if not isinstance(data, Mapping):
+        raise ValueError(f"{cls.__name__} must be built from a mapping, got {type(data).__name__}")
+    names = [f.name for f in dataclasses.fields(cls)]
+    missing = [n for n in names if n not in data]
+    if missing:
+        raise ValueError(f"{cls.__name__} is missing field(s): {', '.join(missing)}")
+    unknown = sorted(set(data) - set(names))
+    if unknown:
+        raise ValueError(f"{cls.__name__} has unknown field(s): {', '.join(map(str, unknown))}")
+    _check_types(cls, data)
+    return {name: data[name] for name in names}
+
+
+@functools.cache
+def _hints(cls: type) -> dict[str, Any]:
+    return typing.get_type_hints(cls)
+
+
+def _check_types(cls: type, values: Mapping[str, Any]) -> None:
+    """Raise ValueError naming the first field of `cls` whose value has the wrong type."""
+    hints = _hints(cls)
+    for field in dataclasses.fields(cls):
+        if not _matches(hints[field.name], values[field.name]):
+            raise _invalid(cls.__name__, field.name, values[field.name], "wrong type")
+
+
+def _matches(hint: Any, value: Any) -> bool:
+    if typing.get_origin(hint) is Literal:
+        return value in typing.get_args(hint)
+    if hint == str | None:
+        return value is None or isinstance(value, str)
+    if hint == int | None:
+        return value is None or (isinstance(value, int) and not isinstance(value, bool))
+    if hint is int:
+        return isinstance(value, int) and not isinstance(value, bool)
+    return isinstance(value, hint)
