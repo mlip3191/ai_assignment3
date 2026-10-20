@@ -1,27 +1,39 @@
 """Song generation (PROJECT.md 8.1). Models: Qwen for the title and lyrics, ACE-Step for the audio.
 
-B5 part: the title and lyrics prompts (`jukebox/prompts/lyrics.md`, `title.md`) and the parser for Qwen's
-reply. `write_song_text()` makes one Qwen call and returns a `SongText`; the song pipeline (B6) passes its
-lyrics to ACE-Step.
+`generate_song()` is the pipeline (B6): it checks the inputs, has Qwen write the title (and lyrics for a
+vocal song), has ACE-Step compose the audio, saves it to `runtime/generated/{track_id}.{ext}`, adds the
+Track to the library and starts the cover job without waiting for it. It yields a Job snapshot at every
+stage for the UI, and never raises: any failure ends the job with a PROJECT.md 7.3 message.
 
-Lyrics use ACE-Step's lowercase section tags (PROJECT.md 7.1). Their structure scales with the duration
-(`plan_sections`) and always starts with an empty `[intro]`, because lyrics that don't fit the length,
-or singing that starts at 0 s, came out garbled in the live tests (B2, B4).
+The title and lyrics prompts (`jukebox/prompts/lyrics.md`, `title.md`) and the parser for Qwen's reply
+are B5. Lyrics use ACE-Step's lowercase section tags (PROJECT.md 7.1). Their structure scales with the
+duration (`plan_sections`) and always starts with an empty `[intro]`, because lyrics that don't fit the
+length, or singing that starts at 0 s, came out garbled in the live tests (B2, B4).
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import re
+import threading
+import uuid
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from string import Template
 
-from jukebox.clients import qwen
+from jukebox.clients import acestep, qwen
 from jukebox.errors import ServiceError
+from jukebox.jobs import JobStore
+from jukebox.library import Library, get_library
+from jukebox.models import Job, Track
+
+log = logging.getLogger(__name__)
 
 PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
-LYRICS_MAX_TOKENS = 1200  # the longest planned song is about 40 lines
+LYRICS_MAX_TOKENS = 1200  # the longest planned song is 18 lines; room to spare for a wordy reply
 TITLE_MAX_TOKENS = 100
 TEMPERATURE = 0.8
 MAX_INPUT_CHARS = 200  # style, mood and theme as sent to Qwen
@@ -89,12 +101,14 @@ def load_prompt(name: str) -> Prompt:
 def plan_sections(duration_s: int) -> list[tuple[str, int]]:
     """The song's sections and how many lines each gets, scaled to the duration.
 
-    Roughly two sung sections per 30 s (PROJECT.md 8.1). Tuned by ear at 30 s and 60 s (B5): under 20 s,
-    a 2-line verse; under 30 s, 2-line verse and chorus; under 40 s, one verse and chorus; under 75 s, two
-    of each and an outro; from 75 s, a bridge before the last chorus, and one more verse and chorus per
-    extra minute, up to two more.
+    Write only what ACE-Step will sing. Heard in B5 and B6: from 30 to 60 s it sings about one verse and
+    one chorus (8 to 10 lines). Given more, it skips whole sections from the middle of the song (18 lines
+    at 45, 50 and 60 s came out as the first verse, part of the chorus and the outro), so extra lines only
+    make the song lose its middle. Under 20 s, a 2-line verse; under 30 s, 2-line verse and chorus; under
+    40 s, verse and chorus; under 75 s, verse, chorus and outro (at 60 s only the outro was dropped);
+    from 75 s, two verses and choruses and an outro (not yet heard).
     """
-    verse, chorus, bridge, outro = ("verse", 4), ("chorus", 4), ("bridge", 4), ("outro", 2)
+    verse, chorus, outro = ("verse", 4), ("chorus", 4), ("outro", 2)
     if duration_s < 20:
         body = [("verse", 2)]
     elif duration_s < 30:
@@ -102,10 +116,9 @@ def plan_sections(duration_s: int) -> list[tuple[str, int]]:
     elif duration_s < 40:
         body = [verse, chorus]
     elif duration_s < 75:
-        body = [verse, chorus, verse, chorus, outro]
+        body = [verse, chorus, outro]
     else:
-        extra = min(2, (duration_s - 75) // 60)
-        body = [verse, chorus, verse, chorus] + [verse, chorus] * extra + [bridge, chorus, outro]
+        body = [verse, chorus, verse, chorus, outro]
     return [("intro", 0), *body]
 
 
@@ -151,6 +164,151 @@ def write_song_text(*, style: str, mood: str, theme: str | None, duration_s: int
     messages = build_messages(name, style=style, mood=mood, theme=theme, duration_s=duration_s)
     reply = qwen.chat(messages, max_tokens=max_tokens, temperature=TEMPERATURE)
     return parse_song_reply(reply, vocal=vocal)
+
+
+# ---- the pipeline (B6) --------------------------------------------------------------------------
+
+STAGE_QUEUED = "Queued"
+STAGE_LYRICS = "Writing lyrics…"
+STAGE_TITLE = "Naming your track…"
+STAGE_MUSIC = "Composing music…"
+STAGE_SAVING = "Saving your song…"
+STAGE_DONE = "Added to your library"
+GENERATED_DIR = "runtime/generated"  # stored paths are relative to the repo root (PROJECT.md 6.3)
+
+# Song jobs go here unless the caller passes the app's own store.
+JOBS = JobStore()
+
+
+def build_tags(style: str, mood: str, *, vocal: bool) -> str:
+    """ACE-Step's style tags: the style, the mood, and the voice or "instrumental".
+
+    "warm natural vocals" because the default voice came out too high-pitched and whiny (B2, B6). A voice
+    the user puts in the style ("deep male vocals") comes first, so it wins.
+    """
+    return ", ".join([style.strip(), mood.strip(), "warm natural vocals" if vocal else "instrumental"])
+
+
+def generate_song(
+    *,
+    style: str,
+    mood: str,
+    duration_s: int,
+    vocal: bool,
+    theme: str | None = None,
+    seed: int | None = None,
+    library: Library | None = None,
+    jobs: JobStore | None = None,
+    start_cover: Callable[[Track], object] | None = None,
+) -> Iterator[Job]:
+    """Make one song and yield a Job snapshot at every stage (R5).
+
+    The last snapshot is `succeeded` with the new `track_id`, or `failed` with a user-facing `error`
+    (PROJECT.md 7.3). It never raises, so the UI can always re-enable its buttons. The Track joins the
+    library only after its audio is saved (6.3); after any failure there is no track and no audio file.
+    `start_cover(track)` runs on a background thread once the track is in the library, and nothing it
+    does (slow, failing) affects the song.
+    """
+    jobs = JOBS if jobs is None else jobs
+    job = jobs.create("song", STAGE_QUEUED)
+    yield job
+    saved: Path | None = None
+    track: Track | None = None
+    try:
+        _check_inputs(style, mood, duration_s)
+        library = get_library() if library is None else library
+        yield jobs.set_stage(job.id, STAGE_LYRICS if vocal else STAGE_TITLE)
+        text = write_song_text(style=style, mood=mood, theme=theme, duration_s=duration_s, vocal=vocal)
+        yield jobs.set_stage(job.id, STAGE_MUSIC)
+        audio, ext = acestep.generate_music(
+            tags=build_tags(style, mood, vocal=vocal), lyrics=text.lyrics, duration_s=duration_s, seed=seed
+        )
+        yield jobs.set_stage(job.id, STAGE_SAVING)
+        track_id = uuid.uuid4().hex
+        audio_path = f"{GENERATED_DIR}/{track_id}.{ext}"
+        saved = _save_audio(library.resolve(audio_path), audio)
+        track = library.add(
+            Track(
+                id=track_id,
+                title=text.title,
+                style=style.strip(),
+                mood=mood.strip(),
+                theme=theme.strip() if theme and theme.strip() else None,
+                duration_s=duration_s,
+                vocal=vocal,
+                lyrics=text.lyrics,
+                audio_path=audio_path,
+                cover_path=None,
+                cover_prompt=None,
+                source="generated",
+                seed=seed,
+                created_at=datetime.now(UTC).isoformat(timespec="seconds"),
+            )
+        )
+        saved = None  # the library has it now
+        jobs.set_stage(job.id, STAGE_DONE, track.id)
+    except GeneratorExit:
+        # The UI stopped listening part-way. Finish the job so it never stays "running".
+        _discard(saved)
+        jobs.fail(job.id, "stopped before the song was finished")
+        raise
+    except Exception as e:  # every failure ends the job; ServiceError gets its 7.3 message
+        _discard(saved)
+        yield jobs.fail(job.id, e)
+        return
+    _start_cover(start_cover, track)
+    yield jobs.succeed(job.id, track.id)
+
+
+def _check_inputs(style: str, mood: str, duration_s: int) -> None:
+    """Refuse what ACE-Step can't make before spending a Qwen call on it."""
+    if not isinstance(style, str) or not style.strip():
+        raise _bad_input("Choose a style.")
+    if not isinstance(mood, str) or not mood.strip():
+        raise _bad_input("Choose a mood.")
+    if not acestep.MIN_DURATION_S <= duration_s <= acestep.MAX_DURATION_S:
+        raise _bad_input(
+            f"Duration must be between {acestep.MIN_DURATION_S} and {acestep.MAX_DURATION_S} seconds."
+        )
+
+
+def _bad_input(reason: str) -> ServiceError:
+    return ServiceError("acestep", "bad_request", f"input check: {reason}", reason=reason)
+
+
+def _save_audio(path: Path, audio: bytes) -> Path:
+    """Write the audio under a temporary name first, so a half-written file is never visible."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    part = path.with_name(path.name + ".part")
+    try:
+        part.write_bytes(audio)
+        part.replace(path)
+    except BaseException:
+        part.unlink(missing_ok=True)
+        raise
+    return path
+
+
+def _discard(path: Path | None) -> None:
+    if path is not None:
+        path.unlink(missing_ok=True)
+
+
+def _start_cover(start_cover: Callable[[Track], object] | None, track: Track) -> None:
+    """Run the cover job on its own thread. A cover problem is logged, never passed to the song."""
+    if start_cover is None:
+        return
+
+    def run() -> None:
+        try:
+            start_cover(track)
+        except Exception as e:
+            log.warning("cover job for track %s failed (%s)", track.id, type(e).__name__)
+
+    try:
+        threading.Thread(target=run, name=f"cover-{track.id[:8]}", daemon=True).start()
+    except RuntimeError:
+        log.warning("cover job for track %s could not start", track.id)
 
 
 # ---- parsing the reply --------------------------------------------------------------------------
