@@ -94,11 +94,42 @@ def song_style(spec: SampleSpec) -> str:
     return f"{spec.style}, {spec.voice_tags}" if spec.vocal and spec.voice_tags else spec.style
 
 
-def default_make_song(spec: SampleSpec) -> Track:
-    """Run one spec through the app's song pipeline (B6) and return the generated Track."""
-    raise NotImplementedError(
-        "the song step waits for B6 (jukebox/services/songs.py); wire it here once B6 is merged"
-    )
+class SampleError(RuntimeError):
+    """A sample could not be made. The message is the pipeline's plain-language (7.3) message."""
+
+
+def default_make_song(spec: SampleSpec, *, library: Library | None = None) -> Track:
+    """Run one spec through the app's song pipeline (B6) and return the generated Track.
+
+    B6's generate_song() yields Job snapshots and never raises: the last one is either succeeded, with
+    the track_id of the Track it added to `library`, or failed, with the 7.3 message. No cover job is
+    started (its start_cover hook is left unset); C5 makes the sample covers itself.
+    """
+    from jukebox.services import songs
+
+    generate_song = getattr(songs, "generate_song", None)
+    if generate_song is None:
+        raise NotImplementedError(
+            "the song step needs B6's songs.generate_song() (jukebox/services/songs.py), not merged yet"
+        )
+    lib = library if library is not None else Library()  # its own library, not the app's
+    job = None
+    for job in generate_song(
+        style=song_style(spec),
+        mood=spec.mood,
+        duration_s=spec.duration_s,
+        vocal=spec.vocal,
+        theme=spec.theme,
+        seed=spec.seed,
+        library=lib,
+    ):
+        print(f"    {spec.id}: {job.stage}")
+    if job is None or job.status != "succeeded" or not job.track_id:
+        raise SampleError(f"{spec.id}: {getattr(job, 'error', None) or 'the song pipeline did not finish'}")
+    track = lib.get(job.track_id)
+    if track is None:
+        raise SampleError(f"{spec.id}: the song pipeline reported success but the song is not in the library")
+    return track
 
 
 DescribePrompt = Callable[[SampleSpec], list[dict[str, str]] | None]
@@ -305,7 +336,10 @@ def render_log(
             for message in e.song_prompt:
                 lines += [f"{message['role'].capitalize()}:", "", "```", message["content"], "```", ""]
         else:
-            lines += ["Qwen song prompt not recorded (the song pipeline's prompt builder was unavailable).", ""]
+            lines += [
+                "Qwen song prompt not recorded (the song pipeline's prompt builder was unavailable).",
+                "",
+            ]
         lines += ["**Lyrics** (exactly as generated, unedited)", ""]
         lines += ["```", t.lyrics, "```"] if t.lyrics else ["Instrumental: no lyrics."]
         lines += [
@@ -351,6 +385,9 @@ def main() -> int:
         tracks = build_samples(SPECS, operator=operator, commit=commit, models=models)
     except ServiceError as err:
         print(f"Stopped: {user_message(err)} samples/ was not changed.")
+        return 1
+    except SampleError as err:
+        print(f"Stopped: {err} samples/ was not changed.")
         return 1
     for t in tracks:
         print(f"  {t.id}: {t.title}  ({t.audio_path}, {t.cover_path})")

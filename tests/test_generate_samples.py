@@ -210,7 +210,78 @@ def test_a_rerun_replaces_the_previous_samples(tmp_path: Path) -> None:
 # ---- wiring -----------------------------------------------------------------------------------
 
 
-def test_default_song_step_says_clearly_that_it_waits_for_b6() -> None:
+class FakeJob:
+    def __init__(self, stage: str, status: str, track_id: str | None = None, error: str | None = None):
+        self.stage, self.status, self.track_id, self.error = stage, status, track_id, error
+
+
+def fake_songs_module(root: Path, *, fail: bool = False):
+    """Stands in for B6's jukebox.services.songs: generate_song() yields Job snapshots and adds the Track
+    to the library it is given (the interface @gunnaroc posted on #3)."""
+    import types
+
+    calls: list[dict] = []
+
+    def generate_song(*, style, mood, duration_s, vocal, theme, seed, library):
+        calls.append(dict(style=style, mood=mood, duration_s=duration_s, vocal=vocal, theme=theme, seed=seed))
+        yield FakeJob("Queued", "queued")
+        yield FakeJob("Writing lyrics…", "running")
+        if fail:
+            yield FakeJob(
+                "Composing music…", "failed", error="The ACE-Step service took too long to respond."
+            )
+            return
+        (root / "runtime" / "generated").mkdir(parents=True, exist_ok=True)
+        (root / "runtime" / "generated" / "abc.mp3").write_bytes(MP3)
+        library.add(
+            Track(
+                id="abc", title="Made by B6", style=style, mood=mood, theme=theme, duration_s=duration_s,
+                vocal=vocal, lyrics="[verse]\nla" if vocal else None, audio_path="runtime/generated/abc.mp3",
+                cover_path=None, cover_prompt=None, source="generated", seed=seed, created_at=NOW,
+            )
+        )  # fmt: skip
+        yield FakeJob("Added to your library", "succeeded", track_id="abc")
+
+    module = types.SimpleNamespace(generate_song=generate_song, calls=calls)
+    return module
+
+
+def test_the_song_step_runs_b6_to_the_end_and_returns_its_track(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import jukebox.services as services
+
+    fake = fake_songs_module(tmp_path)
+    monkeypatch.setattr(services, "songs", fake, raising=False)
+    monkeypatch.setitem(sys.modules, "jukebox.services.songs", fake)
+    spec = gs.SPECS[1]
+    track = gs.default_make_song(spec, library=Library(root=tmp_path))
+    assert track.title == "Made by B6" and track.seed == spec.seed
+    assert fake.calls == [
+        dict(style=gs.song_style(spec), mood=spec.mood, duration_s=spec.duration_s, vocal=True,
+             theme=spec.theme, seed=spec.seed)
+    ]  # fmt: skip
+
+
+def test_a_failed_song_stops_the_run_with_b6s_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import jukebox.services as services
+
+    fake = fake_songs_module(tmp_path, fail=True)
+    monkeypatch.setattr(services, "songs", fake, raising=False)
+    monkeypatch.setitem(sys.modules, "jukebox.services.songs", fake)
+    with pytest.raises(gs.SampleError, match="took too long"):
+        gs.default_make_song(gs.SPECS[0], library=Library(root=tmp_path))
+
+
+def test_without_b6_the_song_step_says_so_clearly(monkeypatch: pytest.MonkeyPatch) -> None:
+    import types
+
+    import jukebox.services as services
+
+    monkeypatch.setattr(services, "songs", types.SimpleNamespace(), raising=False)
+    monkeypatch.setitem(sys.modules, "jukebox.services.songs", types.SimpleNamespace())
     with pytest.raises(NotImplementedError, match="B6"):
         gs.default_make_song(gs.SPECS[0])
 
