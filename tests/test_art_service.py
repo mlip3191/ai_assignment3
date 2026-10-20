@@ -91,16 +91,16 @@ def test_the_tracks_seed_is_passed_to_flux(library: Library, root: Path) -> None
 def test_cover_for_looks_up_by_track_id_not_position(library: Library, root: Path) -> None:
     cover("t2", library, root)
     placeholder = art.placeholder_path()
-    assert art.cover_for("t2", library=library, root=root) == root / "runtime" / "generated" / "t2.png"
-    assert art.cover_for("t1", library=library, root=root) == placeholder
-    assert art.cover_for("t3", library=library, root=root) == placeholder
+    assert art.cover_for("t2", library=library) == root / "runtime" / "generated" / "t2.png"
+    assert art.cover_for("t1", library=library) == placeholder
+    assert art.cover_for("t3", library=library) == placeholder
 
 
 def test_each_track_keeps_its_own_cover_after_several_generations(library: Library, root: Path) -> None:
     for track_id in ("t3", "t1", "t2"):
         cover(track_id, library, root)
     for track_id in ("t1", "t2", "t3"):
-        assert art.cover_for(track_id, library=library, root=root).name == f"{track_id}.png"
+        assert art.cover_for(track_id, library=library).name == f"{track_id}.png"
         assert f"Song {track_id}," in library.get(track_id).cover_prompt
 
 
@@ -121,7 +121,7 @@ def test_flux_failure_keeps_the_song_and_shows_the_placeholder(library: Library,
     track = library.get("t1")
     assert track is not None and track.cover_path is None
     assert not (root / "runtime" / "generated" / "t1.png").exists()
-    assert art.cover_for("t1", library=library, root=root) == art.placeholder_path()
+    assert art.cover_for("t1", library=library) == art.placeholder_path()
 
 
 def test_qwen_failure_also_keeps_the_song(library: Library, root: Path) -> None:
@@ -141,23 +141,23 @@ def test_retry_cover_replaces_the_placeholder(library: Library, root: Path) -> N
         cover("t1", library, root, generate=FakeFlux(fail=ServiceError("flux", "unavailable", "down")))
     updated = art.retry_cover("t1", library=library, root=root, chat=fake_chat, generate=FakeFlux())
     assert updated.cover_path == "runtime/generated/t1.png"
-    assert art.cover_for("t1", library=library, root=root).name == "t1.png"
+    assert art.cover_for("t1", library=library).name == "t1.png"
 
 
 def test_a_cover_file_that_disappeared_falls_back_to_the_placeholder(library: Library, root: Path) -> None:
     cover("t1", library, root)
     (root / "runtime" / "generated" / "t1.png").unlink()
-    assert art.cover_for("t1", library=library, root=root) == art.placeholder_path()
+    assert art.cover_for("t1", library=library) == art.placeholder_path()
 
 
 def test_a_cover_path_written_with_backslashes_still_resolves(library: Library, root: Path) -> None:
     (root / "runtime" / "generated" / "t3.png").write_bytes(PNG)
     library.attach_cover("t3", "runtime\\generated\\t3.png", "p")
-    assert art.cover_for("t3", library=library, root=root) == root / "runtime" / "generated" / "t3.png"
+    assert art.cover_for("t3", library=library) == root / "runtime" / "generated" / "t3.png"
 
 
 def test_unknown_track_shows_the_placeholder_and_cannot_get_a_cover(library: Library, root: Path) -> None:
-    assert art.cover_for("nope", library=library, root=root) == art.placeholder_path()
+    assert art.cover_for("nope", library=library) == art.placeholder_path()
     with pytest.raises(LibraryError):
         cover("nope", library, root)
 
@@ -232,7 +232,7 @@ def test_a_save_failure_finishes_the_job_and_keeps_the_song(
     with pytest.raises(OSError):
         cover("t1", library, root, jobs=jobs)
     assert jobs.list()[0].status == "failed"
-    assert art.cover_for("t1", library=library, root=root) == art.placeholder_path()
+    assert art.cover_for("t1", library=library) == art.placeholder_path()
 
 
 def test_two_covers_for_the_same_track_at_once_do_not_collide(library: Library, root: Path) -> None:

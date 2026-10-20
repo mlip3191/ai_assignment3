@@ -218,11 +218,15 @@ def retry_cover(track_id: str, **kwargs) -> Track:
     return make_cover(track_id, **kwargs)
 
 
-def cover_for(track_id: str, *, library: Library | None = None, root: Path = ROOT) -> Path:
-    """The image file to show for a track, always looked up by id: its cover, or the placeholder."""
-    track = (library or get_library()).get(track_id)
+def cover_for(track_id: str, *, library: Library | None = None) -> Path:
+    """The image file to show for a track, always looked up by id: its cover, or the placeholder.
+
+    Paths are resolved by the library itself (`Library.resolve`), the same rule the UI uses.
+    """
+    lib = library or get_library()
+    track = lib.get(track_id)
     if track and track.cover_path:
-        path = Path(root) / track.cover_path.replace("\\", "/")
+        path = lib.resolve(track.cover_path)
         if path.is_file():
             return path
     return placeholder_path()
