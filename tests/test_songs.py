@@ -249,6 +249,12 @@ def test_plain_text_fallback_keeps_sections_split_by_blank_lines() -> None:
     assert sung_lines(songs.parse_song_reply(one_last_line, vocal=True).lyrics)[-1] == "Keep it free"
     chat_word = "Title: Open Road\n[verse]\nWindows down\n[chorus]\nKeep it rolling\n\nEnjoy the ride tonight"
     assert sung_lines(songs.parse_song_reply(chat_word, vocal=True).lyrics)[-1] == "Enjoy the ride tonight"
+    for last in ("Sing it like a love song", "I hope this song finds you"):
+        reply = f"Title: Open Road\n[verse]\nWindows down\n[chorus]\nKeep it rolling\n{last}"
+        assert sung_lines(songs.parse_song_reply(reply, vocal=True).lyrics)[-1] == last
+    for sign_off in ("Hope you enjoy this song!", "Let me know if you'd like changes to the lyrics."):
+        reply = f"Title: Open Road\n[verse]\nWindows down\n[chorus]\nKeep it rolling\n\n{sign_off}"
+        assert sung_lines(songs.parse_song_reply(reply, vocal=True).lyrics)[-1] == "Keep it rolling"
 
 
 def test_a_stray_json_object_before_the_song_is_skipped() -> None:

@@ -46,9 +46,10 @@ _PARENTHESIZED = re.compile(r"^\(([^)]*)\)$")
 _REPEAT_MARK = re.compile(r"\s*[(\[]\s*(?:x\s*\d+|\d+\s*x|repeat\b[^)\]]*)\s*[)\]]\s*$", re.IGNORECASE)
 _BARE_REPEAT = re.compile(r"^x\s*\d+$", re.IGNORECASE)
 _LENIENT_JSON = json.JSONDecoder(strict=False)  # allows real line breaks inside strings
-# A closing chat line such as "Hope you enjoy this song!": a chat word and a word about the song.
+# A closing chat line such as "Hope you enjoy this song!": a phrase aimed at the listener and a word about
+# the song. Single words like "hope" or "like" are too common in lyrics to count.
 _SIGN_OFF = re.compile(
-    r"^(?=.*\b(?:hope|enjoy|let me know|feel free|happy to|like)\b)(?=.*\b(?:song|lyrics|track)\b)",
+    r"^(?=.*\b(?:hope you|enjoy (?:this|the)|let me know|feel free|happy to)\b)(?=.*\b(?:song|lyrics|track)\b)",
     re.IGNORECASE,
 )
 _TITLE_LINE = re.compile(r"^[\s*_#>]*title[\s*_]*[:\-][\s*_]*(.+)$", re.IGNORECASE | re.MULTILINE)
