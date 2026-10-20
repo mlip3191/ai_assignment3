@@ -116,6 +116,88 @@ def test_genres_after_a_pointer_phrase_are_kept(raw: str, cleaned: str) -> None:
 
 
 @pytest.mark.parametrize(
+    ("raw", "cleaned"),
+    [
+        ("in the style of southern rock", "southern rock"),
+        ("in the style of trip hop", "trip hop"),
+        ("inspired by bedroom pop", "bedroom pop"),
+        ("sounds like yacht rock", "yacht rock"),
+        ("in the style of video game music", "video game music"),
+        ("inspired by rainy nights", "rainy nights"),
+        ("in the spirit of summer", "summer"),
+        ("sounds like a movie soundtrack", "sounds like a movie soundtrack"),
+        ("in the style of a lullaby", "in the style of a lullaby"),
+        ("a love song inspired by my grandmother", "a love song inspired by my grandmother"),
+    ],
+)
+def test_descriptive_phrases_after_a_pointer_are_kept(raw: str, cleaned: str) -> None:
+    """Review finding: ordinary lowercase descriptions were cut short or refused as artist names."""
+    result = songs.check_style(raw)
+    assert result.text == cleaned
+    assert result.removed == ()
+
+
+@pytest.mark.parametrize(
+    ("raw", "cleaned"),
+    [
+        ("in the style of Detroit techno", "Detroit techno"),
+        ("sounds like Chicago house", "Chicago house"),
+        ("in the style of UK garage", "UK garage"),
+        ("inspired by French house", "French house"),
+        ("in the style of Spanish guitar", "Spanish guitar"),
+        ("in the style of Japanese city pop", "Japanese city pop"),
+        ("in the style of Nashville country", "Nashville country"),
+        ("in the style of Neo-Soul", "Neo-Soul"),
+        ("sounds like Christmas", "Christmas"),
+        ("Western-style guitar", "Western-style guitar"),
+        ("Spaghetti Western style", "Spaghetti Western style"),
+        ("in the style of New Orleans jazz", "New Orleans jazz"),
+    ],
+)
+def test_places_and_capitalized_genres_are_kept(raw: str, cleaned: str) -> None:
+    """Review finding: places, nationalities and capitalized genres were treated as names."""
+    result = songs.check_style(raw)
+    assert result.text == cleaned
+    assert result.removed == ()
+
+
+@pytest.mark.parametrize(
+    ("raw", "cleaned", "removed"),
+    [
+        ("in the style of AC/DC, rock", "rock", "in the style of AC/DC"),
+        ("rock in the style of Adele or Drake", "rock", "in the style of Adele or Drake"),
+        ("in the style of Lady Gaga/Madonna", "", "in the style of Lady Gaga/Madonna"),
+        ("in the style of Earth, Wind & Fire", "", "in the style of Earth, Wind & Fire"),
+        ("in the style of Ed Sheeran and pop", "pop", "in the style of Ed Sheeran"),
+        ("in the style of Adele, Drake, soul", "soul", "in the style of Adele, Drake"),
+    ],
+)
+def test_joined_and_listed_names_are_removed_whole(raw: str, cleaned: str, removed: str) -> None:
+    """Review finding: names joined by "/", "or", "and" or a comma leaked through."""
+    result = songs.check_style(raw)
+    assert result.text == cleaned
+    assert list(result.removed) == [removed]
+
+
+def test_a_name_followed_by_an_ordinary_part_keeps_that_part() -> None:
+    assert songs.check_style("in the style of Adele, Warm pads").text == "Warm pads"
+    assert songs.check_style("in the style of Adele, Lo-Fi").text == "Lo-Fi"
+
+
+@pytest.mark.parametrize(
+    ("raw", "cleaned", "removed"),
+    [
+        ("a la carte jazz", "a la carte jazz", []),
+        ("a la mode", "a la mode", []),
+        ("a la Prince, funk", "funk", ["a la Prince"]),
+    ],
+)
+def test_a_la_without_the_accent_needs_a_capitalized_name(raw: str, cleaned: str, removed: list[str]) -> None:
+    result = songs.check_style(raw)
+    assert (result.text, list(result.removed)) == (cleaned, removed)
+
+
+@pytest.mark.parametrize(
     "style",
     [
         "lo-fi hip hop, jazzy keys",

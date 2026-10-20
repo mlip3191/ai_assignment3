@@ -168,9 +168,9 @@ def write_song_text(*, style: str, mood: str, theme: str | None, duration_s: int
 
 # ---- the real-artist safeguard (B8) -------------------------------------------------------------
 
-# Words that describe a sound rather than name someone, so "in the style of Latin jazz" or "Retro style
-# synths" are kept. Anything else after a pointer phrase ("in the style of", "sounds like", ...) is
-# treated as a name and removed. Bare names with no pointer phrase are not caught.
+# Words that describe a sound rather than name someone, so "in the style of Latin jazz", "Detroit techno"
+# or "Retro style synths" are kept. Anything else after a pointer phrase ("in the style of", "sounds like",
+# ...) is treated as a name and removed. Bare names with no pointer phrase are not caught.
 _SOUND_WORDS = frozenset(
     """
     pop rock jazz blues soul funk disco house techno trance edm electronic electronica dance ambient
@@ -180,22 +180,30 @@ _SOUND_WORDS = frozenset(
     wave shoegaze dream psychedelic psych prog progressive post-rock krautrock industrial gothic goth
     darkwave latin salsa bossa nova samba tango flamenco mariachi cumbia afrobeat afrobeats highlife
     celtic irish bollywood k-pop j-pop kpop jpop anime chiptune 8-bit baroque opera choral acoustic
-    electric piano guitar guitars strings brass lounge swing bebop big band music beats
+    electric piano guitar guitars strings brass lounge swing bebop big band music beats neo christmas
+    holiday western spaghetti southern bedroom yacht trip city video game games movie film soundtrack
+    lullaby ballad ballads show tune tunes
     retro vintage classic modern old new epic dreamy dark soft heavy chill upbeat mellow warm bright
     moody lush minimal experimental instrumental vocal vocals live raw smooth funky jazzy groovy early late
+    rainy sunny stormy summer winter spring autumn fall night nights midnight morning sunset sunrise
+    detroit chicago nashville memphis orleans london berlin ibiza uk british english french spanish
+    italian german greek nordic scandinavian russian japanese korean chinese indian arabic african
+    brazilian cuban jamaican caribbean mexican american west east coast
     """.split()
 )
-_CONNECTORS = frozenset({"of", "the", "and", "&", "de", "la", "del", "van", "von", "da", "y"})
-_CAP = r"[A-ZÀ-ÖØ-Þ][\w'’.&+-]*"
-_NAME = rf"(?:[Tt]he\s+)?{_CAP}(?:\s+(?:(?:of|the|and|&|de|la|del|van|von|da|y)\s+)*{_CAP})*"
+_CONNECTORS = frozenset({"of", "the", "and", "or", "&", "de", "la", "del", "van", "von", "da", "y"})
+_CAP = r"[A-ZÀ-ÖØ-Þ][\w'’.&+/-]*"  # a capitalized word; "/" keeps "AC/DC" and "Gaga/Madonna" together
+_NAME = rf"(?:[Tt]he\s+)?{_CAP}(?:\s+(?:(?:of|the|and|or|&|de|la|del|van|von|da|y)\s+)*{_CAP})*"
 _NAME_AT_START = re.compile(_NAME)
 _POINTER = re.compile(
     r"\b(?:in\s+the\s+(?:style|vein|spirit)\s+of|sounds?\s+like|inspired\s+by|influenced\s+by"
-    r"|reminiscent\s+of|similar\s+to|(?:à|a)\s+la)\s+",
+    r"|reminiscent\s+of|similar\s+to|à\s+la|a\s+la(?=\s+(?-i:[A-ZÀ-ÖØ-Þ])))\s+",  # "a la carte" isn't one
     re.IGNORECASE,
 )
 _NAME_STYLE = re.compile(rf"(?<![\w'’-])({_NAME})(?:-|\s+)(?i:style|esque|inspired)\b")
 _LIKE_NAME = re.compile(rf"(?i:\blike)\s+({_NAME})")
+_JOINER = re.compile(r"^\s*(?:and|or|&|/)\s+", re.IGNORECASE)  # "Ed Sheeran and pop" leaves "pop"
+_OWNER = frozenset({"a", "an", "my", "our", "your", "his", "her", "their", "this", "that"})
 _ERA = re.compile(r"'?\d{2,4}s")
 
 
@@ -219,14 +227,25 @@ class StyleCheck:
 def check_style(text: str) -> StyleCheck:
     """Remove "in the style of <name>", "sounds like <name>", "<Name>-esque", "like <Name>" and similar.
 
-    Genres and eras after such a phrase are kept ("in the style of 80s synthwave" becomes "80s synthwave").
-    B7's form shows `.warning`; `generate_song()` applies this to the style and theme as well.
+    Genres, places and eras after such a phrase are kept ("in the style of Detroit techno" becomes
+    "Detroit techno"), and so is a description that starts with "a", "my" and the like ("sounds like a
+    movie soundtrack"). B7's form shows `.warning`; `generate_song()` applies this to the style and theme.
     """
     if not isinstance(text, str) or not text.strip():
         return StyleCheck(text if isinstance(text, str) else "")
     removed: list[str] = []
     parts = re.split(r"([,;])", text)
-    screened = [part if part in (",", ";") else _screen_part(part, removed) for part in parts]
+    screened: list[str] = []
+    after_name = False  # the last part ended with a removed name, so "Earth, Wind & Fire" goes too
+    for part in parts:
+        if part in (",", ";"):
+            screened.append(part)
+        elif after_name and _NAME_AT_START.fullmatch(part.strip()) and not _is_sound(part):
+            removed[-1] += f", {part.strip()}"
+            screened.append("")
+        else:
+            part, after_name = _screen_part(part, removed)
+            screened.append(part)
     if screened == parts:
         return StyleCheck(text)
     joined = re.sub(r"\s+", " ", "".join(screened))
@@ -235,27 +254,35 @@ def check_style(text: str) -> StyleCheck:
     return StyleCheck(joined.strip(" ,;-"), tuple(removed))
 
 
-def _screen_part(part: str, removed: list[str]) -> str:
-    """One comma-separated part of the style, with any pointer at a real artist taken out."""
-    start = 0
+def _screen_part(part: str, removed: list[str]) -> tuple[str, bool]:
+    """One comma-separated part with any pointer at a real artist taken out, and whether it ended with a
+    removed name."""
+    start, ended_with_name = 0, False
     while match := _POINTER.search(part, start):
         rest = part[match.end() :]
         name = _NAME_AT_START.match(rest)
+        words = rest.split()
         if name and not _is_sound(name.group(0)):
             removed.append(part[match.start() : match.end() + name.end()].strip())
-            part = part[: match.start()] + rest[name.end() :]
+            tail = _JOINER.sub("", rest[name.end() :])
+            part = part[: match.start()] + tail
+            ended_with_name = not tail.strip()
+            start = match.start()
         elif name:
-            part = part[: match.start()] + rest  # a genre ("Latin jazz"): keep it, drop the pointer words
+            part = part[: match.start()] + rest  # a genre or place ("Latin jazz"): drop only the pointer
+            start = match.start()
+        elif words and words[0].lower() in _OWNER:
+            start = match.end()  # "sounds like a movie soundtrack" describes, it doesn't name
         else:
-            words = rest.split()
             first_sound = next((i for i, word in enumerate(words) if _is_sound(word)), len(words))
             if first_sound:
                 removed.append((match.group(0) + " ".join(words[:first_sound])).strip())
             part = part[: match.start()] + " ".join(words[first_sound:])
-        start = match.start()
+            ended_with_name = first_sound == len(words) and bool(words)
+            start = match.start()
     for pattern in (_NAME_STYLE, _LIKE_NAME):
         part = pattern.sub(lambda m: _drop_name(m, removed), part)
-    return part
+    return part, ended_with_name
 
 
 def _drop_name(match: re.Match[str], removed: list[str]) -> str:
@@ -266,7 +293,7 @@ def _drop_name(match: re.Match[str], removed: list[str]) -> str:
 
 
 def _is_sound(phrase: str) -> bool:
-    """True if every word describes a sound (a genre, era or descriptor), so it isn't a name."""
+    """True if every word describes a sound (a genre, place, era or descriptor), so it isn't a name."""
     words = [w.lower().strip(".,'’\"()") for w in phrase.split()]
     words = [w for w in words if w and w not in _CONNECTORS]
     return bool(words) and all(_is_sound_word(w) for w in words)
@@ -275,7 +302,8 @@ def _is_sound(phrase: str) -> bool:
 def _is_sound_word(word: str) -> bool:
     if word in _SOUND_WORDS or _ERA.fullmatch(word):
         return True
-    return "-" in word and all(p in _SOUND_WORDS or _ERA.fullmatch(p) for p in word.split("-") if p)
+    pieces = [p for p in re.split(r"[-/]", word) if p]
+    return len(pieces) > 1 and all(p in _SOUND_WORDS or _ERA.fullmatch(p) for p in pieces)
 
 
 def _screen_artists(style: str, theme: str | None) -> tuple[str, str | None]:
