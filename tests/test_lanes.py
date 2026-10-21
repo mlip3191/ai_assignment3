@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import re
 import sys
+from datetime import date, timedelta
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "github"))
 
-from lanes import load, render_body, task_index  # noqa: E402
+from lanes import checkpoint_label, load, render_body, task_index  # noqa: E402
 from tick_task import find_lane_issue, find_task, tick  # noqa: E402
 
 
@@ -132,3 +136,132 @@ def test_project_md_load_tables_match_the_backlog() -> None:
         per_lane = [sum(t["milestone"] == milestone for t in lane["tasks"]) for lane in spec["lanes"]]
         assert cells[1:6] == [str(n) for n in per_lane], f"{milestone} per-lane counts"
         assert cells[6] == str(sum(per_lane)), f"{milestone} total"
+
+
+WEEKDAY_DATE = re.compile(r"\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]* (\d{1,2})/(\d{1,2})\b")
+SUBMISSION_DUE = re.compile(
+    r"Submission due: \*\*(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]* (\d{1,2})/(\d{1,2})/(\d{4})\*\*"
+)
+
+
+def wrong_weekdays(text: str, year: int = 2026) -> list[str]:
+    """Every 'Wed 10/21'-style pair in `text` whose weekday is wrong for that date."""
+    bad = []
+    for m in WEEKDAY_DATE.finditer(text):
+        weekday, month, day = m.group(1), int(m.group(2)), int(m.group(3))
+        if date(year, month, day).strftime("%a") != weekday:
+            bad.append(m.group(0))
+    return bad
+
+
+def submission_due(text: str) -> date:
+    """The date in PROJECT.md's 'Submission due: **Fri 10/30/2026**' header line."""
+    m = SUBMISSION_DUE.search(text)
+    if m is None:
+        raise ValueError("no 'Submission due: **Day MM/DD/YYYY**' line found")
+    return date(int(m.group(3)), int(m.group(1)), int(m.group(2)))
+
+
+def test_checkpoint_dates_are_in_order() -> None:
+    """A half-shifted schedule shows up as dates that run backwards."""
+    spec, _ = load()
+    codes = [c["title"].split()[0] for c in spec["checkpoints"]]
+    assert codes == ["M0", "M1", "M2", "M3", "M4"]
+    dates = [date.fromisoformat(c["due"]) for c in spec["checkpoints"]]
+    for earlier, later, code in zip(dates[:-1], dates[1:], codes[1:], strict=True):
+        assert earlier < later, f"{code} is due on or before the checkpoint before it"
+
+
+def test_milestone_due_is_the_last_checkpoint() -> None:
+    spec, _ = load()
+    assert spec["milestone"]["due"] == spec["checkpoints"][-1]["due"]
+
+
+def test_submission_date_matches_project_md() -> None:
+    """PROJECT.md says when we submit; the GitHub milestone is due the day before."""
+    spec, _ = load()
+    text = (ROOT / "PROJECT.md").read_text(encoding="utf-8")
+    milestone = date.fromisoformat(spec["milestone"]["due"])
+    assert milestone + timedelta(days=1) == submission_due(text)
+
+
+def test_feature_freeze_date_matches_m2() -> None:
+    spec, _ = load()
+    m2 = next(c for c in spec["checkpoints"] if c["title"].startswith("M2 "))
+    due = date.fromisoformat(m2["due"])
+    m = re.search(r"Feature freeze (Mon|Tue|Wed|Thu|Fri|Sat|Sun) (\d{1,2})/(\d{1,2})", m2["description"])
+    assert m is not None, "M2 description lost its 'Feature freeze Day MM/DD' text"
+    assert (m.group(1), int(m.group(2)), int(m.group(3))) == (due.strftime("%a"), due.month, due.day)
+
+
+@pytest.mark.parametrize("path", ["PROJECT.md", "scripts/github/issues.json"])
+def test_weekday_names_match_dates(path: str) -> None:
+    text = (ROOT / path).read_text(encoding="utf-8")
+    assert WEEKDAY_DATE.search(text), f"no 'Day MM/DD' dates found in {path}; did the pattern break?"
+    assert wrong_weekdays(text) == [], f"{path} has weekday names that don't match their dates"
+
+
+def test_date_helpers_reject_bad_input() -> None:
+    assert wrong_weekdays("due Wed 10/22") == ["Wed 10/22"]  # 10/22/2026 is a Thursday
+    assert wrong_weekdays("due Thu 10/22") == []
+    assert submission_due("Submission due: **Fri 10/30/2026**") == date(2026, 10, 30)
+    with pytest.raises(ValueError):
+        submission_due("Target submission: **Fri 10/30/2026**")
+
+
+def heading_end_label(line: str) -> str:
+    """The last 'Day MM/DD' in a section 10 heading, ignoring any '(...)' note, e.g. 'Wed 10/21'."""
+    found = [m.group(0) for m in WEEKDAY_DATE.finditer(line.split("(", 1)[0])]
+    if not found:
+        raise ValueError(f"no 'Day MM/DD' date in heading: {line!r}")
+    return found[-1]
+
+
+def _due_label(due: str) -> str:
+    return date.fromisoformat(due).strftime("%a %m/%d")
+
+
+def test_section10_headings_end_on_the_checkpoint_due_date() -> None:
+    spec, _ = load()
+    text = (ROOT / "PROJECT.md").read_text(encoding="utf-8")
+    section10 = text.split("## 10. Schedule & milestones", 1)[1].split("\n## 11.", 1)[0]
+    for c in spec["checkpoints"]:
+        code = c["title"].split()[0]
+        heading = next(line for line in section10.splitlines() if line.startswith(f"### {code} "))
+        assert heading_end_label(heading) == _due_label(c["due"]), f"section 10 heading for {code}"
+
+
+def test_section19_tables_use_the_checkpoint_dates() -> None:
+    """The per-checkpoint load table and every task row must carry issues.json's dates."""
+    spec, _ = load()
+    text = (ROOT / "PROJECT.md").read_text(encoding="utf-8")
+    section19 = text.split("## 19. The five lanes", 1)[1]
+    due = {c["title"].split()[0]: c["due"] for c in spec["checkpoints"]}
+    for code in due:
+        row = next(r for r in section19.splitlines() if r.startswith(f"| {code} "))
+        assert row.split("|")[1].strip() == checkpoint_label(spec, code), f"load table row for {code}"
+    milestone_of = {t["key"]: t["milestone"] for lane in spec["lanes"] for t in lane["tasks"]}
+    task_row = re.compile(r"^\| ([A-E]\d+) \| (M\d) \((.+?)\) \|", re.MULTILINE)
+    rows = task_row.findall(section19)
+    assert len(rows) == len(milestone_of), "a section 19 task row is missing or its date format changed"
+    for key, code, label in rows:
+        assert code == milestone_of[key], f"{key} milestone in section 19"
+        assert label == _due_label(due[code]), f"{key} date in section 19"
+
+
+def test_prose_dates_match_the_checkpoints() -> None:
+    spec, _ = load()
+    text = (ROOT / "PROJECT.md").read_text(encoding="utf-8")
+    due = {c["title"].split()[0]: c["due"] for c in spec["checkpoints"]}
+    milestone = date.fromisoformat(spec["milestone"]["due"])
+    assert f'"v1.0 submission" (due {milestone.month}/{milestone.day})' in text
+    assert f"Your M0 tasks are due {_due_label(due['M0'])}" in text
+    assert f"Feature freeze {_due_label(due['M2'])}, 9 pm" in text
+
+
+def test_heading_end_label_reads_ranges_and_rejects_bad_headings() -> None:
+    assert heading_end_label("### M0 — Foundations & spikes · Tue 10/20 – Wed 10/21") == "Wed 10/21"
+    assert heading_end_label("### M4 — Docs · Thu 10/29 (Fri 10/30 buffer)") == "Thu 10/29"
+    assert heading_end_label("### M3 — Deploy test · Wed 10/28") == "Wed 10/28"
+    with pytest.raises(ValueError):
+        heading_end_label("### M5 — no dates here")
