@@ -347,11 +347,11 @@ def test_a_sample_open_in_a_player_leaves_samples_whole(
     with pytest.raises(gs.PublishError, match="in use"):
         build(tmp_path)
     assert _snapshot(tmp_path) == before
-    assert not (tmp_path / gs.PREVIOUS).exists()
+    assert not (tmp_path / gs.PREVIOUS).exists() and not (tmp_path / gs.SWAP_MARKER).exists()
 
 
 def test_a_failed_move_of_the_new_samples_puts_the_old_ones_back(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
 ) -> None:
     build(tmp_path)
     before = _snapshot(tmp_path)
@@ -359,6 +359,33 @@ def test_a_failed_move_of_the_new_samples_puts_the_old_ones_back(
     with pytest.raises(gs.PublishError, match="kept as it was"):
         build(tmp_path)
     assert _snapshot(tmp_path) == before
+    assert not (tmp_path / gs.PREVIOUS).exists() and not (tmp_path / gs.SWAP_MARKER).exists()
+    assert "interrupted run" not in capsys.readouterr().out  # it was this run, not an earlier one
+
+
+def test_a_crash_right_after_the_marker_is_written_changes_nothing(tmp_path: Path) -> None:
+    build(tmp_path)
+    before = _snapshot(tmp_path)
+    (tmp_path / gs.SWAP_MARKER).write_text("swap in progress\n", encoding="utf-8")  # then the crash
+    build(tmp_path)
+    assert _snapshot(tmp_path) == before  # the fakes make the same files again
+    assert not (tmp_path / gs.SWAP_MARKER).exists() and not (tmp_path / gs.PREVIOUS).exists()
+
+
+def test_a_marker_that_cannot_be_removed_after_the_swap_still_counts_as_done(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    build(tmp_path)
+    real_unlink = Path.unlink
+
+    def unlink(self, *args, **kwargs):
+        if self.name == gs.SWAP_MARKER.name:
+            raise PermissionError(32, "in use")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", unlink)
+    tracks = build(tmp_path)  # no error: the new samples are in place
+    assert [t.id for t in tracks] == ["sample_01", "sample_02", "sample_03"]
     assert not (tmp_path / gs.PREVIOUS).exists()
 
 
@@ -415,11 +442,14 @@ def test_samples_recreated_after_an_interrupted_run_never_cost_the_backup(tmp_pa
     before = _snapshot(tmp_path)
     _crash_between_the_renames(tmp_path)
     (tmp_path / "samples" / "audio").mkdir(parents=True)  # the user restored samples/ by hand
+    (tmp_path / "samples" / "audio" / "mine.mp3").write_bytes(b"restored by hand")
     with pytest.raises(gs.PublishError, match="interrupted"):
         build(tmp_path)
     backup = tmp_path / gs.PREVIOUS
     kept = {p.relative_to(backup): p.read_bytes() for p in backup.rglob("*") if p.is_file()}
     assert kept == {path.relative_to("samples"): data for path, data in before.items()}
+    assert _snapshot(tmp_path) == {Path("samples/audio/mine.mp3"): b"restored by hand"}
+    assert (tmp_path / gs.SWAP_MARKER).exists()
 
 
 def test_a_failed_restore_keeps_the_backup_and_says_where_it_is(

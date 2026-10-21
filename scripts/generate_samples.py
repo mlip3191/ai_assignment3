@@ -19,6 +19,7 @@ the committed files are the source of truth, not a regeneration.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -320,14 +321,18 @@ def _publish(out: Path, root: Path) -> None:
     try:
         os.replace(out, target)
     except OSError as err:
-        _recover(root)  # puts the old samples back, or says where they are
+        _recover(root, this_run=True)  # puts the old samples back, or says where they are
         raise PublishError("could not move the new samples into place; samples/ was kept as it was.") from err
-    marker.unlink(missing_ok=True)
+    # The swap is done. A marker that can't be removed is harmless: with no backup left, the next run
+    # just removes it.
+    with contextlib.suppress(OSError):
+        marker.unlink(missing_ok=True)
     shutil.rmtree(previous, ignore_errors=True)
 
 
-def _recover(root: Path) -> None:
-    """Finish a swap that stopped between the two renames (the marker is still there)."""
+def _recover(root: Path, *, this_run: bool = False) -> None:
+    """Finish a swap that stopped between the two renames (the marker is still there). `this_run`: the
+    second rename of this run just failed, so the message must not blame an earlier run."""
     target, previous, marker = root / "samples", root / PREVIOUS, root / SWAP_MARKER
     if not marker.exists():
         return
@@ -335,7 +340,7 @@ def _recover(root: Path) -> None:
         # samples/ came back some other way (for example `git checkout -- samples`); the backup may hold
         # the only copy of uncommitted samples, so keep it and let the person decide.
         raise PublishError(
-            f"an earlier run was interrupted and the samples it replaced are in {PREVIOUS.as_posix()}; "
+            f"a swap was interrupted and the samples it replaced are in {PREVIOUS.as_posix()}; "
             "keep what you need from that folder, delete it, and run again. samples/ was not changed."
         )
     if previous.exists():
@@ -346,7 +351,8 @@ def _recover(root: Path) -> None:
                 f"the previous samples are in {PREVIOUS.as_posix()}; move that folder back to samples/ "
                 "(or close any open sample and run again)."
             ) from err
-        print(f"Put back the samples from an interrupted run (from {PREVIOUS.as_posix()}).")
+        if not this_run:
+            print(f"Put back the samples from an interrupted run (from {PREVIOUS.as_posix()}).")
     marker.unlink(missing_ok=True)
 
 
