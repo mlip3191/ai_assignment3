@@ -84,6 +84,14 @@ def fake_cover(track: Track, dest: Path) -> str:
     return f"A cover for {track.title}, square album cover, no text, no letters, no logos, no real people"
 
 
+@pytest.fixture(autouse=True)
+def no_recorded_values_between_tests():
+    """Each test starts and ends with nothing recorded from the song pipeline."""
+    gs._SENT.clear()
+    yield
+    gs._SENT.clear()
+
+
 def build(root: Path, **kw) -> list[Track]:
     kw.setdefault("make_song", FakeSong(root))
     kw.setdefault("make_cover", fake_cover)

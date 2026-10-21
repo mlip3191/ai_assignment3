@@ -152,7 +152,8 @@ _SENT: dict[str, dict[str, object]] = {}  # per sample id: what the song pipelin
 def _recording(module: object, names: Sequence[str], *, into: dict[str, object]):
     """While the song runs, wrap the pipeline's own builders so the log shows the very values it sent
     (the Qwen messages from build_messages, the ACE-Step tags from build_tags), not a rebuild. The
-    pipeline looks them up on its module at call time. Always puts the originals back."""
+    pipeline looks them up on its module at call time. Always puts the originals back. The swap applies
+    to the whole process, so it is only for this single-threaded script, never for the app."""
     originals = {name: getattr(module, name) for name in names if hasattr(module, name)}
 
     def recorded(name: str, builder: Callable[..., object]) -> Callable[..., object]:
