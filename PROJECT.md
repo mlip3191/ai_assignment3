@@ -1575,7 +1575,7 @@ Rules for code that has to work on both (also in CLAUDE.md):
 - [ ] Every README heading required by the assignment is present (§11 / DL7–DL10), and screenshots show no credentials
 - [ ] Canvas ZIP was downloaded from the `v1.0` tag, its folder name/contents match the submitted full commit ID, and it passes `scan_secrets.py --zip`
 - [ ] `check_models.py` passes on the release commit and TC-15 passed: only Qwen 9001, FLUX 9006, ACE-Step 9007, and Chatterbox 9008 are used
-- [ ] Nobody deletes, renames, privatizes, or force-pushes the repo or the `v1.0` tag until grades are posted
+- [ ] Nobody deletes, renames, or force-pushes the repo or the `v1.0` tag until grades are posted. The repo goes private only at submission, once the professor and any other grader are invited (DL12)
 
 ---
 

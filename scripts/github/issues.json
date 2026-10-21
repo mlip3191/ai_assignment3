@@ -361,9 +361,9 @@
             "Tag v1.0 pushed. ZIP downloaded from that tag's page (Tags → v1.0 → Source code (zip)), NOT the green Code → Download ZIP button on main",
             "`python scripts/scan_secrets.py --zip <downloaded zip>` passes; the ZIP contains samples/audio and samples/covers files",
             "Full 40-character commit ID recorded (git rev-list -n 1 v1.0) and matches the tag",
-            "Professor has repo access (accepted invite or public repo)",
+            "Professor has repo access (accepted invite)",
             "Canvas submission: repo link + full commit ID + that exact ZIP",
-            "Team told: no deleting, renaming, privatizing, force-pushing, or moving the v1.0 tag until grades are posted (DL12)",
+            "Team told: no deleting, renaming, force-pushing, or moving the v1.0 tag until grades are posted; the repo goes private only at submission, once the professor and any other grader are invited (DL12)",
             "check_models.py passes on the tagged release commit"
           ],
           "reqs": [
