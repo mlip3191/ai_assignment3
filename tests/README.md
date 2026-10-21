@@ -21,6 +21,7 @@ One file per module, named `test_<module>.py`:
 | `test_check_config.py` | `scripts/check_config.py`: OK/missing table that never prints values |
 | `test_chatterbox.py` | `jukebox/clients/chatterbox.py`: `speak()` request format (default and reference voice), local input checks, each error kind with no retry, speech endpoint on 9008 only |
 | `test_flux.py` | `jukebox/clients/flux.py`: `generate_image()` request format, defaults, decoded JPEG, each error kind, FLUX on 9006 only, key and image data never logged |
+| `test_art_prompt.py` | `jukebox/services/art.py` prompt builder (C3): the `cover_art.md` template, filled placeholders and lyrics excerpt, reply cleanup, the safety suffix added once, Qwen errors, never FLUX |
 | `test_<service>.py` | One per client in `jukebox/clients/` (added by lanes B, C, D) |
 
 A good test case covers the happy path, at least one failure path (service down, bad input, timeout), and each "Done when" criterion of its task.
