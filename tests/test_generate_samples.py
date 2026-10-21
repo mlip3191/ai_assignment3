@@ -6,6 +6,7 @@ temporary repository root, so the real samples/ folder is never touched.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import sys
@@ -372,15 +373,110 @@ def test_the_swap_never_copies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     build(tmp_path)
 
 
-def test_a_run_that_stopped_mid_swap_gets_the_old_samples_back(tmp_path: Path) -> None:
+def _crash_between_the_renames(root: Path) -> None:
+    """What a run that stopped between the two renames leaves: the marker, and the old samples only
+    in the backup folder."""
+    (root / gs.PREVIOUS).parent.mkdir(parents=True, exist_ok=True)
+    (root / gs.SWAP_MARKER).write_text("swap in progress\n", encoding="utf-8")
+    (root / "samples").rename(root / gs.PREVIOUS)
+
+
+def test_a_run_that_stopped_mid_swap_gets_the_old_samples_back(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
     build(tmp_path)
     before = _snapshot(tmp_path)
-    (tmp_path / gs.PREVIOUS).parent.mkdir(parents=True, exist_ok=True)
-    (tmp_path / "samples").rename(tmp_path / gs.PREVIOUS)  # what a crash between the two renames leaves
+    _crash_between_the_renames(tmp_path)
     with pytest.raises(ServiceError):
         build(tmp_path, make_song=FakeSong(tmp_path, fail_on="sample_01"))
     assert _snapshot(tmp_path) == before
-    assert not (tmp_path / gs.PREVIOUS).exists()
+    assert not (tmp_path / gs.PREVIOUS).exists() and not (tmp_path / gs.SWAP_MARKER).exists()
+    assert "Put back the samples from an interrupted run" in capsys.readouterr().out
+
+
+def test_a_leftover_backup_is_never_restored_without_the_marker(tmp_path: Path) -> None:
+    """A half-deleted backup (antivirus stopped the cleanup) must never come back after the user
+    deleted samples/ on purpose."""
+    build(tmp_path)
+    (tmp_path / gs.PREVIOUS / "audio").mkdir(parents=True)
+    (tmp_path / gs.PREVIOUS / "audio" / "sample_01.mp3").write_bytes(b"partial")
+    import shutil
+
+    shutil.rmtree(tmp_path / "samples")
+    with pytest.raises(ServiceError):
+        build(tmp_path, make_song=FakeSong(tmp_path, fail_on="sample_01"))
+    assert not (tmp_path / "samples").exists()
+
+
+def test_samples_recreated_after_an_interrupted_run_never_cost_the_backup(tmp_path: Path) -> None:
+    """After a crash between the renames, `git checkout -- samples` brings back samples/; the backup may
+    hold the only copy of uncommitted samples, so the run stops and keeps it."""
+    build(tmp_path)
+    before = _snapshot(tmp_path)
+    _crash_between_the_renames(tmp_path)
+    (tmp_path / "samples" / "audio").mkdir(parents=True)  # the user restored samples/ by hand
+    with pytest.raises(gs.PublishError, match="interrupted"):
+        build(tmp_path)
+    backup = tmp_path / gs.PREVIOUS
+    kept = {p.relative_to(backup): p.read_bytes() for p in backup.rglob("*") if p.is_file()}
+    assert kept == {path.relative_to("samples"): data for path, data in before.items()}
+
+
+def test_a_failed_restore_keeps_the_backup_and_says_where_it_is(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    build(tmp_path)
+    before = _snapshot(tmp_path)
+    real = gs.os.replace
+    staged = (tmp_path / gs.STAGING / "samples").resolve()
+    backup = (tmp_path / gs.PREVIOUS).resolve()
+
+    def replace(src, dst):
+        if Path(src).resolve() in (staged, backup):
+            raise PermissionError(32, "in use")
+        return real(src, dst)
+
+    monkeypatch.setattr(gs.os, "replace", replace)
+    with pytest.raises(gs.PublishError, match="previous samples are in"):
+        build(tmp_path)
+    assert (tmp_path / gs.PREVIOUS).is_dir() and (tmp_path / gs.SWAP_MARKER).exists()
+    monkeypatch.setattr(gs.os, "replace", real)
+    with pytest.raises(ServiceError):  # the next run puts them back first, even if it then fails
+        build(tmp_path, make_song=FakeSong(tmp_path, fail_on="sample_01"))
+    assert _snapshot(tmp_path) == before
+
+
+def test_a_backup_that_cannot_be_cleared_stops_before_touching_samples(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    build(tmp_path)
+    before = _snapshot(tmp_path)
+    (tmp_path / gs.PREVIOUS).mkdir(parents=True)
+    (tmp_path / gs.PREVIOUS / "stuck.mp3").write_bytes(b"locked")
+    real = gs.shutil.rmtree
+
+    def rmtree(path, *args, **kwargs):
+        if Path(path).resolve() == (tmp_path / gs.PREVIOUS).resolve():
+            return None  # a locked file: ignore_errors leaves it in place
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(gs.shutil, "rmtree", rmtree)
+    with pytest.raises(gs.PublishError, match="could not clear"):
+        build(tmp_path)
+    assert _snapshot(tmp_path) == before
+
+
+def test_only_the_pipelines_generated_folder_is_ever_cleaned(tmp_path: Path) -> None:
+    class SongOutsideGenerated(FakeSong):
+        def __call__(self, spec: gs.SampleSpec) -> Track:
+            track = super().__call__(spec)
+            other = self.root / "runtime" / "uploads" / f"{spec.id}.mp3"
+            other.parent.mkdir(parents=True, exist_ok=True)
+            other.write_bytes(MP3)
+            return dataclasses.replace(track, audio_path=f"runtime/uploads/{spec.id}.mp3")
+
+    build(tmp_path, make_song=SongOutsideGenerated(tmp_path))
+    assert len(list((tmp_path / "runtime" / "uploads").glob("*.mp3"))) == 3
 
 
 def test_the_committed_gitkeep_files_survive_a_run(tmp_path: Path) -> None:
@@ -406,11 +502,22 @@ def test_a_sample_with_no_recorded_calls_stops_the_run(tmp_path: Path) -> None:
     logger = logging.getLogger("jukebox.clients")
     logger.disabled = True  # the fake song's request lines never reach the recorder
     try:
-        with pytest.raises(gs.SampleError, match="no service calls were recorded"):
+        with pytest.raises(gs.SampleError, match="no Qwen, ACE-Step, FLUX call was recorded"):
             build(tmp_path, make_cover=silent_cover)
     finally:
         logger.disabled = False
     assert not (tmp_path / "samples").exists()
+
+
+def test_a_sample_missing_its_flux_call_stops_the_run(tmp_path: Path) -> None:
+    def cover_without_flux(track: Track, dest: Path) -> str:
+        logging.getLogger("jukebox.clients").info("qwen -> %s:9001 200 900ms", HOST)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(JPEG)
+        return "A cover"
+
+    with pytest.raises(gs.SampleError, match="sample_01: no FLUX call was recorded"):
+        build(tmp_path, make_cover=cover_without_flux)
 
 
 def test_the_log_shows_the_acestep_tags_exactly_as_sent(tmp_path: Path) -> None:

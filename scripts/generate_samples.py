@@ -41,6 +41,9 @@ from jukebox.models import Track  # noqa: E402
 
 STAGING = Path("runtime") / "tmp" / "samples-staging"
 PREVIOUS = Path("runtime") / "tmp" / "samples-previous"
+SWAP_MARKER = Path("runtime") / "tmp" / "samples-swap-in-progress"  # exists only during the swap
+GENERATED = Path("runtime") / "generated"  # where the song pipeline writes its working mp3s
+REQUIRED_CALLS = ("qwen", "acestep", "flux")  # each sample's log must show all three
 CLIENT_LOGGER = "jukebox.clients"
 _CALL = re.compile(r"^(?P<service>\w+) -> \S+?:(?P<port>\d+) (?P<status>\S+) (?P<ms>\d+)ms$")
 
@@ -193,7 +196,7 @@ def build_samples(
 ) -> list[Track]:
     """Build every sample in a staging folder, check it, then swap it into samples/."""
     root = Path(root)
-    _recover(root / "samples", root / PREVIOUS)
+    _recover(root)
     staging = root / STAGING
     shutil.rmtree(staging, ignore_errors=True)
     out = staging / "samples"
@@ -239,15 +242,17 @@ def _build_one(
         cover_rel = f"samples/covers/{spec.id}.jpg"
         (out / "audio").mkdir(parents=True, exist_ok=True)
         shutil.copyfile(audio_src, out.parent / audio_rel)
-        if (root / "runtime").resolve() in audio_src.resolve().parents:
-            audio_src.unlink(missing_ok=True)  # the pipeline's working copy; the sample is the copy
+        working = audio_src.resolve()
+        if (root / GENERATED).resolve() in working.parents:
+            working.unlink(missing_ok=True)  # the pipeline's working copy; the sample is the copy
         prompt = make_cover(song, out.parent / cover_rel)
     finally:
         logger.removeHandler(handler)
         logger.setLevel(previous_level)
-    if not calls:
+    missing = [SERVICE_NAMES[s] for s in REQUIRED_CALLS if not any(c.service == s for c in calls)]
+    if missing:
         raise SampleError(
-            f"{spec.id}: no service calls were recorded, so the log could not show the models and ports"
+            f"{spec.id}: no {', '.join(missing)} call was recorded, so the log could not show its model and port"
         )
     track = Track(
         id=spec.id,
@@ -291,40 +296,58 @@ def _write_manifest(path: Path, tracks: list[Track]) -> None:
 
 def _publish(out: Path, root: Path) -> None:
     """Swap the staged samples/ into place with two renames, never a copy, so a failure leaves samples/
-    whole. On Windows a rename fails at once while a file inside is open (a sample playing)."""
-    target = root / "samples"
-    previous = root / PREVIOUS
-    _recover(target, previous)
-    shutil.rmtree(previous, ignore_errors=True)  # a leftover backup; samples/ itself is whole
+    whole. On Windows a rename fails at once while a file inside is open (a sample playing).
+
+    The marker file exists only between the first rename and the end of the swap, so only a run that
+    really stopped mid-swap is ever recovered; without it, a backup folder is just a leftover.
+    """
+    target, previous, marker = root / "samples", root / PREVIOUS, root / SWAP_MARKER
+    _recover(root)
+    shutil.rmtree(previous, ignore_errors=True)  # a leftover (no marker): samples/ itself is whole
     if previous.exists():
         raise PublishError(f"could not clear {PREVIOUS.as_posix()}; close any open sample and run again.")
     previous.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("swap in progress\n", encoding="utf-8")
     if target.exists():
         try:
             os.replace(target, previous)
         except OSError as err:
+            marker.unlink(missing_ok=True)
             raise PublishError(
-                "samples/ is in use (is a sample open or playing?); close it and run again. "
-                "samples/ was not changed."
+                "samples/ is in use or could not be moved (is a sample open or playing?); close it and run "
+                "again. samples/ was not changed."
             ) from err
     try:
         os.replace(out, target)
     except OSError as err:
-        if previous.exists() and not target.exists():
-            _recover(target, previous)
+        _recover(root)  # puts the old samples back, or says where they are
         raise PublishError("could not move the new samples into place; samples/ was kept as it was.") from err
+    marker.unlink(missing_ok=True)
     shutil.rmtree(previous, ignore_errors=True)
 
 
-def _recover(target: Path, previous: Path) -> None:
-    """A run that stopped between the two renames leaves the old samples only in PREVIOUS: put them back."""
-    if previous.exists() and not target.exists():
+def _recover(root: Path) -> None:
+    """Finish a swap that stopped between the two renames (the marker is still there)."""
+    target, previous, marker = root / "samples", root / PREVIOUS, root / SWAP_MARKER
+    if not marker.exists():
+        return
+    if previous.exists() and target.exists():
+        # samples/ came back some other way (for example `git checkout -- samples`); the backup may hold
+        # the only copy of uncommitted samples, so keep it and let the person decide.
+        raise PublishError(
+            f"an earlier run was interrupted and the samples it replaced are in {PREVIOUS.as_posix()}; "
+            "keep what you need from that folder, delete it, and run again. samples/ was not changed."
+        )
+    if previous.exists():
         try:
             os.replace(previous, target)
         except OSError as err:
             raise PublishError(
-                f"the previous samples are in {PREVIOUS.as_posix()}; move that folder back to samples/."
+                f"the previous samples are in {PREVIOUS.as_posix()}; move that folder back to samples/ "
+                "(or close any open sample and run again)."
             ) from err
+        print(f"Put back the samples from an interrupted run (from {PREVIOUS.as_posix()}).")
+    marker.unlink(missing_ok=True)
 
 
 SERVICE_NAMES = {"qwen": "Qwen", "acestep": "ACE-Step", "flux": "FLUX", "chatterbox": "Chatterbox"}
