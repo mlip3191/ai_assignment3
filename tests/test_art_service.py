@@ -453,10 +453,11 @@ def test_a_failure_after_an_earlier_success_is_reported() -> None:
 
 
 def test_a_running_cover_job_is_shown_before_any_finished_one() -> None:
+    """The slow first attempt is still painting when a second one fails: show it is still painting."""
     jobs = JobStore()
-    first = _running_job(jobs, "t1")
-    jobs.succeed(first, "t1")
     running = _running_job(jobs, "t1")
+    later = _running_job(jobs, "t1")
+    jobs.fail(later, ServiceError("flux", "unavailable", "down"))
     assert art.cover_job_for("t1", jobs=jobs).id == running
 
 
