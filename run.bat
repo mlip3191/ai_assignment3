@@ -5,9 +5,23 @@ rem It finds Python 3.11+, makes the .venv folder, then hands off to scripts\lau
 rem which does the rest the same way as run.sh on macOS. It calls .venv\Scripts\python.exe
 rem directly, so nothing here depends on the downloaded-file script policy.
 setlocal
-cd /d "%~dp0"
 set "CODE=0"
 set "PY="
+
+rem pushd also works for a network folder, where cd /d would fail and leave us in the wrong place.
+pushd "%~dp0" 2>nul
+if errorlevel 1 (
+  echo Couldn't open the app folder. Copy it to your own drive, for example C:\jukebox, and run it from there.
+  set "CODE=1"
+  goto :fail
+)
+
+if not exist "scripts\launcher.py" (
+  echo This launcher can't find the rest of the app.
+  echo Extract the whole ZIP first: right-click it, choose Extract All, then run run.bat in the extracted folder.
+  set "CODE=1"
+  goto :fail
+)
 
 py -3.12 --version >nul 2>&1 && set "PY=py -3.12"
 if not defined PY py -3.11 --version >nul 2>&1 && set "PY=py -3.11"

@@ -89,6 +89,46 @@ def test_run_bat_is_checked_out_with_crlf_line_endings() -> None:
     assert re.search(r"^\*\.bat\s+text\s+eol=crlf", text(ROOT / ".gitattributes"), re.MULTILINE)
 
 
+def archived(name: str) -> bytes | None:
+    """The file as a GitHub 'Download ZIP' would contain it (git archive applies .gitattributes)."""
+    import io
+    import tarfile
+
+    if shutil.which("git") is None:
+        return None
+    tracked = subprocess.run(["git", "ls-files", name], cwd=ROOT, capture_output=True, text=True).stdout
+    if not tracked.strip():
+        return None
+    tar = subprocess.run(["git", "archive", "--format=tar", "HEAD", name], cwd=ROOT, capture_output=True)
+    if tar.returncode != 0:
+        return None
+    with tarfile.open(fileobj=io.BytesIO(tar.stdout)) as archive:
+        return archive.extractfile(name).read()
+
+
+def test_the_downloaded_run_bat_has_crlf_and_run_sh_has_lf() -> None:
+    bat, sh = archived("run.bat"), archived("run.sh")
+    if bat is None or sh is None:
+        pytest.skip("run.bat / run.sh not committed yet")
+    assert b"\r\n" in bat
+    assert b"\r\n" not in sh
+
+
+def test_run_bat_copes_with_network_folders_and_checks_the_zip_was_extracted() -> None:
+    body = text(RUN_BAT).lower()
+    assert 'pushd "%~dp0"' in body
+    assert r'if not exist "scripts\launcher.py"' in body
+    assert body.index(r'if not exist "scripts\launcher.py"') < body.index("-m venv")
+    assert "extract" in body
+
+
+def test_run_sh_checks_the_zip_was_extracted_before_making_the_venv() -> None:
+    body = text(RUN_SH)
+    assert "scripts/launcher.py" in body
+    assert body.index('[ ! -f "scripts/launcher.py" ]') < body.index("-m venv")
+    assert "Extract" in body
+
+
 # ---- run.sh (macOS) ----------------------------------------------------------------------------
 
 

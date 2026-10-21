@@ -6,6 +6,12 @@
 set -u
 cd "$(dirname "$0")" || exit 1
 
+if [ ! -f "scripts/launcher.py" ]; then
+  echo "This launcher can't find the rest of the app."
+  echo "Extract the whole ZIP first (double-click it in Downloads), then run run.sh from the folder it creates."
+  exit 1
+fi
+
 PY=""
 for candidate in python3.12 python3.11 python3; do
   if command -v "$candidate" >/dev/null 2>&1 &&

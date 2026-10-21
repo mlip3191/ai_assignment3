@@ -286,6 +286,53 @@ def test_the_browser_is_opened_from_python_not_an_os_command() -> None:
         assert banned not in source, banned
 
 
+def test_a_notepad_env_txt_is_mentioned_even_when_env_also_exists(world: World) -> None:
+    example = (world.root / ".env.example").read_text(encoding="utf-8")
+    (world.root / ".env").write_text(example, encoding="utf-8")
+    (world.root / ".env.txt").write_text(GOOD_ENV, encoding="utf-8")
+    assert world.main() == launcher.EXIT_ACTION
+    assert ".env.txt" in world.text and "rename" in world.text.lower()
+    assert KEY not in world.text
+
+
+def test_the_browser_waits_until_the_app_is_listening() -> None:
+    import socket
+
+    opened: list[str] = []
+    with socket.socket() as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        port = server.getsockname()[1]
+        thread = launcher.open_when_ready(f"http://127.0.0.1:{port}", opener=opened.append, timeout_s=5)
+        thread.join(5)
+    assert opened == [f"http://127.0.0.1:{port}"]
+
+
+def test_the_browser_is_not_opened_if_the_app_never_listens() -> None:
+    import socket
+
+    with socket.socket() as probe:  # a port nothing is listening on
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    opened: list[str] = []
+    thread = launcher.open_when_ready(
+        f"http://127.0.0.1:{port}", opener=opened.append, timeout_s=0.6, poll_s=0.1
+    )
+    thread.join(5)
+    assert opened == []
+
+
+def test_the_app_can_print_any_unicode_on_windows(tmp_path: Path) -> None:
+    script = tmp_path / "app.py"
+    script.write_text(
+        'print("\\u266a Neon Overdrive \\u2192 \\u6771\\u4eac \\U0001f3b8")\n', encoding="utf-8"
+    )
+    process = launcher._launch_process([sys.executable, "-u", str(script)], tmp_path)
+    lines = list(process.stdout)
+    assert process.wait() == 0, lines
+    assert lines[0].rstrip() == "\u266a Neon Overdrive \u2192 \u6771\u4eac \U0001f3b8"
+
+
 def test_detect_platform() -> None:
     assert launcher.detect_platform("win32") == "windows"
     assert launcher.detect_platform("darwin") == "macos"

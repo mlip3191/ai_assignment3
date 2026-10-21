@@ -18,15 +18,20 @@ Standard library only (plus jukebox/config.py, which is standard library only to
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
+import threading
+import time
 import webbrowser
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -101,9 +106,13 @@ def _run(command: Sequence[str], cwd: Path) -> int:
 
 
 def _launch_process(command: Sequence[str], cwd: Path) -> Process:
+    # The app's output goes through a pipe. On Windows a piped Python writes in the old code page
+    # (cp1252) and crashes on a ♪, an emoji or a non-Latin song title, so force UTF-8 both ways.
+    env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
     return subprocess.Popen(
         list(command),
         cwd=cwd,
+        env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -111,6 +120,37 @@ def _launch_process(command: Sequence[str], cwd: Path) -> Process:
         errors="replace",
         bufsize=1,
     )
+
+
+def open_when_ready(
+    url: str,
+    *,
+    opener: Callable[[str], object] = webbrowser.open,
+    timeout_s: float = 120.0,
+    poll_s: float = 0.25,
+) -> threading.Thread:
+    """Open `url` in the browser once something is listening on its port.
+
+    The app prints its address just before the server starts, so opening straight away can show
+    "can't connect". This waits (in the background, so the app's output keeps flowing) until the port
+    accepts a connection, then opens it. If the app never starts listening, nothing is opened.
+    """
+    parts = urlsplit(url)
+    host, port = parts.hostname or "127.0.0.1", parts.port or 80
+
+    def wait_then_open() -> None:
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            try:
+                with socket.create_connection((host, port), timeout=1):
+                    opener(url)
+                    return
+            except OSError:
+                time.sleep(poll_s)
+
+    thread = threading.Thread(target=wait_then_open, name="open-browser", daemon=True)
+    thread.start()
+    return thread
 
 
 def _say(message: str) -> None:
@@ -126,7 +166,7 @@ def real_deps() -> Deps:
         run=_run,
         start=_launch_process,
         open_editor=_open_editor,
-        open_browser=webbrowser.open,
+        open_browser=open_when_ready,
         say=_say,
     )
 
@@ -188,6 +228,11 @@ def check_settings(root: Path, deps: Deps) -> int | None:
     for row in problems:
         deps.say(f"  {row.var}: {row.note}")
     deps.say(f"The file is {env}" + (f" (open in {editor} now)." if opened else "."))
+    if (root / ".env.txt").exists():
+        deps.say(
+            "There is also a file named .env.txt next to it. If that's where you saved your values,\n"
+            "delete .env and rename .env.txt to .env (Notepad sometimes adds .txt)."
+        )
     deps.say("Copy each value from class-endpoints.txt, save the file, then run the launcher again.")
     deps.say(RULE)
     return EXIT_ACTION
