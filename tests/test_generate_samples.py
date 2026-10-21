@@ -92,6 +92,15 @@ def no_recorded_values_between_tests():
     gs._SENT.clear()
 
 
+@pytest.fixture
+def instant_rename_retries(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """For tests that fake a locked folder: skip (and record) the waits between rename retries. Other
+    tests keep the real waits, so a real brief lock on the test machine is ridden out, not failed."""
+    waits: list[float] = []
+    monkeypatch.setattr(gs, "_sleep", waits.append)
+    return waits
+
+
 def build(root: Path, **kw) -> list[Track]:
     kw.setdefault("make_song", FakeSong(root))
     kw.setdefault("make_cover", fake_cover)
@@ -345,6 +354,7 @@ def _fail_replace_from(monkeypatch: pytest.MonkeyPatch, source: Path) -> None:
         return real(src, dst)
 
     monkeypatch.setattr(gs.os, "replace", replace)
+    monkeypatch.setattr(gs, "_sleep", lambda _s: None)  # it stays locked: don't wait out every retry
 
 
 def test_a_sample_open_in_a_player_leaves_samples_whole(
@@ -484,6 +494,7 @@ def test_a_failed_restore_keeps_the_backup_and_says_where_it_is(
         return real(src, dst)
 
     monkeypatch.setattr(gs.os, "replace", replace)
+    monkeypatch.setattr(gs, "_sleep", lambda _s: None)
     with pytest.raises(gs.PublishError, match="previous samples are in"):
         build(tmp_path)
     assert (tmp_path / gs.PREVIOUS).is_dir() and (tmp_path / gs.SWAP_MARKER).exists()
@@ -679,6 +690,104 @@ def test_main_prints_a_publish_problem_as_is(
     assert gs.main() == 1
     out = capsys.readouterr().out
     assert "Stopped: samples/ is in use" in out and "was not changed" not in out
+
+
+# ---- brief Windows locks on fresh files (#40 review, @gunnaroc) -------------------------------
+
+
+def _fail_replace_a_few_times(monkeypatch: pytest.MonkeyPatch, source: Path, times: int) -> list[int]:
+    """The rename of `source` fails `times` times with Windows' "Access is denied", then works."""
+    real = gs.os.replace
+    failures = [0]
+
+    def replace(src, dst):
+        if Path(src).resolve() == source.resolve() and failures[0] < times:
+            failures[0] += 1
+            raise PermissionError(5, "Access is denied")
+        return real(src, dst)
+
+    monkeypatch.setattr(gs.os, "replace", replace)
+    return failures
+
+
+@pytest.mark.parametrize("which", ["samples", "staging"])
+def test_a_briefly_locked_folder_is_retried_and_the_swap_succeeds(
+    which: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, instant_rename_retries: list[float]
+) -> None:
+    build(tmp_path)
+    (tmp_path / "samples" / "audio" / "stale.mp3").write_bytes(b"old")
+    source = tmp_path / "samples" if which == "samples" else tmp_path / gs.STAGING / "samples"
+    failures = _fail_replace_a_few_times(monkeypatch, source, times=3)
+    build(tmp_path)
+    assert failures == [3]
+    assert not (tmp_path / "samples" / "audio" / "stale.mp3").exists()  # the new samples are in place
+    assert len(instant_rename_retries) == 3
+    assert not (tmp_path / gs.PREVIOUS).exists() and not (tmp_path / gs.SWAP_MARKER).exists()
+
+
+def test_a_briefly_locked_backup_is_retried_when_it_is_put_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    build(tmp_path)
+    before = _snapshot(tmp_path)
+    _crash_between_the_renames(tmp_path)
+    failures = _fail_replace_a_few_times(monkeypatch, tmp_path / gs.PREVIOUS, times=2)
+    with pytest.raises(ServiceError):
+        build(tmp_path, make_song=FakeSong(tmp_path, fail_on="sample_01"))
+    assert failures == [2]
+    assert _snapshot(tmp_path) == before
+
+
+def test_a_folder_that_stays_locked_still_says_in_use(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, instant_rename_retries: list[float]
+) -> None:
+    build(tmp_path)
+    _fail_replace_a_few_times(monkeypatch, tmp_path / "samples", times=1000)
+    with pytest.raises(gs.PublishError, match="in use"):
+        build(tmp_path)
+    assert len(instant_rename_retries) == gs.RENAME_TRIES - 1
+    assert sum(instant_rename_retries) >= 1.5  # it waits long enough for a scan to finish
+
+
+def test_a_file_held_open_for_a_moment_does_not_stop_the_swap(tmp_path: Path) -> None:
+    """A real handle, as Windows Defender or the indexer briefly holds on a fresh file: on Windows the
+    rename fails until it is closed; elsewhere it never fails. Either way the swap must succeed."""
+    import threading
+
+    build(tmp_path)
+    opened, release = threading.Event(), threading.Event()
+
+    def hold() -> None:
+        with (tmp_path / "samples" / "audio" / "sample_01.mp3").open("rb"):
+            opened.set()
+            release.wait(timeout=5)
+
+    holder = threading.Thread(target=hold)
+    holder.start()
+    opened.wait(timeout=5)
+    timer = threading.Timer(0.3, release.set)  # the "scan" ends after 0.3 s
+    timer.start()
+    try:
+        build(tmp_path)
+    finally:
+        release.set()
+        holder.join(timeout=5)
+    assert len(list((tmp_path / "samples" / "audio").glob("*.mp3"))) == 3
+
+
+def test_the_manifest_keeps_what_the_pipeline_stored_and_the_log_what_was_sent(tmp_path: Path) -> None:
+    """B8 may clean the style (an artist phrase removed) before the song is stored."""
+
+    class CleaningSong(FakeSong):
+        def __call__(self, spec: gs.SampleSpec) -> Track:
+            track = super().__call__(spec)
+            return dataclasses.replace(track, style=f"cleaned {spec.id}", theme=f"theme kept by B6 {spec.id}")
+
+    tracks = build(tmp_path, make_song=CleaningSong(tmp_path))
+    assert [t.style for t in tracks] == ["cleaned sample_01", "cleaned sample_02", "cleaned sample_03"]
+    assert tracks[0].theme == "theme kept by B6 sample_01"
+    log = (tmp_path / "samples" / "GENERATION_LOG.md").read_text(encoding="utf-8")
+    assert f"| Style (sent to the song pipeline) | {gs.song_style(gs.SPECS[0])} |" in log
 
 
 # ---- the log records what the pipeline really sent (#40 review, @mlip3191) --------------------

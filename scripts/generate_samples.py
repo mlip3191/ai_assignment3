@@ -45,6 +45,11 @@ PREVIOUS = Path("runtime") / "tmp" / "samples-previous"
 SWAP_MARKER = Path("runtime") / "tmp" / "samples-swap-in-progress"  # exists only during the swap
 GENERATED = Path("runtime") / "generated"  # where the song pipeline writes its working mp3s
 REQUIRED_CALLS = ("qwen", "acestep", "flux")  # each sample's log must show all three
+# Folder renames in the swap are retried: on Windows, Defender or the search indexer briefly holds files
+# that were just written, and a player holds the one it is playing. About 2 s in all.
+RENAME_TRIES = 10
+RENAME_WAIT_S = 0.2
+_sleep = time.sleep  # tests replace this
 CLIENT_LOGGER = "jukebox.clients"
 _CALL = re.compile(r"^(?P<service>\w+) -> \S+?:(?P<port>\d+) (?P<status>\S+) (?P<ms>\d+)ms$")
 
@@ -275,9 +280,9 @@ def _build_one(
     track = Track(
         id=spec.id,
         title=song.title,
-        style=song_style(spec),
-        mood=spec.mood,
-        theme=spec.theme,
+        style=song.style,  # as the pipeline stored them (B8 may have cleaned an artist phrase out)
+        mood=song.mood,
+        theme=song.theme,
         duration_s=int(spec.duration_s),
         vocal=spec.vocal,
         lyrics=song.lyrics if spec.vocal else None,
@@ -314,7 +319,8 @@ def _write_manifest(path: Path, tracks: list[Track]) -> None:
 
 def _publish(out: Path, root: Path) -> None:
     """Swap the staged samples/ into place with two renames, never a copy, so a failure leaves samples/
-    whole. On Windows a rename fails at once while a file inside is open (a sample playing).
+    whole. On Windows a rename fails while a file inside is open (a sample playing, or a virus scan of
+    a fresh file); each rename is retried for about 2 s first (_rename).
 
     The marker file exists only between the first rename and the end of the swap, so only a run that
     really stopped mid-swap is ever recovered; without it, a backup folder is just a leftover.
@@ -328,7 +334,7 @@ def _publish(out: Path, root: Path) -> None:
     marker.write_text("swap in progress\n", encoding="utf-8")
     if target.exists():
         try:
-            os.replace(target, previous)
+            _rename(target, previous)
         except OSError as err:
             marker.unlink(missing_ok=True)
             raise PublishError(
@@ -336,7 +342,7 @@ def _publish(out: Path, root: Path) -> None:
                 "again. samples/ was not changed."
             ) from err
     try:
-        os.replace(out, target)
+        _rename(out, target)
     except OSError as err:
         _recover(root, this_run=True)  # puts the old samples back, or says where they are
         raise PublishError("could not move the new samples into place; samples/ was kept as it was.") from err
@@ -362,7 +368,7 @@ def _recover(root: Path, *, this_run: bool = False) -> None:
         )
     if previous.exists():
         try:
-            os.replace(previous, target)
+            _rename(previous, target)
         except OSError as err:
             raise PublishError(
                 f"the previous samples are in {PREVIOUS.as_posix()}; move that folder back to samples/ "
@@ -371,6 +377,19 @@ def _recover(root: Path, *, this_run: bool = False) -> None:
         if not this_run:
             print(f"Put back the samples from an interrupted run (from {PREVIOUS.as_posix()}).")
     marker.unlink(missing_ok=True)
+
+
+def _rename(src: Path, dst: Path) -> None:
+    """os.replace for a folder, retried briefly on PermissionError ("Access is denied" on Windows while
+    any file inside is open). A rename either happens whole or not at all, so a retry is always safe."""
+    for attempt in range(RENAME_TRIES):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if attempt == RENAME_TRIES - 1:
+                raise
+            _sleep(RENAME_WAIT_S)
 
 
 SERVICE_NAMES = {"qwen": "Qwen", "acestep": "ACE-Step", "flux": "FLUX", "chatterbox": "Chatterbox"}
@@ -412,7 +431,7 @@ def render_log(
             "",
             "| Field | Value |",
             "|---|---|",
-            f"| Style (sent to the song pipeline) | {t.style} |",
+            f"| Style (sent to the song pipeline) | {song_style(s)} |",
             "| ACE-Step tags (exactly as sent) | "
             + (e.acestep_tags or "not recorded (the song pipeline did not report them)")
             + " |",
