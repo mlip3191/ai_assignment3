@@ -265,3 +265,44 @@ def test_heading_end_label_reads_ranges_and_rejects_bad_headings() -> None:
     assert heading_end_label("### M3 — Deploy test · Wed 10/28") == "Wed 10/28"
     with pytest.raises(ValueError):
         heading_end_label("### M5 — no dates here")
+
+
+# ---- the repo-visibility decision (section 14 Q5, DL12) -------------------------------------------
+# Decided 10/21: the repo stays public until we submit, then goes private and the professor is invited.
+
+
+def _contradicts_visibility_decision(text: str) -> list[str]:
+    """Wording from before the decision: a ban on going private, or a public repo counting as access."""
+    old_wording = ("privatiz", "accepted invite or public repo", "Still open**", "Q5 stays open")
+    return [phrase for phrase in old_wording if phrase.lower() in text.lower()]
+
+
+@pytest.mark.parametrize("path", ["PROJECT.md", "scripts/github/issues.json"])
+def test_no_wording_contradicts_the_repo_visibility_decision(path: str) -> None:
+    text = (ROOT / path).read_text(encoding="utf-8")
+    assert _contradicts_visibility_decision(text) == [], f"{path} still has pre-decision Q5/DL12 wording"
+
+
+def test_visibility_check_catches_the_old_wording() -> None:
+    assert _contradicts_visibility_decision("Nobody privatizes the repo") == ["privatiz"]
+    assert _contradicts_visibility_decision("Professor has repo access (accepted invite or public repo)")
+    assert _contradicts_visibility_decision("Q5 | ... | **Still open** (not answered in A5)")
+    assert _contradicts_visibility_decision("accepted invite; private only at submission (DL12)") == []
+
+
+def test_dl12_and_q5_say_private_only_at_submission() -> None:
+    text = (ROOT / "PROJECT.md").read_text(encoding="utf-8")
+    dl12 = next(line for line in text.splitlines() if line.startswith("| DL12 |"))
+    q5 = next(line for line in text.splitlines() if line.startswith("| Q5 |"))
+    assert "private is allowed only at submission" in dl12
+    assert "public until we submit" in q5
+    blockers = next(line for line in text.splitlines() if line.startswith("| **Blockers** |"))
+    assert "§14 Q5" in blockers and "decided" in blockers
+
+
+def test_a10_requires_an_accepted_invite_for_the_professor() -> None:
+    spec, _ = load()
+    a10 = next(t for lane in spec["lanes"] for t in lane["tasks"] if t["key"] == "A10")
+    criteria = "\n".join(a10["criteria"])
+    assert "Professor has repo access (accepted invite)" in criteria
+    assert "goes private only at submission" in criteria
