@@ -20,6 +20,7 @@ One file per module, named `test_<module>.py`:
 | `test_playback_spike.py` | E1 Option A queue: clip order, skip, stale end event, one autoplay Audio |
 | `test_config.py` | `jukebox/config.py`: required variables, one port per service, no port 9000, no secrets in output |
 | `test_check_config.py` | `scripts/check_config.py`: OK/missing table that never prints values |
+| `test_player.py` | `jukebox/services/player.py`: queue order, skip, a missing DJ clip, end of queue |
 | `test_chatterbox.py` | `jukebox/clients/chatterbox.py`: `speak()` request format (default and reference voice), local input checks, each error kind with no retry, speech endpoint on 9008 only |
 | `test_dj.py` | `jukebox/services/dj.py` and `prompts/dj.md`: song-specific script (title, word limit, cleanup, one retry), clip saved under `runtime/generated/`, only the Qwen and Chatterbox clients |
 | `test_flux.py` | `jukebox/clients/flux.py`: `generate_image()` request format, defaults, decoded JPEG, each error kind, FLUX on 9006 only, key and image data never logged |
