@@ -1,0 +1,292 @@
+"""Tests for scripts/launcher.py: the shared logic behind run.sh and run.bat (task D6, PROJECT.md §0.4).
+
+Nothing here installs packages, opens an editor or browser, or calls a class service: every outside
+effect goes through a fake passed in as `deps`.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import shutil
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+_spec = importlib.util.spec_from_file_location("launcher", ROOT / "scripts" / "launcher.py")
+launcher = importlib.util.module_from_spec(_spec)
+sys.modules["launcher"] = launcher
+_spec.loader.exec_module(launcher)
+
+KEY = "sekret-key-0123456789"
+GOOD_ENV = "\n".join(
+    [
+        f"CLASS_API_KEY={KEY}",
+        "QWEN_BASE_URL=http://class.example:9001",
+        "FLUX_BASE_URL=http://class.example:9006",
+        "ACESTEP_BASE_URL=http://class.example:9007",
+        "CHATTERBOX_BASE_URL=http://class.example:9008",
+    ]
+)
+
+
+class FakeProcess:
+    def __init__(self, lines: list[str], code: int = 0, interrupt: bool = False) -> None:
+        self._lines = lines
+        self._code = code
+        self._interrupt = interrupt
+        self.terminated = False
+
+    @property
+    def stdout(self):
+        yield from self._lines
+        if self._interrupt:
+            raise KeyboardInterrupt
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self._code
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+
+@dataclass
+class World:
+    """Records every outside effect the launcher asks for."""
+
+    root: Path
+    platform: str = "windows"
+    version: tuple[int, int] = (3, 12)
+    run_codes: dict[str, int] = field(default_factory=dict)
+    app_lines: list[str] = field(default_factory=lambda: ["Open http://127.0.0.1:7860\n"])
+    app_code: int = 0
+    app_interrupt: bool = False
+    editor_ok: bool = True
+    said: list[str] = field(default_factory=list)
+    ran: list[list[str]] = field(default_factory=list)
+    started: list[list[str]] = field(default_factory=list)
+    edited: list[Path] = field(default_factory=list)
+    browsed: list[str] = field(default_factory=list)
+    process: FakeProcess | None = None
+
+    def deps(self):
+        def run(cmd: list[str], cwd: Path) -> int:
+            self.ran.append([str(c) for c in cmd])
+            joined = " ".join(str(c) for c in cmd)
+            return next((code for key, code in self.run_codes.items() if key in joined), 0)
+
+        def start(cmd: list[str], cwd: Path) -> FakeProcess:
+            self.started.append([str(c) for c in cmd])
+            self.process = FakeProcess(self.app_lines, self.app_code, self.app_interrupt)
+            return self.process
+
+        def open_editor(path: Path) -> bool:
+            self.edited.append(path)
+            return self.editor_ok
+
+        return launcher.Deps(
+            platform=self.platform,
+            python="PYTHON",
+            version=self.version,
+            environ={},
+            run=run,
+            start=start,
+            open_editor=open_editor,
+            open_browser=self.browsed.append,
+            say=self.said.append,
+        )
+
+    @property
+    def text(self) -> str:
+        return "\n".join(self.said)
+
+    def main(self) -> int:
+        return launcher.main(root=self.root, deps=self.deps())
+
+
+@pytest.fixture
+def world(tmp_path: Path) -> World:
+    shutil.copy(ROOT / ".env.example", tmp_path / ".env.example")
+    (tmp_path / "requirements.txt").write_text("httpx==0.28.1\n", encoding="utf-8")
+    (tmp_path / "app.py").write_text("print('app')\n", encoding="utf-8")
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "check_endpoints.py").write_text("", encoding="utf-8")
+    (tmp_path / ".venv").mkdir()
+    return World(root=tmp_path)
+
+
+def ready(world: World) -> World:
+    (world.root / ".env").write_text(GOOD_ENV, encoding="utf-8")
+    return world
+
+
+# ---- Python version ----------------------------------------------------------------------------
+
+
+def test_python_older_than_3_11_is_refused_with_the_fix(world: World) -> None:
+    world.version = (3, 10)
+    assert world.main() == launcher.EXIT_ERROR
+    assert "3.11" in world.text and "python.org" in world.text
+    assert world.ran == [] and world.started == []
+
+
+# ---- first run: no settings file (§0.4.4) ------------------------------------------------------
+
+
+def test_first_run_creates_env_opens_the_editor_and_stops(world: World) -> None:
+    assert world.main() == launcher.EXIT_ACTION
+    env = world.root / ".env"
+    assert env.read_text(encoding="utf-8") == (world.root / ".env.example").read_text(encoding="utf-8")
+    assert world.edited == [env]
+    assert "class-endpoints.txt" in world.text
+    assert "run the launcher again" in world.text.lower()
+    assert world.ran == [] and world.started == []  # nothing installed, no app
+
+
+@pytest.mark.parametrize(("platform", "editor"), [("windows", "Notepad"), ("macos", "TextEdit")])
+def test_first_run_names_the_editor_for_the_os(world: World, platform: str, editor: str) -> None:
+    world.platform = platform
+    world.main()
+    assert editor in world.text
+
+
+def test_if_the_editor_cant_open_the_message_says_where_the_file_is(world: World) -> None:
+    world.editor_ok = False
+    assert world.main() == launcher.EXIT_ACTION
+    assert str(world.root / ".env") in world.text
+
+
+def test_a_notepad_env_txt_gets_its_own_message(world: World) -> None:
+    (world.root / ".env.txt").write_text(GOOD_ENV, encoding="utf-8")
+    assert world.main() == launcher.EXIT_ACTION
+    assert ".env.txt" in world.text and "rename" in world.text.lower()
+    assert not (world.root / ".env").exists()  # don't create a second, empty one next to it
+    assert KEY not in world.text
+
+
+# ---- next run: placeholders still there --------------------------------------------------------
+
+
+def test_placeholders_are_listed_by_name_only_and_the_launcher_stops(world: World) -> None:
+    example = (world.root / ".env.example").read_text(encoding="utf-8")
+    (world.root / ".env").write_text(example.replace("your-class-api-key-here", KEY), encoding="utf-8")
+
+    assert world.main() == launcher.EXIT_ACTION
+    for name in ("QWEN_BASE_URL", "FLUX_BASE_URL", "ACESTEP_BASE_URL", "CHATTERBOX_BASE_URL"):
+        assert name in world.text
+    assert "CLASS_API_KEY" not in world.text  # this one is filled in
+    assert KEY not in world.text and "class.example" not in world.text  # never a value
+    assert world.edited == [world.root / ".env"]  # reopened so they can fix it
+    assert world.ran == [] and world.started == []
+
+
+def test_a_port_9000_url_is_reported_as_a_problem(world: World) -> None:
+    (world.root / ".env").write_text(GOOD_ENV.replace(":9001", ":9000"), encoding="utf-8")
+    assert world.main() == launcher.EXIT_ACTION
+    assert "QWEN_BASE_URL" in world.text
+
+
+# ---- install, check, launch (§0.4.5) -----------------------------------------------------------
+
+
+def test_a_good_env_installs_checks_then_starts_the_app(world: World) -> None:
+    assert ready(world).main() == 0
+    assert world.ran[0][:4] == ["PYTHON", "-m", "pip", "install"]
+    assert "requirements.txt" in world.ran[0][-1]
+    assert world.ran[1][-1].endswith("check_endpoints.py")
+    assert world.started == [["PYTHON", "-u", str(world.root / "app.py")]]
+    assert "http://127.0.0.1:7860" in world.text
+
+
+def test_install_is_skipped_when_requirements_are_unchanged(world: World) -> None:
+    ready(world).main()
+    world.ran.clear()
+    world.main()
+    assert not any("pip" in cmd for cmd in world.ran)
+
+
+def test_install_runs_again_when_requirements_change(world: World) -> None:
+    ready(world).main()
+    (world.root / "requirements.txt").write_text("httpx==0.28.1\ngradio==6.30.0\n", encoding="utf-8")
+    world.ran.clear()
+    world.main()
+    assert any("pip" in cmd for cmd in world.ran)
+
+
+def test_a_failed_install_stops_with_a_plain_message_and_retries_next_time(world: World) -> None:
+    world.run_codes = {"pip": 1}
+    assert ready(world).main() == launcher.EXIT_ERROR
+    assert "internet" in world.text.lower()
+    assert world.started == []
+    world.run_codes = {}
+    world.ran.clear()
+    world.main()
+    assert any("pip" in cmd for cmd in world.ran)  # no stamp was written for the failed install
+
+
+def test_an_unreachable_service_only_warns_and_the_app_still_starts(world: World) -> None:
+    world.run_codes = {"check_endpoints": 1}
+    assert ready(world).main() == 0
+    assert "couldn't reach" in world.text.lower()
+    assert world.started  # never blocks the app
+
+
+def test_the_browser_opens_once_at_the_address_the_app_prints(world: World) -> None:
+    world.app_lines = ["loading\n", "Open http://127.0.0.1:7861\n", "Open http://127.0.0.1:7861\n"]
+    ready(world).main()
+    assert world.browsed == ["http://127.0.0.1:7861"]
+
+
+def test_the_app_output_is_shown_in_the_window(world: World) -> None:
+    world.app_lines = ["Running on local URL:  http://127.0.0.1:7860\n"]
+    ready(world).main()
+    assert any("Running on local URL" in line for line in world.said)
+
+
+def test_a_missing_app_py_is_a_clear_error(world: World) -> None:
+    (world.root / "app.py").unlink()
+    assert ready(world).main() == launcher.EXIT_ERROR
+    assert "app.py" in world.text
+    assert world.started == []
+
+
+def test_the_app_exit_code_is_passed_through(world: World) -> None:
+    world.app_code = 3
+    assert ready(world).main() == 3
+    assert "stopped" in world.text.lower()
+
+
+def test_ctrl_c_stops_the_app_cleanly(world: World) -> None:
+    world.app_interrupt = True
+    assert ready(world).main() == 0
+    assert world.process is not None and world.process.terminated
+
+
+# ---- the real helpers (no fakes) ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("platform", "expected"),
+    [("windows", ["notepad.exe"]), ("macos", ["open", "-e"]), ("linux", None)],
+)
+def test_editor_command_per_os(platform: str, expected: list[str] | None, tmp_path: Path) -> None:
+    command = launcher.editor_command(platform, tmp_path / ".env")
+    if expected is None:
+        assert command is None
+    else:
+        assert command == [*expected, str(tmp_path / ".env")]
+
+
+def test_the_browser_is_opened_from_python_not_an_os_command() -> None:
+    source = (ROOT / "scripts" / "launcher.py").read_text(encoding="utf-8")
+    assert "webbrowser.open" in source
+    for banned in ("xdg-open", "start ", "explorer", "ffmpeg", "shell=True"):
+        assert banned not in source, banned
+
+
+def test_detect_platform() -> None:
+    assert launcher.detect_platform("win32") == "windows"
+    assert launcher.detect_platform("darwin") == "macos"
+    assert launcher.detect_platform("linux") == "linux"
