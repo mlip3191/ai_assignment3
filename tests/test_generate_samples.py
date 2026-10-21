@@ -708,6 +708,44 @@ def test_main_prints_a_publish_problem_as_is(
     assert "Stopped: samples/ is in use" in out and "was not changed" not in out
 
 
+def test_missing_settings_stop_with_a_clear_line_not_a_traceback(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """@mlip3191 on #40: a checkout with no settings must not end in a stack trace."""
+    import jukebox.config as config
+
+    def no_settings():
+        raise config.ConfigError(["CLASS_API_KEY is missing"])
+
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("nothing may be generated without settings")
+
+    monkeypatch.setattr(config, "load_config", no_settings)
+    monkeypatch.setattr(gs, "build_samples", must_not_run)
+    assert gs.main() == 1
+    out = capsys.readouterr().out
+    assert (
+        "Stopped:" in out and "python scripts/check_config.py" in out and "samples/ was not changed." in out
+    )
+
+
+def test_lyrics_with_backticks_never_break_the_logs_code_blocks(tmp_path: Path) -> None:
+    """@mlip3191 on #40: a ``` inside the lyrics must not close the log's code block early."""
+
+    class BacktickSong(FakeSong):
+        def __call__(self, spec: gs.SampleSpec) -> Track:
+            track = super().__call__(spec)
+            if spec.vocal:
+                track = dataclasses.replace(track, lyrics="[verse]\nA line with ``` in it\nAnd ```` four")
+            return track
+
+    build(tmp_path, make_song=BacktickSong(tmp_path))
+    log = (tmp_path / "samples" / "GENERATION_LOG.md").read_text(encoding="utf-8")
+    assert "`````\n[verse]\nA line with ``` in it\nAnd ```` four\n`````" in log
+    assert gs._fence("plain text") == "```"
+    assert gs._fence("has ``` inside") == "````"
+
+
 # ---- brief Windows locks on fresh files (#40 review, @gunnaroc) -------------------------------
 
 

@@ -465,21 +465,22 @@ def render_log(
         lines += ["", f"**Qwen song prompt** ({what}; system and user, exactly as sent)", ""]
         if e.song_prompt:
             for message in e.song_prompt:
-                lines += [f"{message['role'].capitalize()}:", "", "```", message["content"], "```", ""]
+                fence = _fence(message["content"])
+                lines += [f"{message['role'].capitalize()}:", "", fence, message["content"], fence, ""]
         else:
             lines += [
                 "Qwen song prompt not recorded (the song pipeline did not report it).",
                 "",
             ]
         lines += ["**Lyrics** (exactly as generated, unedited)", ""]
-        lines += ["```", t.lyrics, "```"] if t.lyrics else ["Instrumental: no lyrics."]
+        lines += [_fence(t.lyrics), t.lyrics, _fence(t.lyrics)] if t.lyrics else ["Instrumental: no lyrics."]
         lines += [
             "",
             "**FLUX prompt** (written by Qwen, exactly as sent, including the fixed suffix)",
             "",
-            "```",
+            _fence(t.cover_prompt or ""),
             t.cover_prompt or "",
-            "```",
+            _fence(t.cover_prompt or ""),
             "",
             f"**Files:** `{t.audio_path}`, `{t.cover_path}`",
             "",
@@ -504,10 +505,25 @@ def render_log(
     return "\n".join(lines) + "\n"
 
 
-def main() -> int:
-    from jukebox.config import load_config
+def _fence(text: str) -> str:
+    """A Markdown code fence longer than any run of backticks in `text`, so generated text (a lyric
+    with ``` in it) can never close its block early. At least three backticks."""
+    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    return "`" * max(3, longest + 1)
 
-    config = load_config()
+
+def main() -> int:
+    from jukebox.config import ConfigError, load_config
+
+    try:
+        config = load_config()
+    except ConfigError:
+        # The problems name settings, never values, but check_config.py is the tool that explains them.
+        print(
+            "Stopped: the settings are missing or invalid. Run `python scripts/check_config.py` to see "
+            "which ones. samples/ was not changed."
+        )
+        return 1
     models = {"qwen": config.qwen.model, "acestep": config.acestep.model, "flux": config.flux.model}
     commit = _git("rev-parse", "--short", "HEAD") or "unknown"
     operator = _git("config", "user.name") or "unknown"
