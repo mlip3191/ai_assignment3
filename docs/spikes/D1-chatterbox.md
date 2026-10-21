@@ -91,6 +91,7 @@ The spec also lists 413, 429, 500, 503 and 504; none of those were seen.
 - The exact minimum reference length (somewhere between 0.5 s and 11.6 s).
 - Non-English `language_id` values.
 - `seed` repeatability, `speed`, `exaggeration` and the other tuning fields. These were all left at their defaults. Chatterbox's own guidance for more expressive speech is a higher `exaggeration` (~0.7) with a lower `cfg_weight` (~0.3); D3 will try that.
+  - **Follow-up (D3, 2026-10-19):** per `/openapi.json`, `exaggeration` defaults to 0.5 with a minimum of 0 and no maximum, and `cfg_weight` defaults to 0.5 in the range 0–1. The client caps `exaggeration` at 2 as our own limit. The same intro was spoken live at 0.5/0.5, 0.7/0.3 and 1.0/0.3; all three succeeded, and by ear 1.0/0.3 sounded most like a radio DJ, so the DJ uses that.
 - How much a cleaner reference recording improves the likeness.
 - Long inputs near 4,096 characters, and the `chunk_size` option.
 
