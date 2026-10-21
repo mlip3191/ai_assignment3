@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -35,7 +36,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from jukebox.errors import ServiceError, user_message  # noqa: E402
-from jukebox.library import Library  # noqa: E402
+from jukebox.library import Library, LibraryError  # noqa: E402
 from jukebox.models import Track  # noqa: E402
 
 STAGING = Path("runtime") / "tmp" / "samples-staging"
@@ -87,6 +88,7 @@ class Entry:
     calls: list[Call] = field(default_factory=list)
     seconds: float = 0.0
     song_prompt: list[dict[str, str]] | None = None  # the Qwen title/lyrics messages, when known
+    acestep_tags: str | None = None  # the style tags ACE-Step received, when known
 
 
 def song_style(spec: SampleSpec) -> str:
@@ -96,6 +98,10 @@ def song_style(spec: SampleSpec) -> str:
 
 class SampleError(RuntimeError):
     """A sample could not be made. The message is the pipeline's plain-language (7.3) message."""
+
+
+class PublishError(SampleError):
+    """The new samples could not be swapped in. The message says what state samples/ is in."""
 
 
 def default_make_song(spec: SampleSpec, *, library: Library | None = None) -> Track:
@@ -152,6 +158,20 @@ def default_describe_prompt(spec: SampleSpec) -> list[dict[str, str]] | None:
         return None
 
 
+DescribeTags = Callable[[SampleSpec], str | None]
+
+
+def default_describe_tags(spec: SampleSpec) -> str | None:
+    """The style tags the song pipeline sends ACE-Step for this spec (B6's build_tags), for the log.
+    None if B6 isn't available, so the log says the tags weren't recorded instead of failing."""
+    try:
+        from jukebox.services import songs
+
+        return songs.build_tags(song_style(spec), spec.mood, vocal=spec.vocal)
+    except (ImportError, AttributeError):
+        return None
+
+
 def default_make_cover(track: Track, dest: Path) -> str:
     from jukebox.services import art
 
@@ -165,6 +185,7 @@ def build_samples(
     make_song: MakeSong = default_make_song,
     make_cover: MakeCover = default_make_cover,
     describe_prompt: DescribePrompt | None = default_describe_prompt,
+    describe_tags: DescribeTags | None = default_describe_tags,
     operator: str,
     commit: str,
     models: dict[str, str | None],
@@ -172,6 +193,7 @@ def build_samples(
 ) -> list[Track]:
     """Build every sample in a staging folder, check it, then swap it into samples/."""
     root = Path(root)
+    _recover(root / "samples", root / PREVIOUS)
     staging = root / STAGING
     shutil.rmtree(staging, ignore_errors=True)
     out = staging / "samples"
@@ -179,6 +201,9 @@ def build_samples(
         entries = [_build_one(spec, root, out, make_song, make_cover, now) for spec in specs]
         for entry in entries:
             entry.song_prompt = describe_prompt(entry.spec) if describe_prompt else None
+            entry.acestep_tags = describe_tags(entry.spec) if describe_tags else None
+        for folder in ("audio", "covers"):
+            (out / folder / ".gitkeep").write_bytes(b"")  # committed, so a run never deletes them
         _write_manifest(out / "manifest.json", [e.track for e in entries])
         (out / "GENERATION_LOG.md").write_text(
             render_log(entries, operator=operator, commit=commit, models=models, date=now()[:10]),
@@ -209,15 +234,21 @@ def _build_one(
     started = time.perf_counter()
     try:
         song = make_song(spec)
-        audio_src = root / song.audio_path.replace("\\", "/")
+        audio_src = Library(root=root).resolve(song.audio_path)
         audio_rel = f"samples/audio/{spec.id}{audio_src.suffix.lower()}"
         cover_rel = f"samples/covers/{spec.id}.jpg"
         (out / "audio").mkdir(parents=True, exist_ok=True)
         shutil.copyfile(audio_src, out.parent / audio_rel)
+        if (root / "runtime").resolve() in audio_src.resolve().parents:
+            audio_src.unlink(missing_ok=True)  # the pipeline's working copy; the sample is the copy
         prompt = make_cover(song, out.parent / cover_rel)
     finally:
         logger.removeHandler(handler)
         logger.setLevel(previous_level)
+    if not calls:
+        raise SampleError(
+            f"{spec.id}: no service calls were recorded, so the log could not show the models and ports"
+        )
     track = Track(
         id=spec.id,
         title=song.title,
@@ -259,20 +290,41 @@ def _write_manifest(path: Path, tracks: list[Track]) -> None:
 
 
 def _publish(out: Path, root: Path) -> None:
-    """Swap the staged samples/ into place; restore the previous one if anything goes wrong."""
+    """Swap the staged samples/ into place with two renames, never a copy, so a failure leaves samples/
+    whole. On Windows a rename fails at once while a file inside is open (a sample playing)."""
     target = root / "samples"
     previous = root / PREVIOUS
-    shutil.rmtree(previous, ignore_errors=True)
+    _recover(target, previous)
+    shutil.rmtree(previous, ignore_errors=True)  # a leftover backup; samples/ itself is whole
+    if previous.exists():
+        raise PublishError(f"could not clear {PREVIOUS.as_posix()}; close any open sample and run again.")
+    previous.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
-        previous.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(target), str(previous))
+        try:
+            os.replace(target, previous)
+        except OSError as err:
+            raise PublishError(
+                "samples/ is in use (is a sample open or playing?); close it and run again. "
+                "samples/ was not changed."
+            ) from err
     try:
-        shutil.move(str(out), str(target))
-    except BaseException:
+        os.replace(out, target)
+    except OSError as err:
         if previous.exists() and not target.exists():
-            shutil.move(str(previous), str(target))
-        raise
+            _recover(target, previous)
+        raise PublishError("could not move the new samples into place; samples/ was kept as it was.") from err
     shutil.rmtree(previous, ignore_errors=True)
+
+
+def _recover(target: Path, previous: Path) -> None:
+    """A run that stopped between the two renames leaves the old samples only in PREVIOUS: put them back."""
+    if previous.exists() and not target.exists():
+        try:
+            os.replace(previous, target)
+        except OSError as err:
+            raise PublishError(
+                f"the previous samples are in {PREVIOUS.as_posix()}; move that folder back to samples/."
+            ) from err
 
 
 SERVICE_NAMES = {"qwen": "Qwen", "acestep": "ACE-Step", "flux": "FLUX", "chatterbox": "Chatterbox"}
@@ -291,7 +343,7 @@ def render_log(
         "regenerated, never hand-edited.",
         "",
         f"- **Date:** {date}",
-        f"- **Operator:** @{operator}",
+        f"- **Operator:** {operator}",
         "- **Command:** `python scripts/generate_samples.py`",
         f"- **Commit the script ran from:** `{commit}`",
         "- **Models (from the app's settings):**",
@@ -314,7 +366,10 @@ def render_log(
             "",
             "| Field | Value |",
             "|---|---|",
-            f"| Style tags | {t.style} |",
+            f"| Style (sent to the song pipeline) | {t.style} |",
+            "| ACE-Step tags (exactly as sent) | "
+            + (e.acestep_tags or "not recorded (the song pipeline's tag builder was unavailable)")
+            + " |",
             f"| Mood | {s.mood} |",
             f"| Theme | {s.theme} |",
             f"| Duration requested | {s.duration_s} s |",
@@ -323,13 +378,14 @@ def render_log(
             "",
             f"**Calls** (from the app's request log; {e.seconds:.1f} s for this sample)",
             "",
-            "| # | Service | Port | Status | Time |",
-            "|---|---|---|---|---|",
+            "| # | Service | Model | Port | Status | Time |",
+            "|---|---|---|---|---|---|",
         ]
         lines += [
-            f"| {i} | {SERVICE_NAMES.get(c.service, c.service)} | {c.port} | {c.status} | {c.ms} ms |"
+            f"| {i} | {SERVICE_NAMES.get(c.service, c.service)} | `{models.get(c.service) or 'not set'}` "
+            f"| {c.port} | {c.status} | {c.ms} ms |"
             for i, c in enumerate(e.calls, 1)
-        ] or ["| | (no calls recorded) | | | |"]
+        ]
         what = "title and lyrics" if s.vocal else "title"
         lines += ["", f"**Qwen song prompt** ({what}; system and user, exactly as sent)", ""]
         if e.song_prompt:
@@ -386,7 +442,11 @@ def main() -> int:
     except ServiceError as err:
         print(f"Stopped: {user_message(err)} samples/ was not changed.")
         return 1
-    except SampleError as err:
+    except PublishError as err:
+        print(f"Stopped: {err}")  # says itself what state samples/ is in
+        return 1
+    except (SampleError, NotImplementedError, LibraryError, OSError) as err:
+        # Everything before the swap only touches the staging folder, so samples/ is as it was.
         print(f"Stopped: {err} samples/ was not changed.")
         return 1
     for t in tracks:

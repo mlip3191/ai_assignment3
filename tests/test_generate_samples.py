@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import respx
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -204,7 +205,7 @@ def test_a_rerun_replaces_the_previous_samples(tmp_path: Path) -> None:
     (tmp_path / "samples" / "audio" / "stale.mp3").write_bytes(b"old")
     build(tmp_path)
     assert not (tmp_path / "samples" / "audio" / "stale.mp3").exists()
-    assert len(list((tmp_path / "samples" / "audio").iterdir())) == 3
+    assert len(list((tmp_path / "samples" / "audio").glob("*.mp3"))) == 3
 
 
 # ---- wiring -----------------------------------------------------------------------------------
@@ -314,3 +315,213 @@ def test_log_says_so_when_the_song_prompt_is_not_available(tmp_path: Path) -> No
     build(tmp_path, describe_prompt=None)
     log = (tmp_path / "samples" / "GENERATION_LOG.md").read_text(encoding="utf-8")
     assert "song prompt not recorded" in log
+
+
+# ---- pre-push review follow-ups ---------------------------------------------------------------
+
+
+def _snapshot(root: Path) -> dict:
+    folder = root / "samples"
+    return {p.relative_to(root): p.read_bytes() for p in folder.rglob("*") if p.is_file()}
+
+
+def _fail_replace_from(monkeypatch: pytest.MonkeyPatch, source: Path) -> None:
+    """Make the rename of `source` fail the way Windows does when a file inside it is open."""
+    real = gs.os.replace
+
+    def replace(src, dst):
+        if Path(src).resolve() == source.resolve():
+            raise PermissionError(32, "The process cannot access the file because it is being used")
+        return real(src, dst)
+
+    monkeypatch.setattr(gs.os, "replace", replace)
+
+
+def test_a_sample_open_in_a_player_leaves_samples_whole(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    build(tmp_path)
+    before = _snapshot(tmp_path)
+    _fail_replace_from(monkeypatch, tmp_path / "samples")
+    with pytest.raises(gs.PublishError, match="in use"):
+        build(tmp_path)
+    assert _snapshot(tmp_path) == before
+    assert not (tmp_path / gs.PREVIOUS).exists()
+
+
+def test_a_failed_move_of_the_new_samples_puts_the_old_ones_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    build(tmp_path)
+    before = _snapshot(tmp_path)
+    _fail_replace_from(monkeypatch, tmp_path / gs.STAGING / "samples")
+    with pytest.raises(gs.PublishError, match="kept as it was"):
+        build(tmp_path)
+    assert _snapshot(tmp_path) == before
+    assert not (tmp_path / gs.PREVIOUS).exists()
+
+
+def test_the_swap_never_copies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    build(tmp_path)
+
+    def no_copy(*args, **kwargs):
+        raise AssertionError("the swap must rename, never copy and delete")
+
+    monkeypatch.setattr(gs.shutil, "move", no_copy)
+    monkeypatch.setattr(gs.shutil, "copytree", no_copy)
+    build(tmp_path)
+
+
+def test_a_run_that_stopped_mid_swap_gets_the_old_samples_back(tmp_path: Path) -> None:
+    build(tmp_path)
+    before = _snapshot(tmp_path)
+    (tmp_path / gs.PREVIOUS).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "samples").rename(tmp_path / gs.PREVIOUS)  # what a crash between the two renames leaves
+    with pytest.raises(ServiceError):
+        build(tmp_path, make_song=FakeSong(tmp_path, fail_on="sample_01"))
+    assert _snapshot(tmp_path) == before
+    assert not (tmp_path / gs.PREVIOUS).exists()
+
+
+def test_the_committed_gitkeep_files_survive_a_run(tmp_path: Path) -> None:
+    for folder in ("audio", "covers"):
+        (tmp_path / "samples" / folder).mkdir(parents=True)
+        (tmp_path / "samples" / folder / ".gitkeep").write_bytes(b"")
+    build(tmp_path)
+    assert (tmp_path / "samples" / "audio" / ".gitkeep").is_file()
+    assert (tmp_path / "samples" / "covers" / ".gitkeep").is_file()
+
+
+def test_the_pipelines_working_copy_of_the_audio_is_removed(tmp_path: Path) -> None:
+    build(tmp_path)
+    assert list((tmp_path / "runtime" / "generated").glob("*.mp3")) == []
+
+
+def test_a_sample_with_no_recorded_calls_stops_the_run(tmp_path: Path) -> None:
+    def silent_cover(track: Track, dest: Path) -> str:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(JPEG)
+        return "A cover"
+
+    logger = logging.getLogger("jukebox.clients")
+    logger.disabled = True  # the fake song's request lines never reach the recorder
+    try:
+        with pytest.raises(gs.SampleError, match="no service calls were recorded"):
+            build(tmp_path, make_cover=silent_cover)
+    finally:
+        logger.disabled = False
+    assert not (tmp_path / "samples").exists()
+
+
+def test_the_log_shows_the_acestep_tags_exactly_as_sent(tmp_path: Path) -> None:
+    build(tmp_path, describe_tags=lambda spec: f"{gs.song_style(spec)}, {spec.mood}, sent-as-is")
+    log = (tmp_path / "samples" / "GENERATION_LOG.md").read_text(encoding="utf-8")
+    expected = "lo-fi hip hop, jazzy keys, vinyl crackle, soft drums, mellow, sent-as-is"
+    assert f"| ACE-Step tags (exactly as sent) | {expected} |" in log
+
+
+def test_the_log_says_so_when_the_acestep_tags_are_not_available(tmp_path: Path) -> None:
+    build(tmp_path, describe_tags=None)
+    log = (tmp_path / "samples" / "GENERATION_LOG.md").read_text(encoding="utf-8")
+    assert "| ACE-Step tags (exactly as sent) | not recorded" in log
+
+
+def test_the_operator_is_not_written_as_a_github_handle(tmp_path: Path) -> None:
+    gs.build_samples(
+        gs.SPECS, root=tmp_path, make_song=FakeSong(tmp_path), make_cover=fake_cover,
+        operator="Felipe Example", commit=COMMIT, models=MODELS, now=lambda: NOW,
+    )  # fmt: skip
+    log = (tmp_path / "samples" / "GENERATION_LOG.md").read_text(encoding="utf-8")
+    assert "- **Operator:** Felipe Example" in log and "@Felipe" not in log
+
+
+# Real shared clients (respx), so a change to the client's request log can't silently empty the log.
+PORTS = {"qwen": 9001, "flux": 9006, "acestep": 9007, "chatterbox": 9008}
+
+
+@pytest.fixture
+def cfg(tmp_path: Path):
+    from jukebox.config import load_config
+
+    env = {"CLASS_API_KEY": KEY}
+    for service, port in PORTS.items():
+        env[f"{service.upper()}_BASE_URL"] = f"http://{HOST}:{port}"
+    for service, model in MODELS.items():
+        env[f"{service.upper()}_MODEL"] = model
+    return load_config(env=env, env_file=tmp_path / "missing-file")
+
+
+@respx.mock
+def test_real_client_calls_are_logged_with_model_and_port_never_host_or_key(tmp_path: Path, cfg) -> None:
+    from jukebox.clients.base import ServiceClient
+
+    for port in PORTS.values():
+        respx.post(f"http://{HOST}:{port}/v1/test").respond(200, json={"ok": True})
+    clients = {s: ServiceClient(s, cfg, sleep=lambda _s: None) for s in ("qwen", "acestep", "flux")}
+    fake_song = FakeSong(tmp_path)
+
+    def song(spec: gs.SampleSpec) -> Track:
+        clients["qwen"].request("POST", "/v1/test", json={})
+        clients["acestep"].request("POST", "/v1/test", json={}, retry=False)
+        logger = logging.getLogger("jukebox.clients")
+        logger.disabled = True  # keep only the real client's lines, not the fake's hand-written ones
+        try:
+            return fake_song(spec)
+        finally:
+            logger.disabled = False
+
+    def cover(track: Track, dest: Path) -> str:
+        clients["qwen"].request("POST", "/v1/test", json={})
+        clients["flux"].request("POST", "/v1/test", json={})
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(JPEG)
+        return "A cover, square album cover, no text, no letters, no logos, no real people"
+
+    try:
+        build(tmp_path, make_song=song, make_cover=cover)
+    finally:
+        for c in clients.values():
+            c.close()
+    log = (tmp_path / "samples" / "GENERATION_LOG.md").read_text(encoding="utf-8")
+    assert f"| 2 | ACE-Step | `{MODELS['acestep']}` | 9007 | 200 |" in log
+    assert f"| 4 | FLUX | `{MODELS['flux']}` | 9006 | 200 |" in log
+    assert log.count(f"| Qwen | `{MODELS['qwen']}` | 9001 | 200 |") == 6  # 2 per sample
+    assert HOST not in log and KEY not in log
+
+
+@pytest.mark.parametrize(
+    "error, says",
+    [
+        (NotImplementedError("the song step needs B6's songs.generate_song()"), "needs B6"),
+        (OSError("disk full"), "disk full"),
+        (gs.SampleError("sample_02: The ACE-Step service took too long to respond."), "took too long"),
+    ],
+)
+def test_main_stops_with_a_clear_line_not_a_traceback(
+    error: Exception, says: str, cfg, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    import jukebox.config as config
+
+    def fail(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(config, "load_config", lambda: cfg)
+    monkeypatch.setattr(gs, "build_samples", fail)
+    assert gs.main() == 1
+    out = capsys.readouterr().out
+    assert "Stopped:" in out and says in out and "samples/ was not changed." in out
+
+
+def test_main_prints_a_publish_problem_as_is(
+    cfg, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    import jukebox.config as config
+
+    def fail(*args, **kwargs):
+        raise gs.PublishError("samples/ is in use (is a sample open or playing?); close it and run again.")
+
+    monkeypatch.setattr(config, "load_config", lambda: cfg)
+    monkeypatch.setattr(gs, "build_samples", fail)
+    assert gs.main() == 1
+    out = capsys.readouterr().out
+    assert "Stopped: samples/ is in use" in out and "was not changed" not in out
