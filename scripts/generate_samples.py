@@ -220,6 +220,7 @@ def build_samples(
     root = Path(root)
     _SENT.clear()  # only this run's prompts and tags may reach this run's log
     _recover(root)
+    _clear_leftover_backup(root)  # before minutes of generation, not after
     staging = root / STAGING
     shutil.rmtree(staging, ignore_errors=True)
     out = staging / "samples"
@@ -267,7 +268,10 @@ def _build_one(
         shutil.copyfile(audio_src, out.parent / audio_rel)
         working = audio_src.resolve()
         if (root / GENERATED).resolve() in working.parents:
-            working.unlink(missing_ok=True)  # the pipeline's working copy; the sample is the copy
+            # The pipeline's working copy; the sample is the copy. Only cleanup, so a file a virus scan
+            # still holds is left behind rather than stopping the run.
+            with contextlib.suppress(OSError):
+                working.unlink(missing_ok=True)
         prompt = make_cover(song, out.parent / cover_rel)
     finally:
         logger.removeHandler(handler)
@@ -327,9 +331,7 @@ def _publish(out: Path, root: Path) -> None:
     """
     target, previous, marker = root / "samples", root / PREVIOUS, root / SWAP_MARKER
     _recover(root)
-    shutil.rmtree(previous, ignore_errors=True)  # a leftover (no marker): samples/ itself is whole
-    if previous.exists():
-        raise PublishError(f"could not clear {PREVIOUS.as_posix()}; close any open sample and run again.")
+    _clear_leftover_backup(root)
     previous.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text("swap in progress\n", encoding="utf-8")
     if target.exists():
@@ -377,6 +379,14 @@ def _recover(root: Path, *, this_run: bool = False) -> None:
         if not this_run:
             print(f"Put back the samples from an interrupted run (from {PREVIOUS.as_posix()}).")
     marker.unlink(missing_ok=True)
+
+
+def _clear_leftover_backup(root: Path) -> None:
+    """With no marker (after _recover), a backup folder is a leftover and samples/ itself is whole."""
+    previous = root / PREVIOUS
+    shutil.rmtree(previous, ignore_errors=True)
+    if previous.exists():
+        raise PublishError(f"could not clear {PREVIOUS.as_posix()}; close any open sample and run again.")
 
 
 def _rename(src: Path, dst: Path) -> None:

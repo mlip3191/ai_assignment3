@@ -519,9 +519,25 @@ def test_a_backup_that_cannot_be_cleared_stops_before_touching_samples(
         return real(path, *args, **kwargs)
 
     monkeypatch.setattr(gs.shutil, "rmtree", rmtree)
+    song = FakeSong(tmp_path)
     with pytest.raises(gs.PublishError, match="could not clear"):
-        build(tmp_path)
+        build(tmp_path, make_song=song)
     assert _snapshot(tmp_path) == before
+    assert song.specs == []  # it stopped before spending minutes on generation
+
+
+def test_a_locked_working_copy_never_stops_the_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Defender may still hold the pipeline's fresh mp3; removing it is only cleanup."""
+    real_unlink = Path.unlink
+
+    def unlink(self, *args, **kwargs):
+        if self.suffix == ".mp3" and "generated" in self.parts:
+            raise PermissionError(5, "Access is denied")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", unlink)
+    tracks = build(tmp_path)
+    assert [t.id for t in tracks] == ["sample_01", "sample_02", "sample_03"]
 
 
 def test_only_the_pipelines_generated_folder_is_ever_cleaned(tmp_path: Path) -> None:
@@ -726,7 +742,7 @@ def test_a_briefly_locked_folder_is_retried_and_the_swap_succeeds(
 
 
 def test_a_briefly_locked_backup_is_retried_when_it_is_put_back(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, instant_rename_retries: list[float]
 ) -> None:
     build(tmp_path)
     before = _snapshot(tmp_path)
