@@ -1,7 +1,7 @@
 # AI Jukebox — Project Plan
 
 MBAX 6418 · Assignment 3 · Team of 5
-Target submission: **Fri 10/23/2026** (placeholder; shift every date when the real due date is announced)
+Submission due: **Fri 10/30/2026** (confirmed 10/20, §14 Q2)
 
 This is the team's working plan. It is the single source of truth for scope, ownership, interfaces, schedule, and definition of done. Change it through a PR like any other file.
 
@@ -15,12 +15,12 @@ This is the team's working plan. It is the single source of truth for scope, own
 
 | | |
 |---|---|
-| **Phase** | Planning done; **M0 starts Tue 10/13**. |
+| **Phase** | Build under way (as of 10/21). Merged: the five spikes (including the playback spike), config, the client layer, the library, the song prompts and pipeline, the cover prompt and service, and the DJ prompt and service. In review: the app shell, the queue, the real-artist screen, and the sample generator. Integration (A7) is not done. The original M0 and M1 dates have passed (the whole schedule moved +7 days on 10/20, §14 Q2). |
 | **Is the app built?** | **No.** There is nothing to run yet. Path 1 below describes the finished app (v1.0) and is the contract the team builds to. |
-| **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation. |
+| **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation, and CI (Ubuntu on every PR; Windows and macOS after each merge to `main`). |
 | **Latest release** | none (will be the `v1.0` tag) |
-| **Due date** | Assumed Fri 10/23/2026; not yet confirmed (§14 Q2) |
-| **Blockers** | None on formats: §7.1 is filled for all four services (§14 Q3). Still open: the professor's answers (§14 Q1, Q2, Q5–Q9). |
+| **Due date** | Fri 10/30/2026 (§14 Q2, answered 10/20) |
+| **Blockers** | None on formats: §7.1 is filled for all four services (§14 Q3). Still open: §14 Q5 (public repo, or add the professor as a collaborator). |
 
 ### 0.2 Notes for AI assistants reading this file
 
@@ -31,7 +31,7 @@ If someone asks you to read this file and tell them what to do, follow these rul
 3. **Follow the matching path exactly, one step at a time.** For each step, say what to do, the exact command or click for their OS, and what they should see if it worked. Wait for them to confirm before the next step. Don't skip or reorder steps.
 4. **Assume no technical background** unless they show otherwise. Explain terms with the glossary (§0.8), and use the terminal primer (§0.7) the first time they need a terminal.
 5. **Never ask them to paste their API key, `.env` contents, or `class-endpoints.txt`** into the chat. They type secrets only into `.env`, on their own machine.
-6. **Don't invent anything this file marks TBD**, such as endpoint formats, wait times, or the due date. Say it's not decided yet and who owns it.
+6. **Don't invent anything this file marks TBD**, such as wait times (§0.4.6) or the public-repo question (§14 Q5). Say it's not decided yet and who owns it.
 7. **If a step fails,** check §0.4.7 (app users) or §16.9 (teammates) for that symptom first. If it isn't there, ask for the exact error text.
 8. **For teammates who will build the app,** your job is Path 2. Get them set up, find their **lane** (one GitHub issue per person, §19) and its task checklist, and point them to the sections for their part (§0.5 step 4). The work itself happens in Claude Code with `/start-session <task key>`.
 
@@ -53,7 +53,7 @@ If someone asks you to read this file and tell them what to do, follow these rul
 #### 0.4.1 What you need
 
 - A computer running **Windows 10/11** or **macOS 13 or newer**.
-- An internet connection that can reach the class servers. Whether this needs the campus network or a VPN is still open (§14 Q7).
+- An internet connection that can reach the class servers. A VPN or the campus network was not needed when tested from a home Wi-Fi network (§14 Q7); a restrictive network could still differ.
 - The **class credentials**: `class-endpoints.txt` from the course materials. Ask the instructors if you don't have it.
 - The **app ZIP file**: from the Canvas submission (grader), or from the `v1.0` release on GitHub (teammates: the repo's **Releases** or **Tags** page → **Source code (zip)**).
 
@@ -127,7 +127,7 @@ Songs you generate stay in the library **until you stop the app**. The 3 samples
 | "Python was not found" / `py` not recognized | Re-run the Python installer (Windows: tick **Add python.exe to PATH**), then open a **new** Terminal window. |
 | The launcher says `.env` is missing or still has placeholders | Fill in `.env` as in §0.4.4 and save. On macOS, Finder hides files whose names start with a dot. Press **Cmd+Shift+.** to show them. |
 | "The ... service rejected our credentials" | A value in `.env` is wrong. Re-copy it from `class-endpoints.txt` carefully (no extra spaces). |
-| "... is unreachable" / "took too long" | The class servers may be busy or need the campus network/VPN (§14 Q7). Click **Retry**, or try again later. |
+| "... is unreachable" / "took too long" | The class servers may be busy, or your network may block them (a VPN was not needed from a home network, §14 Q7). Click **Retry**, or try again later. |
 | Nothing happens for a long time after Generate | Check the status line; generation can take minutes. If it shows an error, use **Retry**. |
 | No sound | Click anywhere on the page first (browsers block sound until you interact), and check your volume and output device. |
 | Browser shows "can't connect" | The launcher window must still be open. Restart the launcher. |
@@ -357,7 +357,7 @@ IDs start with **DL** so they're never confused with the AI DJ issue keys (D1–
 |---|---|---|---|
 | 10/12 | **Gradio** (Blocks API) for the UI and server | All-Python, built-in audio/image/file components, server-side handlers keep credentials off the browser, generator functions give live status updates | Streamlit: full-script rerun on every interaction fights continuous playback. FastAPI+JS and Node+React: more code to write. |
 | 10/12 | **Python venv + one launch script** for deployment | Fewest moving parts for the grader; no Docker requirement | Docker Compose |
-| 10/12 | **Claude Code** as the team's coding agent | Team choice | Hermes. **Action:** confirm with the professor that Claude Code is acceptable in place of Hermes (see §14 Q1). |
+| 10/12 | **Claude Code** as the team's coding agent | Team choice | Hermes. Confirmed acceptable 10/20 by the release lead (§14 Q1, A5). |
 | 10/12 | **Split by feature**, 5 owners | Maps 1:1 to the graded features; clean PR boundaries | Split by layer |
 | 10/12 | **No Git LFS** for sample assets | GitHub "Download ZIP" archives contain LFS *pointer files*, not the audio, unless a repo setting is enabled; that would silently break the grader's deploy | LFS |
 | 10/12 | **Avoid an ffmpeg dependency** | One less system install for the grader; decode MP3/WAV with `soundfile` (wheels bundle libsndfile with MP3 support; verify in M0) | pydub/ffmpeg |
@@ -373,7 +373,7 @@ IDs start with **DL** so they're never confused with the AI DJ issue keys (D1–
 | 10/12 | **DJ speaks before every queued song, including the first** | Satisfies "commentary between queued songs" with a consistent pattern; the first intro opens the show. Each intro is specific to the song that follows it. | Commentary only after the first song |
 | 10/12 | **Launchers create `.env` from the template on first run and open it in a plain-text editor** | Non-coders can't see dot-files in Finder, and Notepad can save `.env.txt`; this removes both traps (§0.4.4) | Telling users to copy the file themselves |
 | 10/12 | **Generated songs live for the life of the server process** | Meets "remain available during the session"; simple and reliable; documented in README | Persisting to disk across restarts |
-| 10/12 | **Hermes contingency**: if the professor requires Hermes (§14 Q1), use it with `docs/STARTER_PROMPT.md` to build the first version as the assignment describes. Commit its output through a PR, then keep the same issues, reviews, and tests; follow CLAUDE.md's rules by hand. | Keeps the plan valid either way | — |
+| 10/12 | **Hermes contingency** (not triggered: §14 Q1 was answered 10/20, Claude Code is acceptable): if the professor requires Hermes, use it with `docs/STARTER_PROMPT.md` to build the first version as the assignment describes. Commit its output through a PR, then keep the same issues, reviews, and tests; follow CLAUDE.md's rules by hand. | Keeps the plan valid either way | — |
 | 10/12 | **Only the four class models, each locked to its feature, with no optional AI features and no fallback models** (§7.0), enforced by `model_policy.json` + `check_models.py` + guard hook + config port checks | The assignment grades use of the required class services; an AI agent will "helpfully" add an SDK or a browser-voice fallback unless something stops it | Allowing other class endpoints for optional features (permitted by the assignment, but adds risk for no grade) |
 | 10/14 | **Player uses Option A:** one native `gr.Audio(autoplay=True)`. Its `.stop` event (end of media in Gradio 6.30.0) calls `advance()`, which returns the next file. **Skip** uses the same advance. A play token in the filename drops a late end event so Skip cannot double-advance. | E1 spike, Windows, Gradio **6.30.0** pinned in `requirements.txt`, `scripts/playback_spike.py` at http://127.0.0.1:7860. Adam heard three generated tones after one **Play queue** click. End event fired each time, autoplay continued after that click, Skip advanced once. On 2026-10-17, Chrome 155.0.8059.80 on Windows measured the browser gap from `ended` to the next `playing` as 148 ms and 125 ms. The status log for those same transitions, the end line to the next playing line, was 162 ms and 149 ms. The earlier 2.00 s figure was the clip length between successive end stamps. Skip while the next file is loading: untested; E4/E6 to cover. | Option B (custom HTML5 `<audio>` plus JS). The native end event was reliable, so the fallback was not built. |
 | 10/18 | **`check_endpoints.py` compares model ids without their `org/` prefix** (`ACE-Step/x` matches `acestep/x`) | `class-endpoints.txt` spells the ACE-Step model `ACE-Step/acestep-v15-xl-turbo`, but the server lists `acestep/acestep-v15-xl-turbo`. Comparing the part after the last `/` accepts both spellings and still FAILs a port that serves a different model (A4, §7.1). | Exact string match (fails on the documented spelling); skipping the check for ACE-Step |
@@ -388,7 +388,7 @@ Fill in names, GitHub handles, and OS (macOS/Windows) at kickoff, here and in `.
 
 | Role | Member | GitHub | OS | Owns | Reviews PRs from |
 |---|---|---|---|---|---|
-| **A — Platform & Release lead** | Michael Lippert | mlip3191 | Windows | Repo setup, config/credentials, shared HTTP client base and error model, library/job store, launch scripts, endpoint checks, secret scanning, README assembly, final ZIP & submission | E |
+| **A — Platform & Release lead** | Michael Lippert | mlip3191 | macOS | Repo setup, config/credentials, shared HTTP client base and error model, library/job store, launch scripts, endpoint checks, secret scanning, README assembly, final ZIP & submission | E |
 | **B — Song Generation** | Gunnar O'Connor | gunnaroc | TBD | F1, F1a, F1b: generation form, Qwen lyrics/title, ACE-Step client, song job pipeline | C |
 | **C — Cover Art, Samples & Evidence** | Felipe | felcervino | TBD | F2: FLUX client, art-prompt builder, cover display & retry; R1/DL2: sample generation script, manifest, generation log; screenshots | D |
 | **D — AI DJ & Launchers** | Dillon Smart | dilloncsmart | TBD | F3, F3a, F3b: Qwen commentary, Chatterbox client, voice upload validation, DJ prefetch | B |
@@ -634,7 +634,7 @@ Which feature may call which model:
 | Reviews | `/review-pr` and the PR template check "right model for the feature, no fallback model" on every PR |
 | TC-15 | A full run whose request log shows only the class host on 9001/9006/9007/9008 |
 
-(Claude Code is the team's *development* tool, not an app feature; this rule covers the app, its scripts, and the bundled samples. Whether Claude Code may be used at all is §14 Q1.)
+(Claude Code is the team's *development* tool, not an app feature; this rule covers the app, its scripts, and the bundled samples. Whether Claude Code may be used at all was settled in §14 Q1: yes.)
 
 ### 7.1 Endpoint contracts
 
@@ -904,7 +904,7 @@ The spike result is in §2 (10/14): **Option A**, Gradio 6.30.0. It is also a st
 - Generated **only** through the app's own Qwen, FLUX, and ACE-Step clients. `GENERATION_LOG.md` records the model name and port for every call.
 - Output: `samples/audio/`, `samples/covers/`, `samples/manifest.json`, and `samples/GENERATION_LOG.md`. The log records, for each sample, the date, who ran it, the exact inputs, the Qwen prompts, the generated lyrics in full, the FLUX prompt, seeds, model/port, and the generation time.
 - Keep each audio file small (prefer MP3 if ACE-Step offers it, ≤ ~5 MB). The repo and the ZIP must stay manageable without LFS.
-- Generate samples **only after** the clients and prompts are stable (target Mon 10/19). Regenerate if prompts change materially.
+- Generate samples **only after** the clients and prompts are stable (target Mon 10/26). Regenerate if prompts change materially.
 
 ---
 
@@ -955,11 +955,11 @@ Setup is a one-time job for the release lead (A); the step-by-step guide is **§
 
 ---
 
-## 10. Schedule & milestones (target: submit Fri 10/23)
+## 10. Schedule & milestones (target: submit Fri 10/30)
 
-Today is Mon 10/12. The plan aims to be **submission-ready Thu 10/22 evening**, leaving Friday as buffer. Every task below is a checkbox in one person's lane issue; see §19 for all five lanes.
+The plan was written Mon 10/12. It aims to be **submission-ready Thu 10/29 evening**, leaving Friday as buffer. Every task below is a checkbox in one person's lane issue; see §19 for all five lanes.
 
-### M0 — Foundations & spikes · Tue 10/13 – Wed 10/14
+### M0 — Foundations & spikes · Tue 10/20 – Wed 10/21
 
 | Task | Owner |
 |---|---|
@@ -972,11 +972,11 @@ Today is Mon 10/12. The plan aims to be **submission-ready Thu 10/22 evening**, 
 | Chatterbox: one call with default voice + one with a WAV reference | D |
 | **Playback spike** (Option A vs B), written up in §2 | E |
 | Augmented starter prompt in `docs/STARTER_PROMPT.md` (§15), reviewed by all **before any app code** (assignment: add instructions before beginning the build). Do it in the kickoff call. | C + all |
-| Email/ask the professor the §14 questions | A |
+| Answer the §14 open questions (release lead; Q5 stays open) | A |
 
 **Exit criteria:** all 4 services answer from at least one teammate's machine via `check_endpoints.py`; the player approach is decided; the shared client base is merged.
 
-### M1 — Vertical slices · Thu 10/15 – Sun 10/18
+### M1 — Vertical slices · Thu 10/22 – Sun 10/25
 
 | Task | Owner |
 |---|---|
@@ -989,7 +989,7 @@ Today is Mon 10/12. The plan aims to be **submission-ready Thu 10/22 evening**, 
 
 **Exit criteria:** each feature works on its own branch against the live services; PRs open or merged.
 
-### M2 — Integration & samples · Mon 10/19 – Tue 10/20
+### M2 — Integration & samples · Mon 10/26 – Tue 10/27
 
 | Task | Owner |
 |---|---|
@@ -997,9 +997,9 @@ Today is Mon 10/12. The plan aims to be **submission-ready Thu 10/22 evening**, 
 | Generate the 3 sample songs; write `GENERATION_LOG.md` | C |
 | Error/recovery pass: force each failure kind, check messages and recovery | E (drives), all fix |
 | `run.sh` / `run.bat` tested on Mac **and** Windows | D |
-| **Feature freeze Tue 10/20, 9 pm** — after this, only bug fixes and docs | All |
+| **Feature freeze Tue 10/27, 9 pm** — after this, only bug fixes and docs | All |
 
-### M3 — Independent deploy test · Wed 10/21
+### M3 — Independent deploy test · Wed 10/28
 
 | Task | Owner |
 |---|---|
@@ -1010,7 +1010,7 @@ Today is Mon 10/12. The plan aims to be **submission-ready Thu 10/22 evening**, 
 | Non-technical usability run (TC-13) | C |
 | Reliability pass (TC-12, TC-14) | D |
 
-### M4 — Docs, evidence, submit · Thu 10/22 (Fri 10/23 buffer)
+### M4 — Docs, evidence, submit · Thu 10/29 (Fri 10/30 buffer)
 
 | Task | Owner |
 |---|---|
@@ -1127,13 +1127,13 @@ Status values: **Pass / Fail / Not tested**. Fill "Actual" with what really happ
 
 | Risk | Likelihood | Impact | Mitigation | Owner |
 |---|---|---|---|---|
-| Class servers slow or overloaded near the deadline (everyone testing at once) | High | High | Measure latency in M0; generous timeouts; generate samples early (10/19); short default durations; Retry buttons | A |
+| Class servers slow or overloaded near the deadline (everyone testing at once) | High | High | Measure latency in M0; generous timeouts; generate samples early (10/26); short default durations; Retry buttons | A |
 | Gradio auto-advance unreliable | Medium | High | M0 spike with Option B fallback ready | E |
 | Gaps or waits between songs because TTS is slow | Medium | Medium | DJ prefetch + cache; never block a song on the DJ | D, E |
 | Grader deploy fails (missing file, unpinned dep, OS difference) | Medium | **Very high** | Pinned deps; run scripts for both OSes; M3 clean-machine test from the GitHub ZIP | A, E |
 | Works on one OS, breaks on the other (paths, encodings, line endings, launchers) | Medium | **Very high** | pathlib + UTF-8 rules (§16.8), `.gitattributes`, Python-only scripts, cross-platform CI, TC-10a and TC-10b | A, D, E |
-| A teammate has no Claude Code access (it needs a paid Claude plan) | Medium | High | Ask in kickoff (§14 Q8); pair that person with a teammate who has access, or route them to testing, docs, and samples work (§0.5); Hermes as fallback | A |
-| Class servers need the campus network/VPN, and the grader or a teammate can't reach them | Medium | High | Ask early (§14 Q7); document it in README Setup; `check_endpoints.py` gives a clear message | A |
+| A teammate has no Claude Code access (it needs a paid Claude plan) | Medium | High | Answered 10/20 (§14 Q8): four teammates use Claude Code and `afondale` uses Grok, so for that lane follow CLAUDE.md by hand and rely on the pre-push gate, CI, and review; pair or route to testing, docs, and samples work if anyone is blocked (§0.5) | A |
+| Class servers need the campus network/VPN, and the grader or a teammate can't reach them | Medium | High | Tested from a home network with no VPN (§14 Q7, one network only); document it in README Setup; `check_endpoints.py` gives a clear message | A |
 | Grader thinks the app froze during long generations | Medium | Medium | Staged status + elapsed time + "usually takes ~N s" hint in the UI; expected waits in README | B, E |
 | ZIP on Canvas doesn't match the submitted commit | Low | **Very high** | Download the ZIP from the `v1.0` tag; verify the SHA; never push to the tag (A10) | A |
 | The coding agent adds another model (an SDK, `gr.load`, browser speech) or a "fallback" model | Medium | **Very high** | §7.0 rule in CLAUDE.md and the starter prompt; `check_models.py` blocks merge in CI; guard hook blocks installs; Claude can't edit `model_policy.json`; reviewers check | A, all |
@@ -1141,7 +1141,7 @@ Status values: **Pass / Fail / Not tested**. Fill "Actual" with what really happ
 | Qwen thinking tokens or chatter in lyrics/DJ scripts | Medium | Medium | Disable per docs, strip `<think>`, JSON output + parser, unit tests | B, D |
 | Sample files too large for the repo/ZIP | Low | Medium | ~60 s samples, MP3 if possible, no LFS | C |
 | Merge conflicts in `app.py` / UI | Medium | Low | UI split into `ui/*.py` modules; `app.py` stays thin; E owns `app.py`; file ownership per lane (§19) | E |
-| Professor disallows Claude Code instead of Hermes | Low | High | Ask in M0 (§14 Q1) | A |
+| Professor disallows Claude Code instead of Hermes | Low | High | Answered 10/20 (§14 Q1): Claude Code is acceptable. If that changes, activate the §2 Hermes contingency | A |
 
 ---
 
@@ -1149,15 +1149,15 @@ Status values: **Pass / Fail / Not tested**. Fill "Actual" with what really happ
 
 | # | Question | Ask whom | Status |
 |---|---|---|---|
-| Q1 | Is building with Claude Code acceptable instead of (or alongside) Hermes? | Professor | Open |
-| Q2 | Actual due date? | Professor / Canvas | Open; plan assumes 10/23 |
+| Q1 | Is building with Claude Code acceptable instead of (or alongside) Hermes? | Professor | Answered 10/20 (A5), by the release lead (not the professor): yes, Claude Code is acceptable. The Hermes contingency (§2) stays off. |
+| Q2 | Actual due date? | Professor / Canvas | Answered 10/20 (A5), by the release lead: **Fri 10/30/2026**. Every schedule date in this file and in `scripts/github/issues.json` moved +7 days from the old 10/23 assumption. |
 | Q3 | Contents of `class-endpoints.txt`: formats, auth, limits | Class materials | Answered 10/18 (A4): formats, auth and limits are in §7.1, from `class-endpoints.txt` and spikes B1, B2, C1, D1 |
 | Q4 | Do all four services share one credential? | Class materials | Answered 10/18 (A4): yes, one `CLASS_API_KEY` as a bearer token works on all four (spikes B1, B2, C1, D1) |
-| Q5 | Is a public repo okay, or should we add the professor as a collaborator? | Professor | Open |
-| Q6 | Python version and OS on the grader's machine? (affects run scripts) | Professor | Open; support Mac + Windows |
-| Q7 | Do the class endpoints require the campus network or a VPN? | Professor / class materials | Open |
-| Q8 | Does every teammate have Claude Code access (paid Claude plan)? If not, who pairs with whom? | Team, at kickoff | Open |
-| Q9 | Can we resubmit before the deadline? (The assignment says the version in the final submission is graded.) | Professor | Assume yes |
+| Q5 | Is a public repo okay, or should we add the professor as a collaborator? | Professor | **Still open** (not answered in A5). Must be settled before A10 (DL12). |
+| Q6 | Python version and OS on the grader's machine? (affects run scripts) | Professor | Answered 10/20 (A5), by the release lead: support macOS and Windows with Python 3.11+. |
+| Q7 | Do the class endpoints require the campus network or a VPN? | Professor / class materials | Answered 10/20 (A5), by the release lead: no, from one network. `scripts/check_endpoints.py` passed on all four ports from the release lead's home Wi-Fi, off campus with no VPN. A restrictive network could still differ. |
+| Q8 | Does every teammate have Claude Code access (paid Claude plan)? If not, who pairs with whom? | Team, at kickoff | Answered 10/20 (A5): four teammates use paid Claude Code. `afondale` (Lane E) uses paid Grok. Claude Code's hooks, skills and `CLAUDE.md` rules do not apply to Grok; the pre-push gate, CI and review still do. |
+| Q9 | Can we resubmit before the deadline? (The assignment says the version in the final submission is graded.) | Professor | Answered 10/20 (A5), by the release lead: yes. |
 
 ---
 
@@ -1273,7 +1273,7 @@ Everything in this section is enforced or automated by files committed in the re
 | `.gitattributes` | Keeps line endings consistent between macOS and Windows (§16.8) |
 | `.claude/skills/*` | The team's shared slash commands (§16.4) |
 
-### 16.1 One-time setup (each teammate, ~30 minutes, by Wed 10/14)
+### 16.1 One-time setup (each teammate, ~30 minutes, by Wed 10/21)
 
 The team works on **macOS and Windows**. Every tool, script, hook, and skill in the repo runs on both. Only the commands you type to install things and to activate the virtual environment differ. Follow the column for your machine; §16.8 has the side-by-side cheat sheet.
 
@@ -1579,7 +1579,7 @@ Rules for code that has to work on both (also in CLAUDE.md):
 
 ---
 
-## 18. GitHub build-out guide (release lead A, ~45 minutes, Tue 10/13)
+## 18. GitHub build-out guide (release lead A, ~45 minutes, Tue 10/20)
 
 This turns the starter scaffold into the team repo with the 5 lane issues created and assigned. Everything is scripted and safe to re-run.
 
@@ -1653,7 +1653,7 @@ python scripts/github/bootstrap.py
 The first command lists what it would do. The second prints exactly what lane B's issue will say. The third does it:
 
 - **Labels:** 14, colored by area (including `lane`, plus `os:windows` / `os:macos` for OS-specific bugs).
-- **Milestone:** one, "v1.0 submission" (due 10/22). The M0–M4 checkpoints are headings inside each lane issue.
+- **Milestone:** one, "v1.0 submission" (due 10/29). The M0–M4 checkpoints are headings inside each lane issue.
 - **Lane issues:** five, one per person, each assigned to its owner from `team.json`. Each contains:
   - the owner's mission
   - the files they own ("stay in your lane")
@@ -1705,7 +1705,7 @@ This gives the team (and you, as release lead) one screen showing who's doing wh
 > 1. Accept the GitHub invite.
 > 2. Do PROJECT.md §16.1 (one-time setup, ~30 min). There's a macOS column and a Windows column; follow yours. `scripts/doctor.py` must show 0 FAILs, and `cat .env` must be blocked in Claude Code. Tell me if either isn't true.
 > 3. Add your OS (macos/windows) to `.github/team.json`. We need at least one of each for the deploy tests.
-> 4. Your lane is one GitHub issue assigned to you (`gh issue list --label lane --assignee @me`); all five are summarized in PROJECT.md §19. Your M0 tasks are due Wed 10/14.
+> 4. Your lane is one GitHub issue assigned to you (`gh issue list --label lane --assignee @me`); all five are summarized in PROJECT.md §19. Your M0 tasks are due Wed 10/21.
 > 5. Every session: §16.2 checklist, then `/start-session <task key>` (e.g. `/start-session B1`) and end with `/finish-session`.
 > 6. Never paste the class key anywhere but your own `.env`.
 
@@ -1745,22 +1745,22 @@ Each person owns one lane, and each lane is **one GitHub issue** (label `lane`) 
 
 **Owns:** `.github/` (others may edit their own row in `team.json`); `scripts/` except `generate_samples.py`; `jukebox/config.py`, `errors.py`, `models.py`, `library.py`, `jobs.py`; `jukebox/clients/base.py`; `.env.example`; PROJECT.md §0.1 status and §7 endpoint table; README.md assembly; Tags, releases, and the Canvas submission
 
-**Others are waiting on this lane for:** Config + ServiceError + shared client base to B, C, D (by Wed 10/14; everyone is blocked on this); Track/Job models + library to B, C, D, E (early M1); Filled-in §7.1 endpoint table to everyone; Integrated main branch (A7) and release candidates
+**Others are waiting on this lane for:** Config + ServiceError + shared client base to B, C, D (by Wed 10/21; everyone is blocked on this); Track/Job models + library to B, C, D, E (early M1); Filled-in §7.1 endpoint table to everyone; Integrated main branch (A7) and release candidates
 
 | Task | Checkpoint | Title | Needs |
 |---|---|---|---|
-| A1 | M0 (Wed 10/14) | Set up repo: scaffold, labels, milestone, the 5 lane issues, templates, CI | — |
-| A2 | M0 (Wed 10/14) | Config loader, .env.example, and scripts/check_config.py | A1, C0 (C) |
-| A3 | M0 (Wed 10/14) | Shared HTTP client base + ServiceError and user-facing error messages | A2 |
-| A4 | M0 (Wed 10/14) | Fill §7.1 endpoint contracts from class-endpoints.txt + scripts/check_endpoints.py | A2 |
-| A5 | M0 (Wed 10/14) | Ask the professor/team the section 14 open questions (Hermes, due date, repo access, network, Claude access) | — |
-| A6 | M1 (Sun 10/18) | Track/Job models, thread-safe library, sample manifest loader, job store | A2 |
-| A11 | M1 (Sun 10/18) | Make the pre-push hook executable in git and have doctor catch it | — |
-| A12 | M2 (Tue 10/20) | Make the pre-push gate run the tests the way CI does | — |
-| A7 | M2 (Tue 10/20) | Integration: song → cover → library → queue → DJ prefetch | B7 (B), C4 (C), D3 (D), E4 (E) |
-| A8 | M3 (Wed 10/21) | Tag release candidate rc1 and fix deploy findings | A7, C6 (C), D6 (D) |
-| A9 | M4 (Thu 10/22) | README assembly: setup, architecture, safeguards, contributions | E7 (E) |
-| A10 | M4 (Thu 10/22) | Final release: secret scan, tag v1.0, ZIP, submit on Canvas | B10 (B), D9 (D) |
+| A1 | M0 (Wed 10/21) | Set up repo: scaffold, labels, milestone, the 5 lane issues, templates, CI | — |
+| A2 | M0 (Wed 10/21) | Config loader, .env.example, and scripts/check_config.py | A1, C0 (C) |
+| A3 | M0 (Wed 10/21) | Shared HTTP client base + ServiceError and user-facing error messages | A2 |
+| A4 | M0 (Wed 10/21) | Fill §7.1 endpoint contracts from class-endpoints.txt + scripts/check_endpoints.py | A2 |
+| A5 | M0 (Wed 10/21) | Answer the section 14 open questions (Hermes, due date, repo access, network, Claude access) | — |
+| A6 | M1 (Sun 10/25) | Track/Job models, thread-safe library, sample manifest loader, job store | A2 |
+| A11 | M1 (Sun 10/25) | Make the pre-push hook executable in git and have doctor catch it | — |
+| A12 | M2 (Tue 10/27) | Make the pre-push gate run the tests the way CI does | — |
+| A7 | M2 (Tue 10/27) | Integration: song → cover → library → queue → DJ prefetch | B7 (B), C4 (C), D3 (D), E4 (E) |
+| A8 | M3 (Wed 10/28) | Tag release candidate rc1 and fix deploy findings | A7, C6 (C), D6 (D) |
+| A9 | M4 (Thu 10/29) | README assembly: setup, architecture, safeguards, contributions | E7 (E) |
+| A10 | M4 (Thu 10/29) | Final release: secret scan, tag v1.0, ZIP, submit on Canvas | B10 (B), D9 (D) |
 
 ### Lane B: Song Generation
 
@@ -1772,16 +1772,16 @@ Each person owns one lane, and each lane is **one GitHub issue** (label `lane`) 
 
 | Task | Checkpoint | Title | Needs |
 |---|---|---|---|
-| B1 | M0 (Wed 10/14) | Spike: Qwen (port 9001) live call, thinking-mode check, latency | — |
-| B2 | M0 (Wed 10/14) | Spike: ACE-Step (port 9007) instrumental + vocal calls, limits, latency | — |
-| B3 | M1 (Sun 10/18) | Qwen client: chat(), think-stripping, JSON helper | A3 (A), B1 |
-| B4 | M1 (Sun 10/18) | ACE-Step client: generate_music() | A3 (A), B2 |
-| B5 | M1 (Sun 10/18) | Lyrics and title prompts (jukebox/prompts/) with parser | B3 |
-| B6 | M1 (Sun 10/18) | Song generation service pipeline with staged status | A6 (A), B4, B5 |
-| B7 | M1 (Sun 10/18) | Generate tab UI: style, mood, duration, instrumental/vocal, theme | B6, E2 (E) |
-| B8 | M2 (Tue 10/20) | Input safeguard: strip/warn on real artist names in style tags | B6 |
-| B9 | M4 (Thu 10/22) | README: song generation walkthrough + design-choice write-up | E7 (E) |
-| B10 | M4 (Thu 10/22) | Docs-vs-app verification (on your OS): follow the README sections you didn't write | A9 (A), B9, C7 (C), D7 (D), E8 (E) |
+| B1 | M0 (Wed 10/21) | Spike: Qwen (port 9001) live call, thinking-mode check, latency | — |
+| B2 | M0 (Wed 10/21) | Spike: ACE-Step (port 9007) instrumental + vocal calls, limits, latency | — |
+| B3 | M1 (Sun 10/25) | Qwen client: chat(), think-stripping, JSON helper | A3 (A), B1 |
+| B4 | M1 (Sun 10/25) | ACE-Step client: generate_music() | A3 (A), B2 |
+| B5 | M1 (Sun 10/25) | Lyrics and title prompts (jukebox/prompts/) with parser | B3 |
+| B6 | M1 (Sun 10/25) | Song generation service pipeline with staged status | A6 (A), B4, B5 |
+| B7 | M1 (Sun 10/25) | Generate tab UI: style, mood, duration, instrumental/vocal, theme | B6, E2 (E) |
+| B8 | M2 (Tue 10/27) | Input safeguard: strip/warn on real artist names in style tags | B6 |
+| B9 | M4 (Thu 10/29) | README: song generation walkthrough + design-choice write-up | E7 (E) |
+| B10 | M4 (Thu 10/29) | Docs-vs-app verification (on your OS): follow the README sections you didn't write | A9 (A), B9, C7 (C), D7 (D), E8 (E) |
 
 ### Lane C: Cover Art, Samples & Evidence
 
@@ -1789,19 +1789,19 @@ Each person owns one lane, and each lane is **one GitHub issue** (label `lane`) 
 
 **Owns:** `jukebox/clients/flux.py`; `jukebox/services/art.py`; `jukebox/prompts/cover_art.md`; The placeholder cover image (team-made); `scripts/generate_samples.py` and everything in `samples/` (audio, covers, manifest, `GENERATION_LOG.md`); `docs/STARTER_PROMPT.md`; `docs/screenshots/`
 
-**Others are waiting on this lane for:** Cover service by track_id to B and E; 3 sample songs to D and E for testing (by Mon 10/19); Starter prompt (before the build starts) and screenshots for the README
+**Others are waiting on this lane for:** Cover service by track_id to B and E; 3 sample songs to D and E for testing (by Mon 10/26); Starter prompt (before the build starts) and screenshots for the README
 
 | Task | Checkpoint | Title | Needs |
 |---|---|---|---|
-| C1 | M0 (Wed 10/14) | Spike: FLUX (port 9006) live call, output format, latency | — |
-| C0 | M0 (Wed 10/14) | Write docs/STARTER_PROMPT.md (verbatim prompt + team additions) and get team review BEFORE any app code | — |
-| C2 | M1 (Sun 10/18) | FLUX client: generate_image() | A3 (A), C1 |
-| C3 | M1 (Sun 10/18) | Cover-art prompt builder (Qwen → FLUX prompt) with safety suffixes | B3 (B) |
-| C4 | M1 (Sun 10/18) | Cover service, display by track_id, placeholder, and Retry cover | A6 (A), C2, C3 |
-| C5 | M2 (Tue 10/20) | scripts/generate_samples.py using the app's own services | B6 (B), C4 |
-| C6 | M2 (Tue 10/20) | Generate and commit the 3 sample songs | C5 |
-| C8 | M3 (Wed 10/21) | Non-technical usability run of the app from the README alone (TC-13) | A8 (A) |
-| C7 | M4 (Thu 10/22) | Screenshots + README sample-songs section | C6 |
+| C1 | M0 (Wed 10/21) | Spike: FLUX (port 9006) live call, output format, latency | — |
+| C0 | M0 (Wed 10/21) | Write docs/STARTER_PROMPT.md (verbatim prompt + team additions) and get team review BEFORE any app code | — |
+| C2 | M1 (Sun 10/25) | FLUX client: generate_image() | A3 (A), C1 |
+| C3 | M1 (Sun 10/25) | Cover-art prompt builder (Qwen → FLUX prompt) with safety suffixes | B3 (B) |
+| C4 | M1 (Sun 10/25) | Cover service, display by track_id, placeholder, and Retry cover | A6 (A), C2, C3 |
+| C5 | M2 (Tue 10/27) | scripts/generate_samples.py using the app's own services | B6 (B), C4 |
+| C6 | M2 (Tue 10/27) | Generate and commit the 3 sample songs | C5 |
+| C8 | M3 (Wed 10/28) | Non-technical usability run of the app from the README alone (TC-13) | A8 (A) |
+| C7 | M4 (Thu 10/29) | Screenshots + README sample-songs section | C6 |
 
 ### Lane D: AI DJ & Launchers
 
@@ -1813,15 +1813,15 @@ Each person owns one lane, and each lane is **one GitHub issue** (label `lane`) 
 
 | Task | Checkpoint | Title | Needs |
 |---|---|---|---|
-| D1 | M0 (Wed 10/14) | Spike: Chatterbox (port 9008) default voice + WAV and MP3 reference voices | — |
-| D2 | M1 (Sun 10/18) | Chatterbox client: speak() | A3 (A), D1 |
-| D3 | M1 (Sun 10/18) | DJ commentary prompt + service (song-specific, 30–50 words) | B3 (B), D2 |
-| D4 | M1 (Sun 10/18) | Voice reference upload: validation, storage, reset to default | D2, E2 (E) |
-| D5 | M2 (Tue 10/20) | DJ prefetch, cache by (track_id, voice_id), and failure fallback | D3, E4 (E) |
-| D6 | M2 (Tue 10/20) | Pinned requirements.txt + run.sh (macOS) / run.bat (Windows), tested on both | E2 (E) |
-| D8 | M3 (Wed 10/21) | Reliability pass: generate while playing, repeated use, restart (TC-12, TC-14) | A8 (A) |
-| D7 | M4 (Thu 10/22) | README: DJ walkthrough + limitation/failure investigated | E7 (E) |
-| D9 | M4 (Thu 10/22) | Docs-vs-app verification (on your OS): follow the README sections you didn't write | A9 (A), B9 (B), C7 (C), D7, E8 (E) |
+| D1 | M0 (Wed 10/21) | Spike: Chatterbox (port 9008) default voice + WAV and MP3 reference voices | — |
+| D2 | M1 (Sun 10/25) | Chatterbox client: speak() | A3 (A), D1 |
+| D3 | M1 (Sun 10/25) | DJ commentary prompt + service (song-specific, 30–50 words) | B3 (B), D2 |
+| D4 | M1 (Sun 10/25) | Voice reference upload: validation, storage, reset to default | D2, E2 (E) |
+| D5 | M2 (Tue 10/27) | DJ prefetch, cache by (track_id, voice_id), and failure fallback | D3, E4 (E) |
+| D6 | M2 (Tue 10/27) | Pinned requirements.txt + run.sh (macOS) / run.bat (Windows), tested on both | E2 (E) |
+| D8 | M3 (Wed 10/28) | Reliability pass: generate while playing, repeated use, restart (TC-12, TC-14) | A8 (A) |
+| D7 | M4 (Thu 10/29) | README: DJ walkthrough + limitation/failure investigated | E7 (E) |
+| D9 | M4 (Thu 10/29) | Docs-vs-app verification (on your OS): follow the README sections you didn't write | A9 (A), B9 (B), C7 (C), D7, E8 (E) |
 
 ### Lane E: Player, UX & QA
 
@@ -1829,25 +1829,25 @@ Each person owns one lane, and each lane is **one GitHub issue** (label `lane`) 
 
 **Owns:** `app.py`; `jukebox/ui/` layout, `player_panel.py`, `library_tab.py`; `jukebox/services/player.py`; `docs/TEST_EVIDENCE.md` and the §12 test matrix
 
-**Others are waiting on this lane for:** App shell to B and D (by Wed 10/14) so their UI has a place to live; Queue/player that plays DJ clips (D) and covers (C); Test results and deploy-test findings for the README
+**Others are waiting on this lane for:** App shell to B and D (by Wed 10/21) so their UI has a place to live; Queue/player that plays DJ clips (D) and covers (C); Test results and deploy-test findings for the README
 
 | Task | Checkpoint | Title | Needs |
 |---|---|---|---|
-| E1 | M0 (Wed 10/14) | Spike: Gradio playback approach (Option A native gr.Audio vs Option B custom HTML5) | — |
-| E2 | M0 (Wed 10/14) | Gradio app shell: thin app.py, layout skeleton, placeholder panels | E1, C0 (C) |
-| E3 | M1 (Sun 10/18) | Queue model (services/player.py) with unit tests | A6 (A) |
-| E4 | M1 (Sun 10/18) | Player panel: play/pause, skip, now playing, up-next with covers, auto-advance | E2, E3 |
-| E5 | M2 (Tue 10/20) | Error and recovery pass (TC-F1 to TC-F5) | A7 (A) |
-| E6 | M3 (Wed 10/21) | Independent deploy test from the GitHub ZIP on Windows AND macOS (TC-10a, TC-10b) | A8 (A) |
-| E7 | M3 (Wed 10/21) | Run the full live test matrix on the release candidate | A8 (A) |
-| E8 | M4 (Thu 10/22) | README: test results section | E7 |
+| E1 | M0 (Wed 10/21) | Spike: Gradio playback approach (Option A native gr.Audio vs Option B custom HTML5) | — |
+| E2 | M0 (Wed 10/21) | Gradio app shell: thin app.py, layout skeleton, placeholder panels | E1, C0 (C) |
+| E3 | M1 (Sun 10/25) | Queue model (services/player.py) with unit tests | A6 (A) |
+| E4 | M1 (Sun 10/25) | Player panel: play/pause, skip, now playing, up-next with covers, auto-advance | E2, E3 |
+| E5 | M2 (Tue 10/27) | Error and recovery pass (TC-F1 to TC-F5) | A7 (A) |
+| E6 | M3 (Wed 10/28) | Independent deploy test from the GitHub ZIP on Windows AND macOS (TC-10a, TC-10b) | A8 (A) |
+| E7 | M3 (Wed 10/28) | Run the full live test matrix on the release candidate | A8 (A) |
+| E8 | M4 (Thu 10/29) | README: test results section | E7 |
 
 ### Load per checkpoint
 
 | Checkpoint | A | B | C | D | E | Tasks |
 |---|---|---|---|---|---|---|
-| M0 Foundations & spikes (due Wed 10/14) | 5 | 2 | 2 | 1 | 2 | 12 |
-| M1 Vertical slices (due Sun 10/18) | 2 | 5 | 3 | 3 | 2 | 15 |
-| M2 Integration & samples (due Tue 10/20) | 2 | 1 | 2 | 2 | 1 | 8 |
-| M3 Independent deploy test (due Wed 10/21) | 1 | 0 | 1 | 1 | 2 | 5 |
-| M4 Docs, evidence, submit (due Thu 10/22) | 2 | 2 | 1 | 2 | 1 | 8 |
+| M0 Foundations & spikes (due Wed 10/21) | 5 | 2 | 2 | 1 | 2 | 12 |
+| M1 Vertical slices (due Sun 10/25) | 2 | 5 | 3 | 3 | 2 | 15 |
+| M2 Integration & samples (due Tue 10/27) | 2 | 1 | 2 | 2 | 1 | 8 |
+| M3 Independent deploy test (due Wed 10/28) | 1 | 0 | 1 | 1 | 2 | 5 |
+| M4 Docs, evidence, submit (due Thu 10/29) | 2 | 2 | 1 | 2 | 1 | 8 |

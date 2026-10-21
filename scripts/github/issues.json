@@ -1,33 +1,33 @@
 {
   "milestone": {
     "title": "v1.0 submission",
-    "due": "2026-10-22",
+    "due": "2026-10-29",
     "description": "Everything for the graded submission: all 5 lane issues closed, v1.0 tagged, Canvas submitted. Internal checkpoints M0–M4 are listed inside each lane issue."
   },
   "checkpoints": [
     {
       "title": "M0 Foundations & spikes",
-      "due": "2026-10-14",
+      "due": "2026-10-21",
       "description": "Repo, config, shared client base, one live call per service, playback spike. Exit: all 4 services answer; player approach decided; client base merged."
     },
     {
       "title": "M1 Vertical slices",
-      "due": "2026-10-18",
+      "due": "2026-10-25",
       "description": "Each feature works on its own branch against live services, with unit tests."
     },
     {
       "title": "M2 Integration & samples",
-      "due": "2026-10-20",
-      "description": "Features wired together, 3 sample songs generated, error/recovery pass. Feature freeze Tue 10/20 9 pm."
+      "due": "2026-10-27",
+      "description": "Features wired together, 3 sample songs generated, error/recovery pass. Feature freeze Tue 10/27 9 pm."
     },
     {
       "title": "M3 Independent deploy test",
-      "due": "2026-10-21",
+      "due": "2026-10-28",
       "description": "Install from the GitHub ZIP on a clean machine using only the README; run the full test matrix."
     },
     {
       "title": "M4 Docs, evidence, submit",
-      "due": "2026-10-22",
+      "due": "2026-10-29",
       "description": "README, screenshots, test evidence, docs verification, tag v1.0, submit on Canvas."
     }
   ],
@@ -120,7 +120,7 @@
         "Tags, releases, and the Canvas submission"
       ],
       "provides": [
-        "Config + ServiceError + shared client base to B, C, D (by Wed 10/14; everyone is blocked on this)",
+        "Config + ServiceError + shared client base to B, C, D (by Wed 10/21; everyone is blocked on this)",
         "Track/Job models + library to B, C, D, E (early M1)",
         "Filled-in §7.1 endpoint table to everyone",
         "Integrated main branch (A7) and release candidates"
@@ -241,13 +241,13 @@
         },
         {
           "key": "A5",
-          "title": "Ask the professor/team the section 14 open questions (Hermes, due date, repo access, network, Claude access)",
+          "title": "Answer the section 14 open questions (Hermes, due date, repo access, network, Claude access)",
           "milestone": "M0",
-          "goal": "Remove the biggest unknowns: Claude Code vs Hermes, due date, repo visibility, grader environment.",
+          "goal": "Remove the biggest unknowns: Claude Code vs Hermes, due date, network access, grader environment. Repo visibility (Q5) is left open as a follow-up.",
           "criteria": [
-            "Q1, Q2, Q5, Q6, Q7, Q9 sent to the professor; Q8 (Claude Code access per teammate) answered at kickoff",
-            "Answers recorded in section 14; schedule in section 10 and section 0.1 status updated if the due date differs",
-            "If Hermes is required, the Hermes contingency in section 2 is activated and the team is told how the workflow changes"
+            "Q1, Q2, Q6, Q7, Q8, Q9 answered by the release lead (not the professor) and recorded in section 14; Q5 (public repo, or add the professor) is left open as a follow-up that must be settled before A10",
+            "Schedule in section 10 and section 0.1 status updated to the confirmed due date",
+            "The Hermes contingency in section 2 stays off because Q1 was answered 'Claude Code is acceptable'; if that changes, activate it and tell the team how the workflow changes"
           ],
           "reqs": [],
           "refs": [
@@ -699,7 +699,7 @@
       ],
       "provides": [
         "Cover service by track_id to B and E",
-        "3 sample songs to D and E for testing (by Mon 10/19)",
+        "3 sample songs to D and E for testing (by Mon 10/26)",
         "Starter prompt (before the build starts) and screenshots for the README"
       ],
       "needs": [
@@ -1168,7 +1168,7 @@
         "`docs/TEST_EVIDENCE.md` and the §12 test matrix"
       ],
       "provides": [
-        "App shell to B and D (by Wed 10/14) so their UI has a place to live",
+        "App shell to B and D (by Wed 10/21) so their UI has a place to live",
         "Queue/player that plays DJ clips (D) and covers (C)",
         "Test results and deploy-test findings for the README"
       ],
