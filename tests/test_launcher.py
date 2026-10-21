@@ -333,6 +333,33 @@ def test_the_app_can_print_any_unicode_on_windows(tmp_path: Path) -> None:
     assert lines[0].rstrip() == "\u266a Neon Overdrive \u2192 \u6771\u4eac \U0001f3b8"
 
 
+@pytest.mark.parametrize("missing", [".env.example", "requirements.txt"])
+def test_a_missing_file_from_the_zip_is_a_plain_message(world: World, missing: str) -> None:
+    if missing == "requirements.txt":
+        ready(world)
+    (world.root / missing).unlink()
+    assert world.main() == launcher.EXIT_ERROR
+    assert missing in world.text and "zip" in world.text.lower()
+    assert "Traceback" not in world.text
+
+
+def test_the_browser_trigger_matches_what_the_real_app_shell_prints(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pins the contract with E2: serve() prints the address the launcher waits for."""
+    ui_launch = pytest.importorskip("jukebox.ui.launch", reason="E2 app shell (#14) not on this branch yet")
+    calls: list[dict] = []
+    monkeypatch.setattr(ui_launch, "build_demo", lambda: object())  # no UI needed for this check
+    port = ui_launch.serve(
+        tmp_path, launch=lambda demo, **kwargs: calls.append(kwargs), can_bind=lambda h, p: True
+    )
+    printed = capsys.readouterr().out
+    match = launcher.APP_URL.search(printed)
+    assert match is not None, printed
+    assert match.group(0) == f"http://127.0.0.1:{port}"
+    assert calls and calls[0]["server_port"] == port
+
+
 def test_detect_platform() -> None:
     assert launcher.detect_platform("win32") == "windows"
     assert launcher.detect_platform("darwin") == "macos"

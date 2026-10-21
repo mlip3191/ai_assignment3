@@ -308,10 +308,24 @@ def run_app(root: Path, deps: Deps) -> int:
     return code
 
 
-def main(argv: Sequence[str] | None = None, *, root: Path = ROOT, deps: Deps | None = None) -> int:
+def check_files(root: Path, deps: Deps) -> int | None:
+    """The files the launcher needs from the ZIP. A partial extract gets a plain message, not a traceback."""
+    missing = [name for name in (".env.example", "requirements.txt") if not (root / name).is_file()]
+    if not missing:
+        return None
+    deps.say(
+        f"Some app files are missing from {root}: {', '.join(missing)}.\n"
+        "Extract the whole ZIP again into a new folder, then run the launcher from there.\n"
+        "(On macOS, .env.example is hidden in Finder; press Cmd+Shift+. to see it.)"
+    )
+    return EXIT_ERROR
+
+
+def main(*, root: Path = ROOT, deps: Deps | None = None) -> int:
     deps = deps or real_deps()
     steps: list[Callable[[], int | None]] = [
         lambda: check_python(deps),
+        lambda: check_files(root, deps),
         lambda: check_settings(root, deps),
         lambda: install_packages(root, deps),
     ]
@@ -324,4 +338,4 @@ def main(argv: Sequence[str] | None = None, *, root: Path = ROOT, deps: Deps | N
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(main())
