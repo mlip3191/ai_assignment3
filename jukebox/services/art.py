@@ -26,7 +26,7 @@ from jukebox.config import ROOT
 from jukebox.errors import ServiceError
 from jukebox.jobs import JobStore
 from jukebox.library import Library, LibraryError, get_library
-from jukebox.models import Track
+from jukebox.models import Job, Track
 
 _log = logging.getLogger(__name__)
 
@@ -44,10 +44,14 @@ COVER_STAGE = "Painting cover…"
 ChatFn = Callable[..., str]
 ImageFn = Callable[..., bytes]
 
-_SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+_SAFE_ID = re.compile(r"[A-Za-z0-9_-]+")
+_DEVICE_NAME = re.compile(r"con|prn|aux|nul|com[1-9]|lpt[1-9]", re.IGNORECASE)  # Windows reserves these
 _REPLACE_TRIES = 5
 _REPLACE_WAIT_S = 0.05
-_write_lock = threading.Lock()  # one swap at a time: Windows refuses two at once on the same file
+# One save at a time. Windows refuses two swaps at once on the same file, and make_cover() holds it
+# from the swap until the prompt is attached, so the stored prompt always matches the file on disk.
+_write_lock = threading.RLock()
+_cover_jobs = JobStore()  # cover jobs started without a `jobs` store (B6 hook, Retry cover)
 
 _PLACEHOLDER = re.compile(r"\{(title|style|mood|theme|lyrics_block)\}")
 _THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
@@ -155,7 +159,8 @@ def _clean(reply: str | None, suffix: str) -> str:
     text = _LEAD_IN.sub("", " ".join(text.split()))
     text = _unquote(text).strip(_EDGE_PUNCT)
     if text.lower().endswith(suffix.lower()):
-        text = text[: -len(suffix)]
+        # The quotes may sit before the suffix: '"A field", square album cover, ...'
+        text = _unquote(text[: -len(suffix)].strip(_EDGE_PUNCT))
     return text.strip(_EDGE_PUNCT)
 
 
@@ -184,6 +189,13 @@ def render_cover(
     Used by `make_cover()` for generated songs and by scripts/generate_samples.py for the samples.
     Raises ServiceError on any service failure; nothing is left at `dest` in that case.
     """
+    prompt, image = _paint(track, chat=chat, generate=generate)
+    _write_atomically(Path(dest), image)
+    return prompt
+
+
+def _paint(track: Track, *, chat: ChatFn | None, generate: ImageFn | None) -> tuple[str, bytes]:
+    """The prompt (Qwen) and the image bytes (FLUX, with the track's seed). Saves nothing."""
     prompt = write_cover_prompt(
         title=track.title,
         style=track.style,
@@ -193,9 +205,7 @@ def render_cover(
         lyrics=track.lyrics,
         chat=chat,
     )
-    image = (generate or flux.generate_image)(prompt, seed=track.seed)
-    _write_atomically(Path(dest), image)
-    return prompt
+    return prompt, (generate or flux.generate_image)(prompt, seed=track.seed)
 
 
 def make_cover(
@@ -213,7 +223,7 @@ def make_cover(
     "Retry cover"), the job (if given) records the plain-language message, and the ServiceError is
     re-raised for the caller. Raises LibraryError for an unknown track, ValueError for an unsafe id.
     """
-    if not _SAFE_ID.match(track_id):
+    if not _SAFE_ID.fullmatch(track_id) or _DEVICE_NAME.fullmatch(track_id):
         raise ValueError(f"track id {track_id!r} can't be used as a file name")
     lib = library or get_library()
     track = lib.get(track_id)
@@ -225,8 +235,10 @@ def make_cover(
         jobs.set_stage(job.id, COVER_STAGE, track_id)
     relative = f"{COVER_DIR}/{track_id}.{COVER_EXT}"
     try:
-        prompt = render_cover(track, Path(root) / relative, chat=chat, generate=generate)
-        updated = lib.attach_cover(track_id, relative, prompt)
+        prompt, image = _paint(track, chat=chat, generate=generate)  # slow, so outside the lock
+        with _write_lock:
+            _write_atomically(Path(root) / relative, image)
+            updated = lib.attach_cover(track_id, relative, prompt)
     except Exception as err:
         # Any failure, not only a ServiceError, must finish the job so the UI never stays
         # stuck on "Painting cover". JobStore.fail() shows only a safe message.
@@ -242,10 +254,12 @@ def start_cover(track: Track, **kwargs) -> threading.Thread:
     """Start painting the track's cover on a background thread and return at once (for B6).
 
     The song is already in the library and playable; the cover appears when ready. A failure never
-    reaches the caller: make_cover() records it on the job (if `jobs` is given) and the UI shows the
-    placeholder with "Retry cover". Only the error's type is logged, never its text. Takes the same
-    keyword arguments as make_cover(). Returns the thread, so tests and callers can wait for it.
+    reaches the caller: make_cover() records it on the job and the UI shows the placeholder with
+    "Retry cover" (see cover_job_for()). Only the error's type is logged, never its text. Takes the
+    same keyword arguments as make_cover(); without `jobs` the shared cover job store is used.
+    Returns the thread, so tests and callers can wait for it.
     """
+    kwargs.setdefault("jobs", _cover_jobs)
 
     def run() -> None:
         try:
@@ -259,8 +273,19 @@ def start_cover(track: Track, **kwargs) -> threading.Thread:
 
 
 def retry_cover(track_id: str, **kwargs) -> Track:
-    """The "Retry cover" button: paint a fresh cover for the track (same rules as make_cover)."""
+    """The "Retry cover" button: paint a fresh cover for the track (same rules as make_cover).
+
+    Without `jobs` the shared cover job store is used, so cover_job_for() shows this attempt.
+    """
+    kwargs.setdefault("jobs", _cover_jobs)
     return make_cover(track_id, **kwargs)
+
+
+def cover_job_for(track_id: str, *, jobs: JobStore | None = None) -> Job | None:
+    """The latest cover job for the track (for "Painting cover…" or the failed message), or None."""
+    store = jobs or _cover_jobs
+    matching = [j for j in store.list() if j.kind == "cover" and j.track_id == track_id]
+    return matching[-1] if matching else None
 
 
 def cover_for(track_id: str, *, library: Library | None = None) -> Path:

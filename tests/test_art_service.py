@@ -68,7 +68,7 @@ def cover(track_id: str, library: Library, root: Path, **kw):
 # ---- making a cover ---------------------------------------------------------------------------
 
 
-def test_cover_is_saved_as_runtime_generated_track_id_png(library: Library, root: Path) -> None:
+def test_cover_is_saved_as_runtime_generated_track_id_jpg(library: Library, root: Path) -> None:
     cover("t2", library, root)
     assert (root / "runtime" / "generated" / "t2.jpg").read_bytes() == IMAGE
 
@@ -162,7 +162,7 @@ def test_unknown_track_shows_the_placeholder_and_cannot_get_a_cover(library: Lib
         cover("nope", library, root)
 
 
-@pytest.mark.parametrize("bad_id", ["../evil", "a/b", "a\\b", "", "con.png"])
+@pytest.mark.parametrize("bad_id", ["../evil", "a/b", "a\\b", "", "con.png", "abc\n", "CON", "nul", "Com1"])
 def test_unsafe_track_ids_never_become_file_names(library: Library, root: Path, bad_id: str) -> None:
     with pytest.raises(ValueError):
         cover(bad_id, library, root)
@@ -333,3 +333,91 @@ def test_a_background_cover_failure_never_reaches_the_caller(library: Library, r
     assert jobs.list()[0].status == "failed"
     assert library.get("t1").cover_path is None
     assert art.cover_for("t1", library=library) == art.placeholder_path()
+
+
+# ---- agent review follow-ups ------------------------------------------------------------------
+
+
+def test_two_covers_at_once_store_the_prompt_of_the_image_on_disk(
+    library: Library, root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Thread A saves, then stalls before attaching; thread B saves and attaches meanwhile. The stored
+    prompt must belong to the image that ends up on disk."""
+    import threading
+
+    count = {"n": 0}
+    lock = threading.Lock()
+
+    def numbered_chat(messages: list[dict], *, max_tokens: int, temperature: float) -> str:
+        with lock:
+            count["n"] += 1
+            return f"Scene number {count['n']}"
+
+    def image_for(prompt: str, *, seed: int | None = None) -> bytes:
+        return b"\xff\xd8\xff\xe0" + prompt.encode()
+
+    b_attached = threading.Event()
+    first_attach = {"thread": None}
+    real_attach = library.attach_cover
+
+    def attach(track_id: str, cover_path: str, cover_prompt: str | None = None):
+        if first_attach["thread"] is None:
+            first_attach["thread"] = threading.current_thread()
+            b_attached.wait(timeout=1)  # A stalls here; B may only overtake if the lock allows it
+        result = real_attach(track_id, cover_path, cover_prompt)
+        if threading.current_thread() is not first_attach["thread"]:
+            b_attached.set()
+        return result
+
+    monkeypatch.setattr(library, "attach_cover", attach)
+    threads = [
+        threading.Thread(
+            target=cover, args=("t1", library, root), kwargs={"chat": numbered_chat, "generate": image_for}
+        )
+        for _ in range(2)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    on_disk = (root / "runtime" / "generated" / "t1.jpg").read_bytes()
+    assert on_disk == image_for(library.get("t1").cover_prompt)
+
+
+def test_a_quoted_reply_that_also_has_the_suffix_loses_its_quotes(library: Library, root: Path) -> None:
+    reply = f'"A field at dawn", {SUFFIX}'
+    updated = cover("t1", library, root, chat=lambda m, *, max_tokens, temperature: reply)
+    assert updated.cover_prompt == f"A field at dawn, {SUFFIX}"
+
+
+def test_a_trailing_apostrophe_is_kept(library: Library, root: Path) -> None:
+    updated = cover("t1", library, root, chat=lambda m, *, max_tokens, temperature: "Neon dancers'.")
+    assert updated.cover_prompt == f"Neon dancers', {SUFFIX}"
+
+
+def test_start_cover_without_a_job_store_still_records_a_cover_job(
+    library: Library, root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(art, "_cover_jobs", JobStore())
+    thread = art.start_cover(
+        library.get("t1"), library=library, root=root, chat=fake_chat, generate=FakeFlux()
+    )
+    thread.join(timeout=5)
+    job = art.cover_job_for("t1")
+    assert job is not None and (job.kind, job.status, job.track_id) == ("cover", "succeeded", "t1")
+
+
+def test_cover_job_for_reports_the_latest_attempt(
+    library: Library, root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(art, "_cover_jobs", JobStore())
+    art.start_cover(
+        library.get("t2"), library=library, root=root, chat=fake_chat,
+        generate=FakeFlux(fail=ServiceError("flux", "unavailable", "down")),
+    ).join(timeout=5)  # fmt: skip
+    assert art.cover_job_for("t2").status == "failed"
+    art.start_cover(library.get("t2"), library=library, root=root, chat=fake_chat, generate=FakeFlux()).join(
+        5
+    )
+    assert art.cover_job_for("t2").status == "succeeded"
+    assert art.cover_job_for("t3") is None
