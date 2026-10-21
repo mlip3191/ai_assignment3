@@ -124,16 +124,19 @@ def default_make_song(spec: SampleSpec, *, library: Library | None = None) -> Tr
         )
     lib = library if library is not None else Library()  # its own library, not the app's
     job = None
-    for job in generate_song(
-        style=song_style(spec),
-        mood=spec.mood,
-        duration_s=spec.duration_s,
-        vocal=spec.vocal,
-        theme=spec.theme,
-        seed=spec.seed,
-        library=lib,
-    ):
-        print(f"    {spec.id}: {job.stage}")
+    sent = _SENT.setdefault(spec.id, {})
+    sent.clear()
+    with _recording(songs, ("build_messages", "build_tags"), into=sent):
+        for job in generate_song(
+            style=song_style(spec),
+            mood=spec.mood,
+            duration_s=spec.duration_s,
+            vocal=spec.vocal,
+            theme=spec.theme,
+            seed=spec.seed,
+            library=lib,
+        ):
+            print(f"    {spec.id}: {job.stage}")
     if job is None or job.status != "succeeded" or not job.track_id:
         raise SampleError(f"{spec.id}: {getattr(job, 'error', None) or 'the song pipeline did not finish'}")
     track = lib.get(job.track_id)
@@ -142,38 +145,50 @@ def default_make_song(spec: SampleSpec, *, library: Library | None = None) -> Tr
     return track
 
 
+_SENT: dict[str, dict[str, object]] = {}  # per sample id: what the song pipeline really built and sent
+
+
+@contextlib.contextmanager
+def _recording(module: object, names: Sequence[str], *, into: dict[str, object]):
+    """While the song runs, wrap the pipeline's own builders so the log shows the very values it sent
+    (the Qwen messages from build_messages, the ACE-Step tags from build_tags), not a rebuild. The
+    pipeline looks them up on its module at call time. Always puts the originals back."""
+    originals = {name: getattr(module, name) for name in names if hasattr(module, name)}
+
+    def recorded(name: str, builder: Callable[..., object]) -> Callable[..., object]:
+        def call(*args: object, **kwargs: object) -> object:
+            into[name] = result = builder(*args, **kwargs)
+            return result
+
+        return call
+
+    for name, builder in originals.items():
+        setattr(module, name, recorded(name, builder))
+    try:
+        yield into
+    finally:
+        for name, builder in originals.items():
+            setattr(module, name, builder)
+
+
 DescribePrompt = Callable[[SampleSpec], list[dict[str, str]] | None]
 
 
 def default_describe_prompt(spec: SampleSpec) -> list[dict[str, str]] | None:
-    """The exact Qwen messages the song pipeline sends for this spec (B5's build_messages), for the log.
-    None if B5 isn't available, so the log says the prompt wasn't recorded instead of failing."""
-    try:
-        from jukebox.services import songs
-
-        return songs.build_messages(
-            "lyrics" if spec.vocal else "title",
-            style=song_style(spec),
-            mood=spec.mood,
-            theme=spec.theme,
-            duration_s=spec.duration_s,
-        )
-    except (ImportError, AttributeError):
-        return None
+    """The Qwen messages the song pipeline really sent for this sample (recorded by default_make_song).
+    None if they weren't recorded, so the log says so instead of guessing."""
+    messages = _SENT.get(spec.id, {}).get("build_messages")
+    return messages if isinstance(messages, list) else None
 
 
 DescribeTags = Callable[[SampleSpec], str | None]
 
 
 def default_describe_tags(spec: SampleSpec) -> str | None:
-    """The style tags the song pipeline sends ACE-Step for this spec (B6's build_tags), for the log.
-    None if B6 isn't available, so the log says the tags weren't recorded instead of failing."""
-    try:
-        from jukebox.services import songs
-
-        return songs.build_tags(song_style(spec), spec.mood, vocal=spec.vocal)
-    except (ImportError, AttributeError):
-        return None
+    """The style tags the song pipeline really sent ACE-Step for this sample (recorded by
+    default_make_song). None if they weren't recorded, so the log says so instead of guessing."""
+    tags = _SENT.get(spec.id, {}).get("build_tags")
+    return tags if isinstance(tags, str) else None
 
 
 def default_make_cover(track: Track, dest: Path) -> str:
@@ -197,6 +212,7 @@ def build_samples(
 ) -> list[Track]:
     """Build every sample in a staging folder, check it, then swap it into samples/."""
     root = Path(root)
+    _SENT.clear()  # only this run's prompts and tags may reach this run's log
     _recover(root)
     staging = root / STAGING
     shutil.rmtree(staging, ignore_errors=True)
@@ -397,7 +413,7 @@ def render_log(
             "|---|---|",
             f"| Style (sent to the song pipeline) | {t.style} |",
             "| ACE-Step tags (exactly as sent) | "
-            + (e.acestep_tags or "not recorded (the song pipeline's tag builder was unavailable)")
+            + (e.acestep_tags or "not recorded (the song pipeline did not report them)")
             + " |",
             f"| Mood | {s.mood} |",
             f"| Theme | {s.theme} |",
@@ -422,7 +438,7 @@ def render_log(
                 lines += [f"{message['role'].capitalize()}:", "", "```", message["content"], "```", ""]
         else:
             lines += [
-                "Qwen song prompt not recorded (the song pipeline's prompt builder was unavailable).",
+                "Qwen song prompt not recorded (the song pipeline did not report it).",
                 "",
             ]
         lines += ["**Lyrics** (exactly as generated, unedited)", ""]

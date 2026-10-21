@@ -9,6 +9,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -368,7 +369,11 @@ def test_a_crash_right_after_the_marker_is_written_changes_nothing(tmp_path: Pat
     before = _snapshot(tmp_path)
     (tmp_path / gs.SWAP_MARKER).write_text("swap in progress\n", encoding="utf-8")  # then the crash
     build(tmp_path)
-    assert _snapshot(tmp_path) == before  # the fakes make the same files again
+
+    def without_timings(snapshot: dict) -> dict:  # the log records each sample's run time, which varies
+        return {k: re.sub(rb"; [0-9.]+ s for this sample", b"", v) for k, v in snapshot.items()}
+
+    assert without_timings(_snapshot(tmp_path)) == without_timings(before)  # the fakes make the same files
     assert not (tmp_path / gs.SWAP_MARKER).exists() and not (tmp_path / gs.PREVIOUS).exists()
 
 
@@ -668,6 +673,111 @@ def test_main_prints_a_publish_problem_as_is(
     assert "Stopped: samples/ is in use" in out and "was not changed" not in out
 
 
+# ---- the log records what the pipeline really sent (#40 review, @mlip3191) --------------------
+
+
+def recording_songs_module(root: Path):
+    """A stand-in for B6's songs module whose generate_song() builds its prompt and tags through the
+    module's own build_messages() and build_tags(), with inputs a rebuild from the spec would not give."""
+    import types
+
+    module = types.SimpleNamespace()
+
+    def build_messages(name, *, style, mood, theme, duration_s):
+        return [{"role": "system", "content": f"pipeline {name} prompt"}, {"role": "user", "content": style}]
+
+    def build_tags(style, mood, *, vocal):
+        return f"{style}, {mood}, pipeline-only tag"
+
+    def generate_song(*, style, mood, duration_s, vocal, theme, seed, library):
+        log = logging.getLogger("jukebox.clients")
+        module.build_messages("lyrics" if vocal else "title", style=style + " (as B6 really sent it)",
+                              mood=mood, theme=theme, duration_s=duration_s)  # fmt: skip
+        log.info("qwen -> %s:9001 200 700ms", HOST)
+        module.build_tags(style, mood, vocal=vocal)
+        log.info("acestep -> %s:9007 200 2600ms", HOST)
+        yield FakeJob("Composing music…", "running")
+        (root / "runtime" / "generated").mkdir(parents=True, exist_ok=True)
+        (root / "runtime" / "generated" / f"t{seed}.mp3").write_bytes(MP3)
+        library.add(
+            Track(
+                id=f"t{seed}", title="Made by B6", style=style, mood=mood, theme=theme, duration_s=duration_s,
+                vocal=vocal, lyrics="[verse]\nla" if vocal else None, audio_path=f"runtime/generated/t{seed}.mp3",
+                cover_path=None, cover_prompt=None, source="generated", seed=seed, created_at=NOW,
+            )
+        )  # fmt: skip
+        yield FakeJob("Added to your library", "succeeded", track_id=f"t{seed}")
+
+    module.build_messages, module.build_tags, module.generate_song = build_messages, build_tags, generate_song
+    return module
+
+
+def _install(monkeypatch: pytest.MonkeyPatch, module) -> None:
+    import jukebox.services as services
+
+    monkeypatch.setattr(services, "songs", module, raising=False)
+    monkeypatch.setitem(sys.modules, "jukebox.services.songs", module)
+
+
+def _run_through_the_pipeline(root: Path) -> str:
+    library = Library(root=root)
+    gs.build_samples(
+        gs.SPECS, root=root, make_song=lambda spec: gs.default_make_song(spec, library=library),
+        make_cover=fake_cover, operator="felcervino", commit=COMMIT, models=MODELS, now=lambda: NOW,
+    )  # fmt: skip
+    return (root / "samples" / "GENERATION_LOG.md").read_text(encoding="utf-8")
+
+
+def test_the_log_shows_what_the_pipeline_really_sent_not_a_rebuild(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install(monkeypatch, recording_songs_module(tmp_path))
+    log = _run_through_the_pipeline(tmp_path)
+    style = gs.song_style(gs.SPECS[1])
+    assert f"{style} (as B6 really sent it)" in log  # the prompt B6 built, not one rebuilt from the spec
+    assert "pipeline lyrics prompt" in log and "pipeline title prompt" in log
+    assert f"| ACE-Step tags (exactly as sent) | {style}, joyful, pipeline-only tag |" in log
+    assert "not recorded" not in log
+
+
+def test_the_pipelines_builders_are_put_back_after_a_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = recording_songs_module(tmp_path)
+    originals = (module.build_messages, module.build_tags)
+    _install(monkeypatch, module)
+    _run_through_the_pipeline(tmp_path)
+    assert (module.build_messages, module.build_tags) == originals
+
+
+def test_the_pipelines_builders_are_put_back_after_a_failed_song(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = recording_songs_module(tmp_path)
+    originals = (module.build_messages, module.build_tags)
+
+    def failing(**kwargs):
+        module.build_tags("x", "y", vocal=False)
+        raise RuntimeError("the pipeline broke")
+        yield  # pragma: no cover
+
+    module.generate_song = failing
+    _install(monkeypatch, module)
+    with pytest.raises(RuntimeError):
+        gs.default_make_song(gs.SPECS[0], library=Library(root=tmp_path))
+    assert (module.build_messages, module.build_tags) == originals
+
+
+def test_a_new_run_never_shows_an_earlier_runs_prompt_or_tags(tmp_path: Path) -> None:
+    gs._SENT["sample_01"] = {
+        "build_messages": [{"role": "system", "content": "stale"}],
+        "build_tags": "stale",
+    }
+    build(tmp_path)  # the fake song step records nothing
+    log = (tmp_path / "samples" / "GENERATION_LOG.md").read_text(encoding="utf-8")
+    assert "stale" not in log and "song prompt not recorded" in log
+
+
 # ---- C6 dress rehearsal: the real B6 pipeline and C4 cover code, only the three calls faked ------
 
 
@@ -686,12 +796,14 @@ def test_the_whole_run_through_the_real_song_pipeline_and_cover_service(
 
     log = logging.getLogger("jukebox.clients")
     sent_tags: list[str] = []
+    sent_song_prompts: list[list[dict]] = []
     cover_system = art.load_template().system
 
     def fake_chat(messages: list[dict], *, max_tokens: int, temperature: float) -> str:
         log.info("qwen -> %s:9001 200 700ms", HOST)
         if messages[0]["content"] == cover_system:
             return "A quiet road at dusk, warm light"
+        sent_song_prompts.append(messages)
         lyrics = "[verse]\nWheels on warm asphalt\nWindows open wide\n[chorus]\nWe sing all the way home"
         return json.dumps({"title": "Open Road", "lyrics": lyrics})
 
@@ -729,6 +841,10 @@ def test_the_whole_run_through_the_real_song_pipeline_and_cover_service(
     log_text = (tmp_path / "samples" / "GENERATION_LOG.md").read_text(encoding="utf-8")
     for tags in sent_tags:  # the log shows exactly what ACE-Step received
         assert f"| ACE-Step tags (exactly as sent) | {tags} |" in log_text
+    assert len(sent_song_prompts) == 3
+    for messages in sent_song_prompts:  # and exactly the messages Qwen received
+        for message in messages:
+            assert f"```\n{message['content']}\n```" in log_text
     assert "not recorded" not in log_text  # B5's song prompt and B6's tags were both found
     assert "A quiet road at dusk, warm light, square album cover" in log_text
     assert HOST not in log_text
