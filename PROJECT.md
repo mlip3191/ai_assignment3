@@ -15,7 +15,7 @@ This is the team's working plan. It is the single source of truth for scope, own
 
 | | |
 |---|---|
-| **Phase** | Build under way (as of 10/20). Merged: the four service spikes, config, the client layer, the library, and the song prompts. In review: the playback spike, the app shell, the cover and DJ prompts, the song pipeline, and the queue. Integration (A7) is not done. The original M0 and M1 dates have passed (the whole schedule moved +7 days on 10/20, §14 Q2). |
+| **Phase** | Build under way (as of 10/21). Merged: the five spikes (including the playback spike), config, the client layer, the library, the song prompts and pipeline, the cover prompt and service, and the DJ prompt and service. In review: the app shell, the queue, the real-artist screen, and the sample generator. Integration (A7) is not done. The original M0 and M1 dates have passed (the whole schedule moved +7 days on 10/20, §14 Q2). |
 | **Is the app built?** | **No.** There is nothing to run yet. Path 1 below describes the finished app (v1.0) and is the contract the team builds to. |
 | **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation, and CI (Ubuntu on every PR; Windows and macOS after each merge to `main`). |
 | **Latest release** | none (will be the `v1.0` tag) |
