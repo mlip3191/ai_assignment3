@@ -345,7 +345,10 @@ STAGE_MUSIC = "Composing music…"
 STAGE_SAVING = "Saving your song…"
 STAGE_DONE = "Added to your library"
 GENERATED_DIR = "runtime/generated"  # stored paths are relative to the repo root (PROJECT.md 6.3)
-_VOICE_WORDS = re.compile(r"\b(?:vocals?|vocalist|voice|singer|singing|choir)\b", re.IGNORECASE)
+# A singing voice named in the style; "singer-songwriter" (a genre) and "vocal chops" (an effect) are not.
+_VOICE_WORDS = re.compile(
+    r"\b(?:vocal(?:s|ists?)?|voices?|singers?|singing|choirs?)\b(?!-songwriter|\s+chops?\b)", re.IGNORECASE
+)
 
 # Song jobs go here unless the caller passes the app's own store.
 JOBS = JobStore()

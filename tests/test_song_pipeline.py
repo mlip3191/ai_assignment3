@@ -154,6 +154,10 @@ def test_tags_combine_style_mood_and_voice(env: dict) -> None:
         "folk, raspy voice",
         "gospel, choir",
         "indie, Female Vocals",
+        "soul, male vocalists",
+        "ambient, layered voices",
+        "gospel, singers",
+        "choirs, organ",
     ],
 )
 def test_voice_tag_is_added_only_when_the_style_names_no_voice(style: str) -> None:
@@ -168,6 +172,15 @@ def test_default_voice_tag_is_kept_for_styles_without_a_voice() -> None:
         == "country rock, steel guitar, triumphant, warm natural vocals"
     )
     assert songs.build_tags("vocal jazz", "smooth", vocal=False) == "vocal jazz, smooth, instrumental"
+    # A genre or production effect is not a singing voice, so the sung song still gets the warmer default.
+    assert (
+        songs.build_tags("singer-songwriter", "joyful", vocal=True)
+        == "singer-songwriter, joyful, warm natural vocals"
+    )
+    assert (
+        songs.build_tags("house, vocal chops", "joyful", vocal=True)
+        == "house, vocal chops, joyful, warm natural vocals"
+    )
 
 
 @respx.mock
