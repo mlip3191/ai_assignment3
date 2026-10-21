@@ -20,7 +20,7 @@ launcher = importlib.util.module_from_spec(_spec)
 sys.modules["launcher"] = launcher
 _spec.loader.exec_module(launcher)
 
-KEY = "sekret-key-0123456789"
+KEY = "test-key-0123456789"
 GOOD_ENV = "\n".join(
     [
         f"CLASS_API_KEY={KEY}",
