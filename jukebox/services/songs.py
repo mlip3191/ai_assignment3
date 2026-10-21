@@ -345,6 +345,7 @@ STAGE_MUSIC = "Composing music…"
 STAGE_SAVING = "Saving your song…"
 STAGE_DONE = "Added to your library"
 GENERATED_DIR = "runtime/generated"  # stored paths are relative to the repo root (PROJECT.md 6.3)
+_VOICE_WORDS = re.compile(r"\b(?:vocals?|vocalist|voice|singer|singing|choir)\b", re.IGNORECASE)
 
 # Song jobs go here unless the caller passes the app's own store.
 JOBS = JobStore()
@@ -353,10 +354,17 @@ JOBS = JobStore()
 def build_tags(style: str, mood: str, *, vocal: bool) -> str:
     """ACE-Step's style tags: the style, the mood, and the voice or "instrumental".
 
-    "warm natural vocals" because the default voice came out too high-pitched and whiny (B2, B6). A voice
-    the user puts in the style ("deep male vocals") comes first, so it wins.
+    "warm natural vocals" because the default voice came out too high-pitched and whiny (B2, B6). It is
+    added only when the style names no voice of its own ("deep male vocals", "choir"), so the tags never
+    carry two voices (review of #40).
     """
-    return ", ".join([style.strip(), mood.strip(), "warm natural vocals" if vocal else "instrumental"])
+    if not vocal:
+        voice = "instrumental"
+    elif _VOICE_WORDS.search(style):
+        voice = ""
+    else:
+        voice = "warm natural vocals"
+    return ", ".join(part for part in (style.strip(), mood.strip(), voice) if part)
 
 
 def generate_song(
