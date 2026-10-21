@@ -17,6 +17,7 @@ One file per module, named `test_<module>.py`:
 | `test_prepush.py` | Pre-push gate (including that it runs the tests the way CI does) and the secret scan's `.env` handling |
 | `test_check_models.py` | Only-the-four-class-models check |
 | `test_lanes.py` | Lane issue generation |
+| `test_playback_spike.py` | E1 Option A queue: clip order, skip, stale end event, one autoplay Audio |
 | `test_config.py` | `jukebox/config.py`: required variables, one port per service, no port 9000, no secrets in output |
 | `test_check_config.py` | `scripts/check_config.py`: OK/missing table that never prints values |
 | `test_chatterbox.py` | `jukebox/clients/chatterbox.py`: `speak()` request format (default and reference voice), local input checks, each error kind with no retry, speech endpoint on 9008 only |
