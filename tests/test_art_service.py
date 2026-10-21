@@ -41,6 +41,14 @@ class FakeFlux:
         return IMAGE
 
 
+@pytest.fixture(autouse=True)
+def fresh_cover_jobs(monkeypatch: pytest.MonkeyPatch) -> JobStore:
+    """Each test gets its own shared cover job store, so no test sees another's jobs."""
+    store = JobStore()
+    monkeypatch.setattr(art, "_cover_jobs", store)
+    return store
+
+
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
     (tmp_path / "runtime" / "generated").mkdir(parents=True)
@@ -395,22 +403,73 @@ def test_a_trailing_apostrophe_is_kept(library: Library, root: Path) -> None:
     assert updated.cover_prompt == f"Neon dancers', {SUFFIX}"
 
 
+@pytest.mark.parametrize("given", [{}, {"jobs": None}], ids=["no jobs argument", "jobs=None"])
 def test_start_cover_without_a_job_store_still_records_a_cover_job(
-    library: Library, root: Path, monkeypatch: pytest.MonkeyPatch
+    library: Library, root: Path, given: dict
 ) -> None:
-    monkeypatch.setattr(art, "_cover_jobs", JobStore())
     thread = art.start_cover(
-        library.get("t1"), library=library, root=root, chat=fake_chat, generate=FakeFlux()
+        library.get("t1"), library=library, root=root, chat=fake_chat, generate=FakeFlux(), **given
     )
     thread.join(timeout=5)
     job = art.cover_job_for("t1")
     assert job is not None and (job.kind, job.status, job.track_id) == ("cover", "succeeded", "t1")
 
 
-def test_cover_job_for_reports_the_latest_attempt(
-    library: Library, root: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(art, "_cover_jobs", JobStore())
+def test_retry_cover_with_jobs_none_still_records_a_cover_job(library: Library, root: Path) -> None:
+    art.retry_cover("t1", library=library, root=root, chat=fake_chat, generate=FakeFlux(), jobs=None)
+    assert art.cover_job_for("t1").status == "succeeded"
+
+
+def test_tests_start_with_an_empty_shared_cover_job_store() -> None:
+    assert art._cover_jobs.list() == []
+
+
+def _running_job(jobs: JobStore, track_id: str) -> str:
+    job = jobs.create("cover", art.COVER_STAGE)
+    jobs.set_stage(job.id, art.COVER_STAGE, track_id)
+    return job.id
+
+
+def test_a_retry_that_fails_first_does_not_hide_an_earlier_attempt_that_succeeds_later() -> None:
+    clock = iter(["2026-10-20T10:00:00+00:00", "2026-10-20T10:00:00+00:00", "2026-10-20T10:00:05+00:00"])
+    jobs = JobStore(now=lambda: next(clock, "2026-10-20T10:00:09+00:00"))
+    first = _running_job(jobs, "t1")
+    second = _running_job(jobs, "t1")
+    jobs.fail(second, ServiceError("flux", "unavailable", "down"))  # the second click fails first
+    jobs.succeed(first, "t1")  # then the first click's cover arrives
+    assert art.cover_job_for("t1", jobs=jobs).status == "succeeded"
+
+
+def test_a_failure_after_an_earlier_success_is_reported() -> None:
+    clock = iter(
+        ["2026-10-20T10:00:00+00:00"] * 2 + ["2026-10-20T10:00:03+00:00", "2026-10-20T10:00:07+00:00"]
+    )
+    jobs = JobStore(now=lambda: next(clock))
+    first = _running_job(jobs, "t1")
+    jobs.succeed(first, "t1")
+    second = _running_job(jobs, "t1")
+    jobs.fail(second, ServiceError("flux", "unavailable", "down"))
+    assert art.cover_job_for("t1", jobs=jobs).status == "failed"
+
+
+def test_a_running_cover_job_is_shown_before_any_finished_one() -> None:
+    jobs = JobStore()
+    first = _running_job(jobs, "t1")
+    jobs.succeed(first, "t1")
+    running = _running_job(jobs, "t1")
+    assert art.cover_job_for("t1", jobs=jobs).id == running
+
+
+def test_a_tie_on_the_finish_time_shows_the_success() -> None:
+    jobs = JobStore(now=lambda: "2026-10-20T10:00:00+00:00")
+    first = _running_job(jobs, "t1")
+    second = _running_job(jobs, "t1")
+    jobs.succeed(first, "t1")
+    jobs.fail(second, ServiceError("flux", "unavailable", "down"))
+    assert art.cover_job_for("t1", jobs=jobs).status == "succeeded"
+
+
+def test_cover_job_for_reports_the_latest_attempt(library: Library, root: Path) -> None:
     art.start_cover(
         library.get("t2"), library=library, root=root, chat=fake_chat,
         generate=FakeFlux(fail=ServiceError("flux", "unavailable", "down")),

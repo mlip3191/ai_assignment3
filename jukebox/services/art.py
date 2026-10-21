@@ -259,7 +259,7 @@ def start_cover(track: Track, **kwargs) -> threading.Thread:
     same keyword arguments as make_cover(); without `jobs` the shared cover job store is used.
     Returns the thread, so tests and callers can wait for it.
     """
-    kwargs.setdefault("jobs", _cover_jobs)
+    kwargs["jobs"] = kwargs.get("jobs") or _cover_jobs
 
     def run() -> None:
         try:
@@ -277,15 +277,25 @@ def retry_cover(track_id: str, **kwargs) -> Track:
 
     Without `jobs` the shared cover job store is used, so cover_job_for() shows this attempt.
     """
-    kwargs.setdefault("jobs", _cover_jobs)
+    kwargs["jobs"] = kwargs.get("jobs") or _cover_jobs
     return make_cover(track_id, **kwargs)
 
 
 def cover_job_for(track_id: str, *, jobs: JobStore | None = None) -> Job | None:
-    """The latest cover job for the track (for "Painting cover…" or the failed message), or None."""
+    """The cover job the UI should show for the track ("Painting cover…" or the failed message), or None.
+
+    A running job comes first. Otherwise it is the job that finished last, not the one started last:
+    Retry clicked twice can finish out of order. Times are to the second, so on a tie a success wins,
+    since its cover really is attached.
+    """
     store = jobs or _cover_jobs
     matching = [j for j in store.list() if j.kind == "cover" and j.track_id == track_id]
-    return matching[-1] if matching else None
+    running = [j for j in matching if j.finished_at is None]
+    if running:
+        return running[-1]
+    if not matching:
+        return None
+    return max(enumerate(matching), key=lambda p: (p[1].finished_at, p[1].status == "succeeded", p[0]))[1]
 
 
 def cover_for(track_id: str, *, library: Library | None = None) -> Path:
