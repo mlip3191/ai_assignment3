@@ -29,9 +29,13 @@ def ensure_runtime(root: Path) -> Path:
 
 
 def allowed_paths(root: Path) -> list[str]:
-    """Directories Gradio may serve: committed samples and session runtime files."""
+    """Directories Gradio may serve: samples, session files, and the placeholder cover."""
     root = Path(root)
-    return [str((root / "samples").resolve()), str((root / "runtime").resolve())]
+    return [
+        str((root / "samples").resolve()),
+        str((root / "runtime").resolve()),
+        str((root / "jukebox" / "assets").resolve()),
+    ]
 
 
 def choose_port(host: str, port: int, fallback: int, can_bind: BindCheck) -> int:

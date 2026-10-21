@@ -134,10 +134,11 @@ def test_launch_is_loopback_and_share_is_refused(tmp_path: Path) -> None:
         serve(tmp_path, share=True, launch=explode, can_bind=lambda _host, _port: True)
 
 
-def test_allowed_paths_are_samples_and_runtime(tmp_path: Path) -> None:
+def test_allowed_paths_are_samples_runtime_and_assets(tmp_path: Path) -> None:
     samples = (tmp_path / "samples").resolve()
     runtime = (tmp_path / "runtime").resolve()
-    assert allowed_paths(tmp_path) == [str(samples), str(runtime)]
+    assets = (tmp_path / "jukebox" / "assets").resolve()
+    assert allowed_paths(tmp_path) == [str(samples), str(runtime), str(assets)]
     source = (UI_DIR / "launch.py").read_text(encoding="utf-8")
     assert "C:\\Users" not in source
     assert "/Users/" not in source
