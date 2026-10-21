@@ -387,6 +387,10 @@ def test_a_marker_that_cannot_be_removed_after_the_swap_still_counts_as_done(
     tracks = build(tmp_path)  # no error: the new samples are in place
     assert [t.id for t in tracks] == ["sample_01", "sample_02", "sample_03"]
     assert not (tmp_path / gs.PREVIOUS).exists()
+    assert (tmp_path / gs.SWAP_MARKER).exists()  # the stuck marker really was left behind
+    monkeypatch.setattr(Path, "unlink", real_unlink)
+    build(tmp_path)  # the next run clears it
+    assert not (tmp_path / gs.SWAP_MARKER).exists()
 
 
 def test_the_swap_never_copies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

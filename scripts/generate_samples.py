@@ -340,7 +340,7 @@ def _recover(root: Path, *, this_run: bool = False) -> None:
         # samples/ came back some other way (for example `git checkout -- samples`); the backup may hold
         # the only copy of uncommitted samples, so keep it and let the person decide.
         raise PublishError(
-            f"a swap was interrupted and the samples it replaced are in {PREVIOUS.as_posix()}; "
+            f"a swap or its cleanup was interrupted and the samples it replaced are in {PREVIOUS.as_posix()}; "
             "keep what you need from that folder, delete it, and run again. samples/ was not changed."
         )
     if previous.exists():
