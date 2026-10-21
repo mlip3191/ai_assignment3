@@ -7,7 +7,8 @@ Used by `write_song_text()` in `jukebox/services/songs.py` for vocal songs (task
 Why it looks like this:
 - Rules follow PROJECT.md 8.1 and H10: original lyrics only, no existing songs, no real artists, JSON only.
 - The structure and line counts come from the duration. Lyrics that don't fit the length sing badly: too
-  many lines for 10 s came out as gibberish, and short lyrics in a long song ended early (B2, B4).
+  many lines for 10 s came out as gibberish (B4), and from 30 to 60 s ACE-Step sings only about one verse
+  and chorus, skipping whole sections when given more (B6). So the structure asks only for what gets sung.
 - `[intro]` stays empty, so the music starts before the singing. In B4's live test the first sung line
   was garbled when singing started at 0 s.
 - Lowercase `[verse]` / `[chorus]` tags are the format ACE-Step expects (PROJECT.md 7.1).

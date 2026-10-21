@@ -152,34 +152,30 @@ def test_very_short_songs_get_fewer_lines() -> None:
     assert songs.plan_sections(29) == songs.plan_sections(20)
 
 
-def test_medium_song_structure() -> None:
-    assert songs.plan_sections(60) == [
-        ("intro", 0),
-        ("verse", 4),
-        ("chorus", 4),
-        ("verse", 4),
-        ("chorus", 4),
-        ("outro", 2),
-    ]
-    assert songs.plan_sections(40) == songs.plan_sections(74)
+VERSE_CHORUS_OUTRO = [("intro", 0), ("verse", 4), ("chorus", 4), ("outro", 2)]
 
 
-def test_long_song_has_bridge() -> None:
-    plan = songs.plan_sections(90)
-    names = [name for name, _lines in plan]
-    assert names[0] == "intro" and names[-1] == "outro"
-    assert "bridge" in names
-    assert names.index("bridge") == len(names) - 3  # bridge, last chorus, outro
+def test_songs_from_40_to_74_seconds_get_one_verse_chorus_and_outro() -> None:
+    """B6's live tests: at 45 to 60 s ACE-Step sang about one verse and chorus. Given 18 lines, it skipped
+    the second verse and chorus (45, 50 and 60 s); given 10, it sang them all at 45 s."""
+    for duration_s in (40, 45, 50, 60, 74):
+        assert songs.plan_sections(duration_s) == VERSE_CHORUS_OUTRO
+
+
+def test_songs_from_75_seconds_get_two_verses_and_choruses_without_a_bridge() -> None:
+    long_plan = [("intro", 0), ("verse", 4), ("chorus", 4), ("verse", 4), ("chorus", 4), ("outro", 2)]
+    for duration_s in (75, 90, 180, 600):
+        assert songs.plan_sections(duration_s) == long_plan
 
 
 def test_sung_lines_grow_with_duration() -> None:
     def total(duration_s: int) -> int:
         return sum(lines for _name, lines in songs.plan_sections(duration_s))
 
-    assert total(30) < total(60) < total(90) < total(200)
+    assert total(10) < total(25) < total(30) < total(60) < total(90)
     counts = [total(d) for d in range(10, 601, 5)]
     assert counts == sorted(counts)
-    assert total(600) <= 60  # keeps the reply well inside the token budget
+    assert total(600) <= 18  # more lines than ACE-Step sings get skipped from the middle of the song
 
 
 def test_every_plan_starts_with_an_empty_intro() -> None:
@@ -399,6 +395,19 @@ def test_repeat_marks_are_dropped() -> None:
 )
 def test_lyric_lines_starting_with_a_section_word_are_kept(line: str) -> None:
     assert sung_lines(songs.normalize_lyrics(f"[verse]\n{line}")) == [line]
+
+
+def test_unmatched_brackets_are_removed_from_sung_lines() -> None:
+    """Seen live (B6): a reply ended its last line with a stray "]"."""
+    lyrics = songs.normalize_lyrics(
+        "[verse]\nCorporate chains are tight]\n[Oh yeah\n(Hold on\nStay (with me) tonight"
+    )
+    assert sung_lines(lyrics) == [
+        "Corporate chains are tight",
+        "Oh yeah",
+        "Hold on",
+        "Stay (with me) tonight",
+    ]
 
 
 def test_lyric_lines_that_look_like_words_are_kept() -> None:
