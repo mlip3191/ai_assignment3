@@ -666,3 +666,63 @@ def test_main_prints_a_publish_problem_as_is(
     assert gs.main() == 1
     out = capsys.readouterr().out
     assert "Stopped: samples/ is in use" in out and "was not changed" not in out
+
+
+# ---- C6 dress rehearsal: the real B6 pipeline and C4 cover code, only the three calls faked ------
+
+
+def test_the_whole_run_through_the_real_song_pipeline_and_cover_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Runs only once B6 (#36) is on main. Proves C6 is one command: the script, B6's generate_song(),
+    B5's prompts and parser, and C4's render_cover() work together. Only qwen.chat, acestep.generate_music
+    and flux.generate_image are replaced, each logging its call the way the shared client does."""
+    from jukebox.services import songs
+
+    if not hasattr(songs, "generate_song"):
+        pytest.skip("needs B6's songs.generate_song() (#36)")
+    from jukebox.clients import acestep, flux, qwen
+
+    log = logging.getLogger("jukebox.clients")
+    sent_tags: list[str] = []
+
+    def fake_chat(messages: list[dict], *, max_tokens: int, temperature: float) -> str:
+        log.info("qwen -> %s:9001 200 700ms", HOST)
+        if "album cover" in messages[0]["content"]:
+            return "A quiet road at dusk, warm light"
+        lyrics = "[verse]\nWheels on warm asphalt\nWindows open wide\n[chorus]\nWe sing all the way home"
+        return json.dumps({"title": "Open Road", "lyrics": lyrics})
+
+    def fake_music(*, tags: str, lyrics: str | None, duration_s: int, seed: int | None = None):
+        log.info("acestep -> %s:9007 200 2600ms", HOST)
+        sent_tags.append(tags)
+        return MP3, "mp3"
+
+    def fake_image(prompt: str, **kwargs) -> bytes:
+        log.info("flux -> %s:9006 200 2400ms", HOST)
+        return JPEG
+
+    monkeypatch.setattr(qwen, "chat", fake_chat)
+    monkeypatch.setattr(acestep, "generate_music", fake_music)
+    monkeypatch.setattr(flux, "generate_image", fake_image)
+    library = Library(root=tmp_path)
+    tracks = gs.build_samples(
+        gs.SPECS,
+        root=tmp_path,
+        make_song=lambda spec: gs.default_make_song(spec, library=library),
+        operator="felcervino",
+        commit=COMMIT,
+        models=MODELS,
+        now=lambda: NOW,
+    )
+    assert [t.id for t in tracks] == ["sample_01", "sample_02", "sample_03"]
+    assert all(t.title == "Open Road" for t in tracks)
+    assert tracks[0].lyrics is None and "We sing all the way home" in tracks[1].lyrics
+    assert Library(root=tmp_path).load_manifest(tmp_path / "samples" / "manifest.json") == 3
+    log_text = (tmp_path / "samples" / "GENERATION_LOG.md").read_text(encoding="utf-8")
+    for tags in sent_tags:  # the log shows exactly what ACE-Step received
+        assert f"| ACE-Step tags (exactly as sent) | {tags} |" in log_text
+    assert "not recorded" not in log_text  # B5's song prompt and B6's tags were both found
+    assert "A quiet road at dusk, warm light, square album cover" in log_text
+    assert HOST not in log_text
+    assert list((tmp_path / "runtime" / "generated").glob("*.mp3")) == []
