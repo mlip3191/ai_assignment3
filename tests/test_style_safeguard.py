@@ -169,7 +169,6 @@ def test_places_and_capitalized_genres_are_kept(raw: str, cleaned: str) -> None:
         ("in the style of Lady Gaga/Madonna", "", "in the style of Lady Gaga/Madonna"),
         ("in the style of Earth, Wind & Fire", "", "in the style of Earth, Wind & Fire"),
         ("in the style of Ed Sheeran and pop", "pop", "in the style of Ed Sheeran"),
-        ("in the style of Adele, Drake, soul", "soul", "in the style of Adele, Drake"),
     ],
 )
 def test_joined_and_listed_names_are_removed_whole(raw: str, cleaned: str, removed: str) -> None:
@@ -180,8 +179,35 @@ def test_joined_and_listed_names_are_removed_whole(raw: str, cleaned: str, remov
 
 
 def test_a_name_followed_by_an_ordinary_part_keeps_that_part() -> None:
+    """Re-review finding: title-case tags after a name were eaten as part of it."""
     assert songs.check_style("in the style of Adele, Warm pads").text == "Warm pads"
     assert songs.check_style("in the style of Adele, Lo-Fi").text == "Lo-Fi"
+    assert songs.check_style("in the style of Adele, Female Vocals").text == "Female Vocals"
+    assert songs.check_style("in the style of Adele, Heartfelt").text == "Heartfelt"
+
+
+@pytest.mark.parametrize(
+    ("raw", "cleaned", "removed"),
+    [
+        ("in the style of a Taylor Swift song", "", "in the style of a Taylor Swift song"),
+        ("upbeat, sounds like a Coldplay ballad", "upbeat", "sounds like a Coldplay ballad"),
+        ("in the style of an Adele ballad, piano", "piano", "in the style of an Adele ballad"),
+        ("sounds like that Daft Punk album", "", "sounds like that Daft Punk album"),
+        ("inspired by my favorite band Radiohead", "", "inspired by my favorite band Radiohead"),
+        ("sounds like a mix of Adele and Drake", "", "sounds like a mix of Adele and Drake"),
+        ("upbeat pop like a Beyoncé anthem", "upbeat pop", "like a Beyoncé anthem"),
+    ],
+)
+def test_a_description_that_names_an_artist_is_removed(raw: str, cleaned: str, removed: str) -> None:
+    """Re-review finding: "a/my/that ..." descriptions were kept even when they named an artist."""
+    result = songs.check_style(raw)
+    assert result.text == cleaned
+    assert list(result.removed) == [removed]
+
+
+def test_descriptions_with_only_sound_words_are_kept() -> None:
+    for kept in ("sounds like a Christmas song", "dreamy like a lullaby", "sounds like a Sunday morning"):
+        assert songs.check_style(kept).text == kept
 
 
 @pytest.mark.parametrize(

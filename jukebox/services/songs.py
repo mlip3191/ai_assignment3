@@ -188,7 +188,8 @@ _SOUND_WORDS = frozenset(
     rainy sunny stormy summer winter spring autumn fall night nights midnight morning sunset sunrise
     detroit chicago nashville memphis orleans london berlin ibiza uk british english french spanish
     italian german greek nordic scandinavian russian japanese korean chinese indian arabic african
-    brazilian cuban jamaican caribbean mexican american west east coast
+    brazilian cuban jamaican caribbean mexican american west east coast female male
+    sunday monday tuesday wednesday thursday friday saturday
     """.split()
 )
 _CONNECTORS = frozenset({"of", "the", "and", "or", "&", "de", "la", "del", "van", "von", "da", "y"})
@@ -197,7 +198,8 @@ _NAME = rf"(?:[Tt]he\s+)?{_CAP}(?:\s+(?:(?:of|the|and|or|&|de|la|del|van|von|da|
 _NAME_AT_START = re.compile(_NAME)
 _POINTER = re.compile(
     r"\b(?:in\s+the\s+(?:style|vein|spirit)\s+of|sounds?\s+like|inspired\s+by|influenced\s+by"
-    r"|reminiscent\s+of|similar\s+to|à\s+la|a\s+la(?=\s+(?-i:[A-ZÀ-ÖØ-Þ])))\s+",  # "a la carte" isn't one
+    r"|reminiscent\s+of|similar\s+to|à\s+la|a\s+la(?=\s+(?-i:[A-ZÀ-ÖØ-Þ]))"  # "a la carte" isn't one
+    r"|like(?=\s+(?:a|an|my|our|your|his|her|their|this|that)\s))\s+",  # "like a <Name> anthem"
     re.IGNORECASE,
 )
 _NAME_STYLE = re.compile(rf"(?<![\w'’-])({_NAME})(?:-|\s+)(?i:style|esque|inspired)\b")
@@ -236,11 +238,11 @@ def check_style(text: str) -> StyleCheck:
     removed: list[str] = []
     parts = re.split(r"([,;])", text)
     screened: list[str] = []
-    after_name = False  # the last part ended with a removed name, so "Earth, Wind & Fire" goes too
+    after_name = False  # the last part ended with a removed name, so "Earth, Wind & Fire" can go too
     for part in parts:
         if part in (",", ";"):
             screened.append(part)
-        elif after_name and _NAME_AT_START.fullmatch(part.strip()) and not _is_sound(part):
+        elif after_name and _looks_like_rest_of_a_band(part):
             removed[-1] += f", {part.strip()}"
             screened.append("")
         else:
@@ -272,7 +274,14 @@ def _screen_part(part: str, removed: list[str]) -> tuple[str, bool]:
             part = part[: match.start()] + rest  # a genre or place ("Latin jazz"): drop only the pointer
             start = match.start()
         elif words and words[0].lower() in _OWNER:
-            start = match.end()  # "sounds like a movie soundtrack" describes, it doesn't name
+            # "sounds like a movie soundtrack" describes and is kept, unless it names someone
+            # ("in the style of a Taylor Swift song"): then the whole description goes.
+            if any(not _is_sound(m.group(0)) for m in _NAME_AT_START.finditer(rest)):
+                removed.append(part[match.start() :].strip())
+                part = part[: match.start()]
+                start = match.start()
+            else:
+                start = match.end()
         else:
             first_sound = next((i for i, word in enumerate(words) if _is_sound(word)), len(words))
             if first_sound:
@@ -283,6 +292,14 @@ def _screen_part(part: str, removed: list[str]) -> tuple[str, bool]:
     for pattern in (_NAME_STYLE, _LIKE_NAME):
         part = pattern.sub(lambda m: _drop_name(m, removed), part)
     return part, ended_with_name
+
+
+def _looks_like_rest_of_a_band(part: str) -> bool:
+    """A comma part right after a removed name that continues it ("Earth, Wind & Fire"): a capitalized
+    name joined with "&" or "and". Plain title-case tags ("Female Vocals", "Heartfelt") are not."""
+    text = part.strip()
+    joined = "&" in text or re.search(r"\band\b", text, re.IGNORECASE)
+    return bool(joined and _NAME_AT_START.fullmatch(text) and not _is_sound(text))
 
 
 def _drop_name(match: re.Match[str], removed: list[str]) -> str:
