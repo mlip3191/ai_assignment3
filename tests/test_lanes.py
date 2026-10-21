@@ -78,3 +78,57 @@ def test_tick_only_touches_the_task_line() -> None:
     assert "- [ ] **B5**" in new
     assert tick(new, "B4") == (new, False)  # already ticked
     assert tick(body, "B40")[1] is False
+
+
+def test_a11_prepush_hook_task_is_in_lane_a() -> None:
+    spec, _ = load()
+    lane_a = next(lane for lane in spec["lanes"] if lane["role"] == "A")
+    task = next((t for t in lane_a["tasks"] if t["key"] == "A11"), None)
+    assert task is not None
+    assert task["milestone"] == "M1"
+    assert task["depends"] == []
+    criteria = " ".join(task["criteria"])
+    assert "100755" in criteria
+    assert "doctor.py" in criteria
+
+
+def test_project_md_lists_every_backlog_task_and_count() -> None:
+    spec, _ = load()
+    keys = [t["key"] for lane in spec["lanes"] for t in lane["tasks"]]
+    text = (ROOT / "PROJECT.md").read_text(encoding="utf-8")
+    section19 = text.split("## 19. The five lanes", 1)[1]
+    for key in keys:
+        assert f"\n| {key} |" in section19, f"{key} missing from PROJECT.md section 19"
+    assert f"({len(keys)} tasks total)" in text
+    assert f"5 lanes, {len(keys)} tasks" in text
+
+
+def test_a12_gate_parity_task_is_in_lane_a() -> None:
+    spec, _ = load()
+    lane_a = next(lane for lane in spec["lanes"] if lane["role"] == "A")
+    task = next((t for t in lane_a["tasks"] if t["key"] == "A12"), None)
+    assert task is not None
+    assert task["milestone"] == "M2"
+    assert task["depends"] == []
+    assert "§16.5" in task["refs"]
+    criteria = " ".join(task["criteria"])
+    assert "pytest -q" in criteria
+    assert "CI" in criteria
+    assert "sys.path" in criteria
+
+
+def test_project_md_load_tables_match_the_backlog() -> None:
+    """The per-lane task counts (section 19) and the per-checkpoint load table must match issues.json."""
+    spec, _ = load()
+    text = (ROOT / "PROJECT.md").read_text(encoding="utf-8")
+    section19 = text.split("## 19. The five lanes", 1)[1]
+    for lane in spec["lanes"]:
+        row = next(r for r in section19.splitlines() if r.startswith(f"| **{lane['role']}: "))
+        assert row.split("|")[4].strip() == str(len(lane["tasks"])), f"lane {lane['role']} task count"
+    for checkpoint in spec["checkpoints"]:
+        milestone = checkpoint["title"].split()[0]  # "M0 Foundations & spikes" -> "M0"
+        row = next(r for r in section19.splitlines() if r.startswith(f"| {milestone} "))
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        per_lane = [sum(t["milestone"] == milestone for t in lane["tasks"]) for lane in spec["lanes"]]
+        assert cells[1:6] == [str(n) for n in per_lane], f"{milestone} per-lane counts"
+        assert cells[6] == str(sum(per_lane)), f"{milestone} total"
