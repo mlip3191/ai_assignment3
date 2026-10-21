@@ -682,13 +682,15 @@ def test_the_whole_run_through_the_real_song_pipeline_and_cover_service(
     if not hasattr(songs, "generate_song"):
         pytest.skip("needs B6's songs.generate_song() (#36)")
     from jukebox.clients import acestep, flux, qwen
+    from jukebox.services import art
 
     log = logging.getLogger("jukebox.clients")
     sent_tags: list[str] = []
+    cover_system = art.load_template().system
 
     def fake_chat(messages: list[dict], *, max_tokens: int, temperature: float) -> str:
         log.info("qwen -> %s:9001 200 700ms", HOST)
-        if "album cover" in messages[0]["content"]:
+        if messages[0]["content"] == cover_system:
             return "A quiet road at dusk, warm light"
         lyrics = "[verse]\nWheels on warm asphalt\nWindows open wide\n[chorus]\nWe sing all the way home"
         return json.dumps({"title": "Open Road", "lyrics": lyrics})
@@ -706,16 +708,21 @@ def test_the_whole_run_through_the_real_song_pipeline_and_cover_service(
     monkeypatch.setattr(acestep, "generate_music", fake_music)
     monkeypatch.setattr(flux, "generate_image", fake_image)
     library = Library(root=tmp_path)
-    tracks = gs.build_samples(
-        gs.SPECS,
-        root=tmp_path,
-        make_song=lambda spec: gs.default_make_song(spec, library=library),
-        operator="felcervino",
-        commit=COMMIT,
-        models=MODELS,
-        now=lambda: NOW,
-    )
+    with respx.mock:  # if a fake ever stops matching the code, no request can reach a class service
+        tracks = gs.build_samples(
+            gs.SPECS,
+            root=tmp_path,
+            make_song=lambda spec: gs.default_make_song(spec, library=library),
+            operator="felcervino",
+            commit=COMMIT,
+            models=MODELS,
+            now=lambda: NOW,
+        )
     assert [t.id for t in tracks] == ["sample_01", "sample_02", "sample_03"]
+    assert len(sent_tags) == 3
+    for t in tracks:
+        assert (tmp_path / t.cover_path).read_bytes() == JPEG
+        assert t.cover_prompt == f"A quiet road at dusk, warm light, {art.load_template().suffix}"
     assert all(t.title == "Open Road" for t in tracks)
     assert tracks[0].lyrics is None and "We sing all the way home" in tracks[1].lyrics
     assert Library(root=tmp_path).load_manifest(tmp_path / "samples" / "manifest.json") == 3
