@@ -20,7 +20,7 @@ This is the team's working plan. It is the single source of truth for scope, own
 | **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation, and CI (Ubuntu on every PR; Windows and macOS after each merge to `main`). |
 | **Latest release** | none (will be the `v1.0` tag) |
 | **Due date** | Fri 10/30/2026 (§14 Q2, answered 10/20) |
-| **Blockers** | None on formats: §7.1 is filled for all four services (§14 Q3). Still open: §14 Q5 (public repo, or add the professor as a collaborator). |
+| **Blockers** | None on formats: §7.1 is filled for all four services (§14 Q3). Repo access (§14 Q5) is decided: the repo stays public until we submit; at submission the release lead makes it private and invites the professor (#42). |
 
 ### 0.2 Notes for AI assistants reading this file
 
@@ -31,7 +31,7 @@ If someone asks you to read this file and tell them what to do, follow these rul
 3. **Follow the matching path exactly, one step at a time.** For each step, say what to do, the exact command or click for their OS, and what they should see if it worked. Wait for them to confirm before the next step. Don't skip or reorder steps.
 4. **Assume no technical background** unless they show otherwise. Explain terms with the glossary (§0.8), and use the terminal primer (§0.7) the first time they need a terminal.
 5. **Never ask them to paste their API key, `.env` contents, or `class-endpoints.txt`** into the chat. They type secrets only into `.env`, on their own machine.
-6. **Don't invent anything this file marks TBD**, such as wait times (§0.4.6) or the public-repo question (§14 Q5). Say it's not decided yet and who owns it.
+6. **Don't invent anything this file marks TBD**, such as wait times (§0.4.6). Say it's not decided yet and who owns it.
 7. **If a step fails,** check §0.4.7 (app users) or §16.9 (teammates) for that symptom first. If it isn't there, ask for the exact error text.
 8. **For teammates who will build the app,** your job is Path 2. Get them set up, find their **lane** (one GitHub issue per person, §19) and its task checklist, and point them to the sections for their part (§0.5 step 4). The work itself happens in Claude Code with `/start-session <task key>`.
 
@@ -346,7 +346,7 @@ IDs start with **DL** so they're never confused with the AI DJ issue keys (D1–
 | DL9 | README design judgment: **one design choice justified with test evidence** + **one limitation/failure investigated and what we learned** | B, D |
 | DL10 | Screenshots of the interface and each core feature, **showing no credentials** | C |
 | DL11 | Canvas: repo link + **full 40-character commit ID** + **ZIP downloaded from GitHub for that exact commit** (tag `v1.0`, not the branch's latest) | A |
-| DL12 | Repo **stays accessible through grading**: professor has access; no deleting, renaming, making private, or rewriting history until grades are posted | A |
+| DL12 | Repo **stays accessible through grading**: professor has access; no deleting, renaming or rewriting history until grades are posted. Making the repo private is allowed only at submission, once the professor (and any other grader) has been invited and can open it | A |
 | DL13 | ZIP contains code, dependency info, config examples, docs, and the **actual sample audio + image files**, and **no** credentials, uploads, voice recordings, or files that exist only on a developer's machine | A, E |
 
 ---
@@ -972,7 +972,7 @@ The plan was written Mon 10/12. It aims to be **submission-ready Thu 10/29 eveni
 | Chatterbox: one call with default voice + one with a WAV reference | D |
 | **Playback spike** (Option A vs B), written up in §2 | E |
 | Augmented starter prompt in `docs/STARTER_PROMPT.md` (§15), reviewed by all **before any app code** (assignment: add instructions before beginning the build). Do it in the kickoff call. | C + all |
-| Answer the §14 open questions (release lead; Q5 stays open) | A |
+| Answer the §14 open questions (release lead) | A |
 
 **Exit criteria:** all 4 services answer from at least one teammate's machine via `check_endpoints.py`; the player approach is decided; the shared client base is merged.
 
@@ -1153,7 +1153,7 @@ Status values: **Pass / Fail / Not tested**. Fill "Actual" with what really happ
 | Q2 | Actual due date? | Professor / Canvas | Answered 10/20 (A5), by the release lead: **Fri 10/30/2026**. Every schedule date in this file and in `scripts/github/issues.json` moved +7 days from the old 10/23 assumption. |
 | Q3 | Contents of `class-endpoints.txt`: formats, auth, limits | Class materials | Answered 10/18 (A4): formats, auth and limits are in §7.1, from `class-endpoints.txt` and spikes B1, B2, C1, D1 |
 | Q4 | Do all four services share one credential? | Class materials | Answered 10/18 (A4): yes, one `CLASS_API_KEY` as a bearer token works on all four (spikes B1, B2, C1, D1) |
-| Q5 | Is a public repo okay, or should we add the professor as a collaborator? | Professor | **Still open** (not answered in A5). Must be settled before A10 (DL12). |
+| Q5 | Is a public repo okay, or should we add the professor as a collaborator? | Professor | Answered 10/21 (A5 follow-up), by the release lead (not the professor): the repo stays **public until we submit**. At submission the release lead makes it **private** and invites the professor as a collaborator (#42); the invite is confirmed before A10 and the access is kept until grades are posted (DL12). A private repo on a free personal account cannot enforce branch protection (§16), so the repo goes private only after the last merge. Any other grader also needs an invite. |
 | Q6 | Python version and OS on the grader's machine? (affects run scripts) | Professor | Answered 10/20 (A5), by the release lead: support macOS and Windows with Python 3.11+. |
 | Q7 | Do the class endpoints require the campus network or a VPN? | Professor / class materials | Answered 10/20 (A5), by the release lead: no, from one network. `scripts/check_endpoints.py` passed on all four ports from the release lead's home Wi-Fi, off campus with no VPN. A restrictive network could still differ. |
 | Q8 | Does every teammate have Claude Code access (paid Claude plan)? If not, who pairs with whom? | Team, at kickoff | Answered 10/20 (A5): four teammates use paid Claude Code. `afondale` (Lane E) uses paid Grok. Claude Code's hooks, skills and `CLAUDE.md` rules do not apply to Grok; the pre-push gate, CI and review still do. |
