@@ -1,1 +1,1 @@
-"""App services. The player decides what plays next and calls no model clients."""
+"""Feature services (songs, art, dj, player). Each one may use only its own clients (PROJECT.md 7.0)."""
