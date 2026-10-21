@@ -827,7 +827,7 @@
           "milestone": "M2",
           "goal": "Reproducible sample generation through the same code path as the app.",
           "criteria": [
-            "Generates title, lyrics (vocal), audio, and cover for a list of 3 sample specs with fixed seeds",
+            "Generates title, lyrics (vocal), audio, and cover for a list of 3 sample specs; sends and logs a seed, but commits the generated files and logs the inputs instead of relying on regenerating them",
             "Writes samples/audio/, samples/covers/, samples/manifest.json",
             "Writes samples/GENERATION_LOG.md with date, operator, inputs, prompts, full lyrics, seeds, timings",
             "Generates every title, lyric, cover, and audio file through the app's own Qwen, FLUX, and ACE-Step clients; GENERATION_LOG.md records model name and port for each call"

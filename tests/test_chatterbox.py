@@ -121,6 +121,42 @@ def test_an_mp3_frame_header_without_id3_is_accepted(use_config) -> None:
     assert chatterbox.speak(TEXT) == (frame, "mp3")
 
 
+# ---- delivery settings (D3) --------------------------------------------------------------------
+
+
+@respx.mock
+def test_delivery_settings_are_sent_only_when_given(use_config) -> None:
+    route = respx.post(SPEECH_URL).mock(return_value=httpx.Response(200, content=MP3))
+    chatterbox.speak(TEXT)
+    assert "exaggeration" not in sent_json(route)
+    assert "cfg_weight" not in sent_json(route)
+
+    chatterbox.speak(TEXT, exaggeration=0.7, cfg_weight=0.3)
+    body = sent_json(route)
+    assert (body["exaggeration"], body["cfg_weight"]) == (0.7, 0.3)
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"exaggeration": -0.1},
+        {"exaggeration": 2.5},
+        {"cfg_weight": -0.1},
+        {"cfg_weight": 1.5},
+        {"exaggeration": True},  # bools compare as 1/0, but aren't a setting
+        {"cfg_weight": False},
+        {"exaggeration": "1.0"},
+    ],
+)
+def test_out_of_range_delivery_settings_are_rejected_without_a_request(use_config, kwargs: dict) -> None:
+    route = respx.post(SPEECH_URL)
+    with pytest.raises(ServiceError) as err:
+        chatterbox.speak(TEXT, **kwargs)
+    assert err.value.kind == "bad_request"
+    assert route.call_count == 0
+
+
 # ---- custom voice reference (F3b) -------------------------------------------------------------
 
 

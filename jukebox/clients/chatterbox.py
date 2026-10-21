@@ -31,6 +31,8 @@ MAX_INPUT_CHARS = 4096  # server limit (D1)
 MAX_REF_BYTES = 20 * 1024 * 1024  # server limit for a reference recording (D1)
 REF_SUFFIXES = frozenset({".wav", ".mp3"})
 REF_REJECTED_REASON = "the voice clip couldn't be used. Try a clear 5 to 30 second MP3 or WAV recording"
+EXAGGERATION_RANGE = (0.0, 2.0)  # server minimum is 0; above 2 the model's delivery breaks down
+CFG_WEIGHT_RANGE = (0.0, 1.0)  # server range
 
 
 def _new_client() -> ServiceClient:
@@ -38,18 +40,32 @@ def _new_client() -> ServiceClient:
     return ServiceClient("chatterbox")
 
 
-def speak(text: str, *, voice_ref_path: str | None = None, language: str = "en") -> tuple[bytes, str]:
+def speak(
+    text: str,
+    *,
+    voice_ref_path: str | None = None,
+    language: str = "en",
+    exaggeration: float | None = None,
+    cfg_weight: float | None = None,
+) -> tuple[bytes, str]:
     """Speak `text` in the default voice, or in the voice of the recording at `voice_ref_path`.
+
+    `exaggeration` (more energy, 0 to 2) and `cfg_weight` (lower is looser and more dramatic, 0 to 1)
+    are the service's delivery controls. Left as None, they're not sent and the service defaults apply.
 
     Returns (mp3_bytes, "mp3"). Raises ServiceError(service="chatterbox") on any failure.
     """
     script = _check_text(text)
-    body: dict[str, str] = {
+    body: dict[str, str | float] = {
         "input": script,
         "voice": DEFAULT_VOICE,
         "language_id": language,
         "response_format": RESPONSE_FORMAT,
     }
+    if exaggeration is not None:
+        body["exaggeration"] = _check_range("exaggeration", exaggeration, EXAGGERATION_RANGE)
+    if cfg_weight is not None:
+        body["cfg_weight"] = _check_range("cfg_weight", cfg_weight, CFG_WEIGHT_RANGE)
     if voice_ref_path is not None:
         body["ref_audio"] = base64.b64encode(_read_reference(Path(voice_ref_path))).decode("ascii")
 
@@ -92,6 +108,13 @@ def _check_text(text: str) -> str:
     if len(script) > MAX_INPUT_CHARS:
         raise _bad_request(f"the DJ script is longer than {MAX_INPUT_CHARS} characters")
     return script
+
+
+def _check_range(name: str, value: float, bounds: tuple[float, float]) -> float:
+    low, high = bounds
+    if isinstance(value, bool) or not isinstance(value, int | float) or not low <= value <= high:
+        raise _bad_request(f"{name} must be between {low:g} and {high:g}")
+    return value
 
 
 def _read_reference(path: Path) -> bytes:
