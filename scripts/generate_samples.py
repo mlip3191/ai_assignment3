@@ -435,18 +435,18 @@ def render_log(
             "",
             "---",
             "",
-            f"## {t.id}: {t.title} ({kind})",
+            f"## {t.id}: {_one_line(t.title)} ({kind})",
             "",
             "**Inputs**",
             "",
             "| Field | Value |",
             "|---|---|",
-            f"| Style (sent to the song pipeline) | {song_style(s)} |",
+            f"| Style (sent to the song pipeline) | {_cell(song_style(s))} |",
             "| ACE-Step tags (exactly as sent) | "
-            + (e.acestep_tags or "not recorded (the song pipeline did not report them)")
+            + _cell(e.acestep_tags or "not recorded (the song pipeline did not report them)")
             + " |",
-            f"| Mood | {s.mood} |",
-            f"| Theme | {s.theme} |",
+            f"| Mood | {_cell(s.mood)} |",
+            f"| Theme | {_cell(s.theme)} |",
             f"| Duration requested | {s.duration_s} s |",
             f"| Vocal | {'Yes' if s.vocal else 'No'} |",
             f"| Seed | {s.seed} |",
@@ -512,6 +512,16 @@ def _fence(text: str) -> str:
     return "`" * max(3, longest + 1)
 
 
+def _one_line(text: str) -> str:
+    """Generated text on one line, so a newline in a title can't end a Markdown heading early."""
+    return " ".join(str(text).split())
+
+
+def _cell(text: str) -> str:
+    """Generated text safe inside a Markdown table cell: one line, and a `|` can't start a new column."""
+    return _one_line(text).replace("|", "\\|")
+
+
 def main() -> int:
     from jukebox.config import ConfigError, load_config
 
@@ -522,6 +532,14 @@ def main() -> int:
         print(
             "Stopped: the settings are missing or invalid. Run `python scripts/check_config.py` to see "
             "which ones. samples/ was not changed."
+        )
+        return 1
+    except OSError:
+        # The file exists but can't be opened (locked by an editor, or no permission). Never print the
+        # error itself: it would include the file's full path.
+        print(
+            "Stopped: the settings file could not be read. Close any program that has it open, then run "
+            "`python scripts/check_config.py`. samples/ was not changed."
         )
         return 1
     models = {"qwen": config.qwen.model, "acestep": config.acestep.model, "flux": config.flux.model}
