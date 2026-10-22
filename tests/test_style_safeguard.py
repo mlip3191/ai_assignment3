@@ -432,6 +432,52 @@ def test_names_listed_after_a_removed_name_are_removed_too(raw: str, cleaned: st
 
 
 @pytest.mark.parametrize(
+    "tag",
+    [
+        "Warm Pads",
+        "Big Chorus",
+        "Slow Tempo",
+        "Rainy Day",
+        "Road Trip",
+        "Catchy Hooks",
+        "Reverb",
+        "Sad",
+        "Happy",
+        "Driving Beat",
+        "Deep Bass",
+        "Fast",
+        "Soft Piano",
+        "Female Vocals",
+    ],
+)
+def test_capitalized_tags_after_a_removed_name_are_kept(tag: str) -> None:
+    """Re-review of #38: the list rule ate everyday tags after an artist, and could refuse the style."""
+    result = songs.check_style(f"in the style of Adele, {tag}")
+    assert (result.text, list(result.removed)) == (tag, ["in the style of Adele"])
+
+
+def test_the_list_rule_stops_at_the_first_ordinary_tag() -> None:
+    result = songs.check_style("in the style of Adele, Drake, Warm Pads, Big Chorus, pop")
+    assert (result.text, list(result.removed)) == (
+        "Warm Pads, Big Chorus, pop",
+        ["in the style of Adele, Drake"],
+    )
+    assert (
+        songs.check_style("pop, sounds like Adele, Warm Pads, Soft Piano").text
+        == "pop, Warm Pads, Soft Piano"
+    )
+
+
+def test_the_theme_has_no_list_rule() -> None:
+    """Re-review of #38: "Grandma" after a removed name was eaten from the theme."""
+    result = songs.check_theme("a road trip, sounds like Coldplay, Grandma, Paris in Spring")
+    assert (result.text, list(result.removed)) == (
+        "a road trip, Grandma, Paris in Spring",
+        ["sounds like Coldplay"],
+    )
+
+
+@pytest.mark.parametrize(
     ("raw", "cleaned", "removed"),
     [
         ("jazz, vocals by Frank Sinatra", "jazz", "vocals by Frank Sinatra"),

@@ -192,7 +192,8 @@ _SOUND_WORDS = frozenset(
     sunday monday tuesday wednesday thursday friday saturday motown brazil cuba jamaica mexico japan
     korea india africa ireland scotland spain france italy paris tokyo havana rio
     tropical island cozy phonk afro boom bap hyperpop dancehall nu halloween solo solos moonlight
-    heartfelt emotional drums
+    heartfelt emotional drums pad pads chorus tempo slow fast hooks catchy reverb beat driving deep sad
+    happy road
     """.split()
 )
 MAX_SCREENED_CHARS = 300  # style and theme are cut to this before screening, so pasted text stays fast
@@ -267,10 +268,12 @@ def check_theme(text: str) -> StyleCheck:
     """The theme's screen: only obvious style pointers ("in the style of <Name>", "sounds like <Name>",
     "à la <Name>"). A theme is a subject, so names and places in it stay ("inspired by Paris", "Mom").
     B7's form shows `.warning` for the theme too."""
-    return _screen(text, _THEME_POINTER, ())
+    return _screen(text, _THEME_POINTER, (), list_rule=False)
 
 
-def _screen(text: str, pointer: re.Pattern[str], patterns: tuple[re.Pattern[str], ...]) -> StyleCheck:
+def _screen(
+    text: str, pointer: re.Pattern[str], patterns: tuple[re.Pattern[str], ...], *, list_rule: bool = True
+) -> StyleCheck:
     if not isinstance(text, str) or not text.strip():
         return StyleCheck(text if isinstance(text, str) else "")
     text = text[:MAX_SCREENED_CHARS]
@@ -281,7 +284,7 @@ def _screen(text: str, pointer: re.Pattern[str], patterns: tuple[re.Pattern[str]
     for part in parts:
         if part in (",", ";"):
             screened.append(part)
-        elif after_name and _looks_like_another_name(part):
+        elif list_rule and after_name and _looks_like_another_name(part):
             removed[-1] += f", {part.strip()}"
             screened.append("")
         else:
@@ -340,10 +343,13 @@ def _screen_part(
 
 def _looks_like_another_name(part: str) -> bool:
     """A comma part right after a removed name that is another name ("in the style of Adele, Drake") or
-    the rest of one ("Earth, Wind & Fire"): a capitalized name not made of sound words. Title-case tags
-    made of sound words ("Female Vocals", "Lo-Fi", "Heartfelt") are kept (Mike's review of #38)."""
+    the rest of one ("Earth, Wind & Fire"): a capitalized name with no sound word in it. A title-case tag
+    with any sound word ("Warm Pads", "Rainy Day", "Female Vocals") is kept and ends the list."""
     text = part.strip()
-    return bool(_NAME_AT_START.fullmatch(text) and not _is_sound(text))
+    if not _NAME_AT_START.fullmatch(text):
+        return False
+    words = [w.lower().strip(".,'’\"()") for w in text.split()]
+    return not any(_is_sound_word(w) for w in words if w and w not in _CONNECTORS)
 
 
 def _drop_name(match: re.Match[str], removed: list[str]) -> str:
