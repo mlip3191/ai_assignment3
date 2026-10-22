@@ -54,9 +54,10 @@ def test_the_app_dependencies_are_present() -> None:
 # ---- run.bat (Windows) -------------------------------------------------------------------------
 
 
-def test_run_bat_tries_python_3_12_then_3_11_then_python() -> None:
+def test_run_bat_tries_python_3_12_then_3_11_then_any_3_then_python() -> None:
     body = text(RUN_BAT)
-    positions = [body.find("py -3.12"), body.find("py -3.11"), body.find("python -c")]
+    # py -3 finds 3.13/3.14 installed without "Add python.exe to PATH" (python.org's default button)
+    positions = [body.find("py -3.12"), body.find("py -3.11"), body.find("py -3 -c"), body.find("python -c")]
     assert -1 not in positions, positions
     assert positions == sorted(positions)
 
@@ -120,6 +121,17 @@ def test_run_bat_copes_with_network_folders_and_checks_the_zip_was_extracted() -
     assert r'if not exist "scripts\launcher.py"' in body
     assert body.index(r'if not exist "scripts\launcher.py"') < body.index("-m venv")
     assert "extract" in body
+
+
+def test_both_rebuild_a_venv_whose_python_was_uninstalled() -> None:
+    bat = text(RUN_BAT).lower()
+    assert r'".venv\scripts\python.exe" -c "import sys"' in bat
+    assert "rmdir /s /q .venv" in bat
+    assert bat.index("rmdir /s /q .venv") < bat.index("-m venv")
+    sh = text(RUN_SH)
+    assert ".venv/bin/python -c 'import sys'" in sh
+    assert "rm -rf .venv" in sh
+    assert sh.index("rm -rf .venv") < sh.index("-m venv")
 
 
 def test_run_sh_checks_the_zip_was_extracted_before_making_the_venv() -> None:

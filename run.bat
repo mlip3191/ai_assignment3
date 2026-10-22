@@ -25,6 +25,8 @@ if not exist "scripts\launcher.py" (
 
 py -3.12 --version >nul 2>&1 && set "PY=py -3.12"
 if not defined PY py -3.11 --version >nul 2>&1 && set "PY=py -3.11"
+rem py -3 finds a newer Python, like 3.13 or 3.14, even when "Add python.exe to PATH" was skipped.
+if not defined PY py -3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>&1 && set "PY=py -3"
 if not defined PY python -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>&1 && set "PY=python"
 
 if not defined PY (
@@ -33,6 +35,15 @@ if not defined PY (
   echo Then close this window, open a new one, and run the launcher again.
   set "CODE=1"
   goto :fail
+)
+
+rem A .venv made by a Python that was later uninstalled can't run; rebuild it.
+if exist ".venv\Scripts\python.exe" (
+  ".venv\Scripts\python.exe" -c "import sys" >nul 2>&1
+  if errorlevel 1 (
+    echo The .venv folder was made by a Python that is no longer installed. Rebuilding it...
+    rmdir /s /q .venv
+  )
 )
 
 if not exist ".venv\Scripts\python.exe" (

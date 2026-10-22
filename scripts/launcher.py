@@ -44,6 +44,7 @@ EXIT_ACTION = 2
 MIN_PYTHON = (3, 11)
 STAMP_NAME = ".requirements.sha256"  # inside .venv, so a fresh .venv always reinstalls
 APP_URL = re.compile(r"http://127\.0\.0\.1:\d+")
+APP_PORTS = (7860, 7861)  # the app's port and its fallback (jukebox/ui/launch.py)
 EDITOR_NAMES = {"windows": "Notepad", "macos": "TextEdit"}
 RULE = "-" * 68
 
@@ -68,6 +69,7 @@ class Deps:
     open_editor: Callable[[Path], bool]
     open_browser: Callable[[str], None]
     say: Callable[[str], None]
+    running_app: Callable[[], str | None]  # the address of an already-running AI Jukebox, if any
 
 
 # ---- the real outside world ---------------------------------------------------------------------
@@ -157,6 +159,30 @@ def _say(message: str) -> None:
     print(message, flush=True)
 
 
+def find_running_app(ports: Sequence[int] = APP_PORTS) -> str | None:
+    """The address of an AI Jukebox that's already running here (a second launch), or None.
+
+    Only a Gradio page counts, so some other program on 7860 isn't mistaken for the app.
+    This asks our own app on 127.0.0.1 for its page with a plain socket. It never contacts a class
+    service or anything off this computer (AI calls stay in jukebox/clients/, PROJECT.md §7.0).
+    """
+    for port in ports:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=1) as conn:
+                conn.sendall(b"GET / HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n")
+                page = b""
+                while len(page) < 200_000:
+                    chunk = conn.recv(65536)
+                    if not chunk:
+                        break
+                    page += chunk
+        except OSError:
+            continue
+        if b"gradio" in page.lower():
+            return f"http://127.0.0.1:{port}"
+    return None
+
+
 def real_deps() -> Deps:
     return Deps(
         platform=detect_platform(),
@@ -168,6 +194,7 @@ def real_deps() -> Deps:
         open_editor=_open_editor,
         open_browser=open_when_ready,
         say=_say,
+        running_app=find_running_app,
     )
 
 
@@ -190,14 +217,14 @@ def check_settings(root: Path, deps: Deps) -> int | None:
     env = root / ".env"
     editor = EDITOR_NAMES.get(deps.platform, "a text editor")
 
+    if not env.exists() and (root / ".env.txt").exists():
+        # Notepad's "Save As" adds .txt, and Windows hides extensions, so renaming by hand often fails.
+        os.replace(root / ".env.txt", env)
+        deps.say(
+            "Found your settings saved as .env.txt (Notepad adds .txt), so I renamed it to .env for you."
+        )
+
     if not env.exists():
-        if (root / ".env.txt").exists():
-            deps.say(
-                "Found a settings file named .env.txt, but it must be named exactly .env\n"
-                "(Notepad sometimes adds .txt). Rename it to .env, then run the launcher again.\n"
-                f"It's in: {root}"
-            )
-            return EXIT_ACTION
         shutil.copyfile(root / ".env.example", env)
         opened = deps.open_editor(env)
         deps.say(RULE)
@@ -210,8 +237,10 @@ def check_settings(root: Path, deps: Deps) -> int | None:
                 "Open it in a plain-text editor (it may be hidden: on macOS press Cmd+Shift+. in Finder)."
             )
         deps.say(
-            "Fill in each value from class-endpoints.txt: replace the placeholder text after each =\n"
-            "with no spaces or quotes around it. Save the file, close the editor, and keep the name .env.\n"
+            "Change only the first 5 settings: CLASS_API_KEY and the four lines ending in _BASE_URL.\n"
+            "Copy each value from class-endpoints.txt over the placeholder text after the =, with no spaces\n"
+            "or quotes around it. Leave everything else as it is.\n"
+            "Save the file, close the editor, and keep the name exactly .env.\n"
             "This file stays on your computer. Never email it or upload it.\n"
             "Then run the launcher again."
         )
@@ -231,8 +260,11 @@ def check_settings(root: Path, deps: Deps) -> int | None:
     if (root / ".env.txt").exists():
         deps.say(
             "There is also a file named .env.txt next to it. If that's where you saved your values,\n"
-            "delete .env and rename .env.txt to .env (Notepad sometimes adds .txt)."
+            "delete .env and rename .env.txt to .env (Notepad sometimes adds .txt). To see the .txt on\n"
+            "Windows, open the folder in File Explorer and choose View > Show > File name extensions."
         )
+    if deps.platform == "macos":
+        deps.say("In Finder, press Cmd+Shift+. to see files whose names begin with a dot, like .env.")
     deps.say("Copy each value from class-endpoints.txt, save the file, then run the launcher again.")
     deps.say(RULE)
     return EXIT_ACTION
@@ -321,19 +353,37 @@ def check_files(root: Path, deps: Deps) -> int | None:
     return EXIT_ERROR
 
 
+def reuse_running_app(deps: Deps) -> int | None:
+    """A second launch: open the app that's already running instead of a second copy on 7861."""
+    url = deps.running_app()
+    if url is None:
+        return None
+    deps.say(
+        f"The app is already running in another window, at {url}. Opening it in your browser.\n"
+        "For a fresh copy, close that other launcher window first, then run this one again."
+    )
+    deps.open_browser(url)
+    return EXIT_OK
+
+
 def main(*, root: Path = ROOT, deps: Deps | None = None) -> int:
     deps = deps or real_deps()
     steps: list[Callable[[], int | None]] = [
         lambda: check_python(deps),
         lambda: check_files(root, deps),
+        lambda: reuse_running_app(deps),
         lambda: check_settings(root, deps),
         lambda: install_packages(root, deps),
     ]
-    for step in steps:  # stop at the first step that needs the user or failed
-        code = step()
-        if code is not None:
-            return code
-    check_services(root, deps)
+    try:
+        for step in steps:  # stop at the first step that needs the user, failed, or finished
+            code = step()
+            if code is not None:
+                return code
+        check_services(root, deps)
+    except KeyboardInterrupt:  # Ctrl+C before the app is up: a plain line, not a traceback
+        deps.say("Stopped before the app opened. Run the launcher again when you're ready.")
+        return EXIT_ERROR
     return run_app(root, deps)
 
 

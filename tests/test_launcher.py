@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import shutil
 import sys
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -63,6 +64,8 @@ class World:
     app_lines: list[str] = field(default_factory=lambda: ["Open http://127.0.0.1:7860\n"])
     app_code: int = 0
     app_interrupt: bool = False
+    already_running: str | None = None  # an address if the app is already up
+    interrupt_on: str | None = None  # raise KeyboardInterrupt when this command runs
     editor_ok: bool = True
     said: list[str] = field(default_factory=list)
     ran: list[list[str]] = field(default_factory=list)
@@ -75,6 +78,8 @@ class World:
         def run(cmd: list[str], cwd: Path) -> int:
             self.ran.append([str(c) for c in cmd])
             joined = " ".join(str(c) for c in cmd)
+            if self.interrupt_on and self.interrupt_on in joined:
+                raise KeyboardInterrupt
             return next((code for key, code in self.run_codes.items() if key in joined), 0)
 
         def start(cmd: list[str], cwd: Path) -> FakeProcess:
@@ -96,6 +101,7 @@ class World:
             open_editor=open_editor,
             open_browser=self.browsed.append,
             say=self.said.append,
+            running_app=lambda: self.already_running,
         )
 
     @property
@@ -158,12 +164,44 @@ def test_if_the_editor_cant_open_the_message_says_where_the_file_is(world: World
     assert str(world.root / ".env") in world.text
 
 
-def test_a_notepad_env_txt_gets_its_own_message(world: World) -> None:
+def test_a_notepad_env_txt_is_renamed_for_the_user(world: World) -> None:
     (world.root / ".env.txt").write_text(GOOD_ENV, encoding="utf-8")
-    assert world.main() == launcher.EXIT_ACTION
-    assert ".env.txt" in world.text and "rename" in world.text.lower()
-    assert not (world.root / ".env").exists()  # don't create a second, empty one next to it
+    assert world.main() == 0  # carries straight on with the settings they filled in
+    assert (world.root / ".env").read_text(encoding="utf-8") == GOOD_ENV
+    assert not (world.root / ".env.txt").exists()
+    assert ".env.txt" in world.text and "renamed" in world.text.lower()
+    assert world.started  # the app ran
     assert KEY not in world.text
+
+
+def test_the_first_run_message_says_which_lines_to_change(world: World) -> None:
+    world.main()
+    assert "CLASS_API_KEY" in world.text and "_BASE_URL" in world.text
+    assert "leave" in world.text.lower()
+
+
+def test_macos_second_run_repeats_the_hidden_file_tip(world: World) -> None:
+    world.platform = "macos"
+    example = (world.root / ".env.example").read_text(encoding="utf-8")
+    (world.root / ".env").write_text(example, encoding="utf-8")
+    world.main()
+    assert "Cmd+Shift+." in world.text
+
+
+def test_a_second_launch_reuses_the_running_app(world: World) -> None:
+    world.already_running = "http://127.0.0.1:7860"
+    assert ready(world).main() == 0
+    assert "already running" in world.text.lower()
+    assert world.browsed == ["http://127.0.0.1:7860"]
+    assert world.ran == [] and world.started == []  # no install, no second app
+
+
+@pytest.mark.parametrize("step", ["pip", "check_endpoints"])
+def test_ctrl_c_during_install_or_check_stops_without_a_traceback(world: World, step: str) -> None:
+    world.interrupt_on = step
+    assert ready(world).main() == launcher.EXIT_ERROR
+    assert "stopped" in world.text.lower()
+    assert world.started == []
 
 
 # ---- next run: placeholders still there --------------------------------------------------------
@@ -292,6 +330,7 @@ def test_a_notepad_env_txt_is_mentioned_even_when_env_also_exists(world: World) 
     (world.root / ".env.txt").write_text(GOOD_ENV, encoding="utf-8")
     assert world.main() == launcher.EXIT_ACTION
     assert ".env.txt" in world.text and "rename" in world.text.lower()
+    assert "File name extensions" in world.text  # how to see the hidden .txt on Windows
     assert KEY not in world.text
 
 
@@ -347,7 +386,8 @@ def test_the_browser_trigger_matches_what_the_real_app_shell_prints(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Pins the contract with E2: serve() prints the address the launcher waits for."""
-    ui_launch = pytest.importorskip("jukebox.ui.launch", reason="E2 app shell (#14) not on this branch yet")
+    import jukebox.ui.launch as ui_launch  # E2 is on main: a broken import must fail, not skip
+
     calls: list[dict] = []
     monkeypatch.setattr(ui_launch, "build_demo", lambda: object())  # no UI needed for this check
     port = ui_launch.serve(
@@ -358,6 +398,47 @@ def test_the_browser_trigger_matches_what_the_real_app_shell_prints(
     assert match is not None, printed
     assert match.group(0) == f"http://127.0.0.1:{port}"
     assert calls and calls[0]["server_port"] == port
+
+
+def _serve_once(body: bytes) -> tuple[int, threading.Thread]:
+    """A one-shot local HTTP server that answers any request with `body`."""
+    import socket
+
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen()
+
+    def answer() -> None:
+        with server:
+            conn, _ = server.accept()
+            with conn:
+                conn.recv(4096)
+                conn.sendall(b"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n" + body)
+
+    thread = threading.Thread(target=answer, daemon=True)
+    thread.start()
+    return server.getsockname()[1], thread
+
+
+def test_find_running_app_recognises_a_gradio_page() -> None:
+    port, thread = _serve_once(b"<html><script>window.gradio_config = {}</script></html>")
+    assert launcher.find_running_app([port]) == f"http://127.0.0.1:{port}"
+    thread.join(5)
+
+
+def test_find_running_app_ignores_another_program_on_the_port() -> None:
+    port, thread = _serve_once(b"<html>some other local tool</html>")
+    assert launcher.find_running_app([port]) is None
+    thread.join(5)
+
+
+def test_find_running_app_with_nothing_listening() -> None:
+    import socket
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    assert launcher.find_running_app([port]) is None
 
 
 def test_detect_platform() -> None:

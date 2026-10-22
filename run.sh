@@ -28,6 +28,12 @@ if [ -z "$PY" ]; then
   exit 1
 fi
 
+# A .venv made by a Python that was later uninstalled can't run; rebuild it.
+if [ -e ".venv/bin/python" ] && ! .venv/bin/python -c 'import sys' >/dev/null 2>&1; then
+  echo "The .venv folder was made by a Python that is no longer installed. Rebuilding it..."
+  rm -rf .venv
+fi
+
 if [ ! -x ".venv/bin/python" ]; then
   echo "Setting up the app's Python environment in the .venv folder, one time only..."
   if ! "$PY" -m venv .venv; then
