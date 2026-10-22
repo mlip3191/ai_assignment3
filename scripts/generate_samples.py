@@ -457,7 +457,7 @@ def render_log(
             "|---|---|---|---|---|---|",
         ]
         lines += [
-            f"| {i} | {SERVICE_NAMES.get(c.service, c.service)} | `{models.get(c.service) or 'not set'}` "
+            f"| {i} | {SERVICE_NAMES.get(c.service, c.service)} | `{_cell(models.get(c.service) or 'not set')}` "
             f"| {c.port} | {c.status} | {c.ms} ms |"
             for i, c in enumerate(e.calls, 1)
         ]
@@ -539,7 +539,7 @@ def main() -> int:
         # error itself: it would include the file's full path.
         print(
             "Stopped: the settings file could not be read. Close any program that has it open, then run "
-            "`python scripts/check_config.py`. samples/ was not changed."
+            "this again. samples/ was not changed."
         )
         return 1
     models = {"qwen": config.qwen.model, "acestep": config.acestep.model, "flux": config.flux.model}
