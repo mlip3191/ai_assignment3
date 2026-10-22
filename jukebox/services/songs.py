@@ -189,20 +189,35 @@ _SOUND_WORDS = frozenset(
     detroit chicago nashville memphis orleans london berlin ibiza uk british english french spanish
     italian german greek nordic scandinavian russian japanese korean chinese indian arabic african
     brazilian cuban jamaican caribbean mexican american west east coast female male
-    sunday monday tuesday wednesday thursday friday saturday
+    sunday monday tuesday wednesday thursday friday saturday motown brazil cuba jamaica mexico japan
+    korea india africa ireland scotland spain france italy paris tokyo havana rio
     """.split()
 )
+MAX_SCREENED_CHARS = 300  # style and theme are cut to this before screening, so pasted text stays fast
 _CONNECTORS = frozenset({"of", "the", "and", "or", "&", "de", "la", "del", "van", "von", "da", "y"})
 _CAP = r"[A-ZÀ-ÖØ-Þ][\w'’.&+/-]*"  # a capitalized word; "/" keeps "AC/DC" and "Gaga/Madonna" together
 _NAME = rf"(?:[Tt]he\s+)?{_CAP}(?:\s+(?:(?:of|the|and|or|&|de|la|del|van|von|da|y)\s+)*{_CAP})*"
 _NAME_AT_START = re.compile(_NAME)
+# Pointer phrases that say "make it sound like someone". The theme gets only the first group (a theme is
+# a subject, so "a love song inspired by Paris" or "dancing like Nobody is watching" must stay).
+_STYLE_POINTERS = (
+    r"in\s+the\s+(?:style|vein|spirit|manner)\s+of|sounds?\s+like|the\s+voice\s+of|à\s+la"
+    r"|a\s+la(?=\s+(?-i:[A-ZÀ-ÖØ-Þ]))"  # "a la carte" isn't one
+)
+_THEME_POINTER = re.compile(rf"\b(?:{_STYLE_POINTERS})\s+", re.IGNORECASE)
 _POINTER = re.compile(
-    r"\b(?:in\s+the\s+(?:style|vein|spirit)\s+of|sounds?\s+like|inspired\s+by|influenced\s+by"
-    r"|reminiscent\s+of|similar\s+to|à\s+la|a\s+la(?=\s+(?-i:[A-ZÀ-ÖØ-Þ]))"  # "a la carte" isn't one
+    rf"\b(?:{_STYLE_POINTERS}|inspired\s+by|influenced\s+by|reminiscent\s+of|similar\s+to"
+    r"|featuring|feat\.|ft\.|by"
     r"|like(?=\s+(?:a|an|my|our|your|his|her|their|this|that)\s))\s+",  # "like a <Name> anthem"
     re.IGNORECASE,
 )
-_NAME_STYLE = re.compile(rf"(?<![\w'’-])({_NAME})(?:-|\s+)(?i:style|esque|inspired)\b")
+_NAME_STYLE = re.compile(
+    rf"(?<![\w'’-])({_NAME})"
+    r"(?:-(?i:style|esque|inspired|like|ish|vibes?)|\s+(?i:style|esque|inspired|vibes?|type\s+beat))\b"
+)
+_POSSESSIVE = re.compile(
+    rf"(?<![\w'’-])({_NAME})['’]s\s+(?i:voice|vocals?|sound|style|music|songs?|singing|band)\b"
+)
 _LIKE_NAME = re.compile(rf"(?i:\blike)\s+({_NAME})")
 _JOINER = re.compile(r"^\s*(?:and|or|&|/)\s+", re.IGNORECASE)  # "Ed Sheeran and pop" leaves "pop"
 _OWNER = frozenset({"a", "an", "my", "our", "your", "his", "her", "their", "this", "that"})
@@ -227,14 +242,28 @@ class StyleCheck:
 
 
 def check_style(text: str) -> StyleCheck:
-    """Remove "in the style of <name>", "sounds like <name>", "<Name>-esque", "like <Name>" and similar.
+    """Remove "in the style of <Name>", "sounds like <Name>", "<Name>-esque", "<Name>'s voice",
+    "featuring <Name>", "like <Name>" and similar from the style.
 
-    Genres, places and eras after such a phrase are kept ("in the style of Detroit techno" becomes
-    "Detroit techno"), and so is a description that starts with "a", "my" and the like ("sounds like a
-    movie soundtrack"). B7's form shows `.warning`; `generate_song()` applies this to the style and theme.
+    A name is a capitalized word run ("Taylor Swift", "AC/DC", "Adele or Drake"); lowercase words are
+    never treated as a name, so "inspired by the sea" stays. Genres, places and eras are kept ("in the
+    style of Detroit techno" becomes "Detroit techno"), and so is a description that starts with "a", "my"
+    and the like unless it names someone. B7's form shows `.warning`.
     """
+    return _screen(text, _POINTER, (_POSSESSIVE, _NAME_STYLE, _LIKE_NAME))
+
+
+def check_theme(text: str) -> StyleCheck:
+    """The theme's screen: only obvious style pointers ("in the style of <Name>", "sounds like <Name>",
+    "à la <Name>"). A theme is a subject, so names and places in it stay ("inspired by Paris", "Mom").
+    B7's form shows `.warning` for the theme too."""
+    return _screen(text, _THEME_POINTER, ())
+
+
+def _screen(text: str, pointer: re.Pattern[str], patterns: tuple[re.Pattern[str], ...]) -> StyleCheck:
     if not isinstance(text, str) or not text.strip():
         return StyleCheck(text if isinstance(text, str) else "")
+    text = text[:MAX_SCREENED_CHARS]
     removed: list[str] = []
     parts = re.split(r"([,;])", text)
     screened: list[str] = []
@@ -246,21 +275,24 @@ def check_style(text: str) -> StyleCheck:
             removed[-1] += f", {part.strip()}"
             screened.append("")
         else:
-            part, after_name = _screen_part(part, removed)
+            part, after_name = _screen_part(part, removed, pointer, patterns)
             screened.append(part)
     if screened == parts:
         return StyleCheck(text)
-    joined = re.sub(r"\s+", " ", "".join(screened))
+    joined = re.sub(r"\(\s*\)|\[\s*\]", "", "".join(screened))  # "pop (like Adele)" leaves no "()"
+    joined = re.sub(r"\s+", " ", joined)
     joined = re.sub(r"\s*([,;])\s*", r"\1 ", joined)
     joined = re.sub(r"(?:[,;]\s*){2,}", ", ", joined)
     return StyleCheck(joined.strip(" ,;-"), tuple(removed))
 
 
-def _screen_part(part: str, removed: list[str]) -> tuple[str, bool]:
+def _screen_part(
+    part: str, removed: list[str], pointer: re.Pattern[str], patterns: tuple[re.Pattern[str], ...]
+) -> tuple[str, bool]:
     """One comma-separated part with any pointer at a real artist taken out, and whether it ended with a
     removed name."""
     start, ended_with_name = 0, False
-    while match := _POINTER.search(part, start):
+    while match := pointer.search(part, start):
         rest = part[match.end() :]
         name = _NAME_AT_START.match(rest)
         words = rest.split()
@@ -282,14 +314,14 @@ def _screen_part(part: str, removed: list[str]) -> tuple[str, bool]:
                 start = match.start()
             else:
                 start = match.end()
-        else:
-            first_sound = next((i for i, word in enumerate(words) if _is_sound(word)), len(words))
-            if first_sound:
-                removed.append((match.group(0) + " ".join(words[:first_sound])).strip())
-            part = part[: match.start()] + " ".join(words[first_sound:])
-            ended_with_name = first_sound == len(words) and bool(words)
+        elif words and _is_sound(words[0]):
+            part = part[: match.start()] + rest  # "in the style of 80s synthwave": drop only the pointer
             start = match.start()
-    for pattern in (_NAME_STYLE, _LIKE_NAME):
+        else:
+            # Lowercase words are a description ("inspired by the sea"), not a name. A lowercase artist
+            # name isn't caught either; that is a known limit, like a bare name (B9).
+            start = match.end()
+    for pattern in patterns:
         part = pattern.sub(lambda m: _drop_name(m, removed), part)
     return part, ended_with_name
 
@@ -324,15 +356,15 @@ def _is_sound_word(word: str) -> bool:
 
 
 def _screen_artists(style: str, theme: str | None) -> tuple[str, str | None]:
-    """Apply check_style to the style and theme before any model call. A style that named only an artist
-    is refused; a theme that named only an artist becomes no theme."""
+    """Apply check_style to the style and check_theme to the theme before any model call. A style that
+    named only an artist is refused; a theme that named only an artist becomes no theme."""
     if isinstance(style, str):
         checked = check_style(style)
         if checked.removed and not checked.text:
             raise _bad_input("Describe the style without naming real artists.")
         style = checked.text
     if isinstance(theme, str):
-        theme = check_style(theme).text or None
+        theme = check_theme(theme).text or None
     return style, theme
 
 
@@ -347,7 +379,9 @@ STAGE_DONE = "Added to your library"
 GENERATED_DIR = "runtime/generated"  # stored paths are relative to the repo root (PROJECT.md 6.3)
 # A singing voice named in the style; "singer-songwriter" (a genre) and "vocal chops" (an effect) are not.
 _VOICE_WORDS = re.compile(
-    r"\b(?:vocal(?:s|ists?)?|voices?|singers?|singing|choirs?)\b(?!-songwriter|\s+chops?\b)", re.IGNORECASE
+    r"\b(?:vocal(?:s|ists?)?|voices?|singers?|singing|choirs?|rappers?|sopranos?|falsetto|crooners?"
+    r"|a\s+cappella|acapella)\b(?!-songwriter|\s+chops?\b|\s+sax)",
+    re.IGNORECASE,
 )
 
 # Song jobs go here unless the caller passes the app's own store.

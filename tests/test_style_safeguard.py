@@ -45,15 +45,23 @@ ACE = f"http://{HOST}:9007"
             "synth-pop, warm pads",
             ["in the style of Daft Punk"],
         ),
-        ("in the style of taylor swift", "", ["in the style of taylor swift"]),
-        ("in the style of the beatles", "", ["in the style of the beatles"]),
-        ("in the style of taylor swift pop", "pop", ["in the style of taylor swift"]),
+        ("IN THE STYLE OF TAYLOR SWIFT, pop", "pop", ["IN THE STYLE OF TAYLOR SWIFT"]),
     ],
 )
 def test_in_the_style_of_a_name_is_removed(raw: str, cleaned: str, removed: list[str]) -> None:
     result = songs.check_style(raw)
     assert result.text == cleaned
     assert list(result.removed) == removed
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["in the style of taylor swift", "in the style of the beatles", "rock like taylor swift"],
+)
+def test_lowercase_names_are_a_known_limit(raw: str) -> None:
+    """Reviews of #38: lowercase words after a pointer were removed as names, which also removed real
+    descriptions ("inspired by the sea"). Only capitalized names count now; this is listed in B9."""
+    assert songs.check_style(raw).text == raw
 
 
 @pytest.mark.parametrize(
@@ -264,6 +272,145 @@ def test_blank_or_missing_text_is_left_alone() -> None:
     assert songs.check_style("   ").removed == ()
 
 
+# ---- review round on #38 ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "inspired by the sea",
+        "sounds like rain",
+        "in the style of ocean waves",
+        "inspired by nature, calm",
+        "reminiscent of the 90s",
+        "à la mode pop",
+        "metal à la mode",
+    ],
+)
+def test_lowercase_descriptions_after_a_pointer_are_kept(raw: str) -> None:
+    result = songs.check_style(raw)
+    assert result.text == raw
+    assert result.removed == ()
+
+
+@pytest.mark.parametrize(
+    ("raw", "cleaned", "removed"),
+    [
+        ("pop, Adele's voice", "pop", "Adele's voice"),
+        ("pop, Adele’s vocals", "pop", "Adele’s vocals"),
+        ("Taylor Swift's sound", "", "Taylor Swift's sound"),
+        ("rock with Bono's style", "rock with", "Bono's style"),
+    ],
+)
+def test_possessive_names_are_removed(raw: str, cleaned: str, removed: str) -> None:
+    result = songs.check_style(raw)
+    assert (result.text, list(result.removed)) == (cleaned, [removed])
+
+
+def test_a_removed_possessive_voice_brings_back_the_default_voice_tag() -> None:
+    """Reviews of #38: "pop, Adele's voice" left Adele as the only voice ACE-Step was given."""
+    style = songs.check_style("pop, Adele's voice").text
+    assert songs.build_tags(style, "joyful", vocal=True) == "pop, joyful, warm natural vocals"
+
+
+def test_genre_possessives_are_kept() -> None:
+    assert songs.check_style("Motown's sound").text == "Motown's sound"
+
+
+@pytest.mark.parametrize(
+    ("raw", "cleaned", "removed"),
+    [
+        ("pop, by Drake", "pop", "by Drake"),
+        ("hip hop featuring Eminem", "hip hop", "featuring Eminem"),
+        ("rap, feat. Nicki Minaj", "rap", "feat. Nicki Minaj"),
+        ("trap, Dr. Dre type beat", "trap", "Dr. Dre type beat"),
+        ("indie, Arctic Monkeys vibe", "indie", "Arctic Monkeys vibe"),
+        ("Taylor-Swift-like pop", "pop", "Taylor-Swift-like"),
+        ("rock, Nirvana-ish", "rock", "Nirvana-ish"),
+        ("in the manner of Bob Dylan, folk", "folk", "in the manner of Bob Dylan"),
+        ("soul with the voice of Aretha Franklin", "soul with", "the voice of Aretha Franklin"),
+        ("pop (like Adele)", "pop", "like Adele"),
+    ],
+)
+def test_more_ways_of_naming_an_artist_are_removed(raw: str, cleaned: str, removed: str) -> None:
+    result = songs.check_style(raw)
+    assert (result.text, list(result.removed)) == (cleaned, [removed])
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "backed by strings",
+        "lit by candlelight",
+        "sounds like Motown",
+        "inspired by Brazil",
+        "Latin vibe",
+        "summer vibes",
+        "Friday vibes",
+        "Chill-ish lo-fi",
+    ],
+)
+def test_the_new_patterns_keep_ordinary_text(raw: str) -> None:
+    result = songs.check_style(raw)
+    assert result.removed == ()
+
+
+def test_long_input_is_capped_and_fast() -> None:
+    """Review of #38: 21,000 characters took about 2.8 s to screen."""
+    import time
+
+    for text in ("Aa " * 7000, "A/B/" * 5000, "in the style of " * 2000):
+        start = time.perf_counter()
+        result = songs.check_style(text)
+        assert time.perf_counter() - start < 0.5
+        assert len(result.text) <= songs.MAX_SCREENED_CHARS
+
+
+# ---- the theme -------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "theme",
+    [
+        "a love song inspired by Paris in spring",
+        "inspired by Mom",
+        "dancing like Nobody is watching",
+        "a road trip like Thelma & Louise",
+        "a Beatles-esque daydream",
+    ],
+)
+def test_the_theme_keeps_ordinary_names_and_places(theme: str) -> None:
+    """Reviews of #38: the theme lost its subject silently. Only obvious style pointers are removed."""
+    result = songs.check_theme(theme)
+    assert result.text == theme
+    assert result.removed == ()
+
+
+@pytest.mark.parametrize(
+    ("theme", "cleaned", "removed"),
+    [
+        (
+            "a song about rain in the style of Taylor Swift",
+            "a song about rain",
+            "in the style of Taylor Swift",
+        ),
+        ("road trip, sounds like Coldplay", "road trip", "sounds like Coldplay"),
+        ("heartbreak à la Adele", "heartbreak", "à la Adele"),
+    ],
+)
+def test_the_theme_drops_obvious_style_pointers_and_warns(theme: str, cleaned: str, removed: str) -> None:
+    result = songs.check_theme(theme)
+    assert (result.text, list(result.removed)) == (cleaned, [removed])
+    assert result.warning is not None
+
+
+@pytest.mark.parametrize(
+    "voice_style", ["rap, rapper", "opera, soprano", "falsetto pop", "a cappella", "acapella"]
+)
+def test_more_voice_words_count_as_a_named_voice(voice_style: str) -> None:
+    assert "warm natural vocals" not in songs.build_tags(voice_style, "joyful", vocal=True)
+
+
 # ---- the warning the UI shows --------------------------------------------------------------------
 
 
@@ -345,13 +492,20 @@ def run(env: dict, **song) -> list:
 def test_pipeline_sends_cleaned_tags_and_prompts(env: dict) -> None:
     qwen_route, submit = mock_services()
     updates = run(
-        env, style="upbeat pop in the style of Taylor Swift", theme="a road trip like Thelma & Louise"
+        env, style="upbeat pop in the style of Taylor Swift", theme="a road trip, sounds like Coldplay"
     )
     assert updates[-1].status == "succeeded"
     tags = json.loads(submit.calls[0].request.content)["prompt"]
     assert tags == "upbeat pop, upbeat, warm natural vocals"
     sent = json.dumps(json.loads(qwen_route.calls[0].request.content)["messages"])
-    assert "Taylor" not in sent and "Swift" not in sent and "Thelma" not in sent
+    assert "Taylor" not in sent and "Swift" not in sent and "Coldplay" not in sent
+
+
+@respx.mock
+def test_pipeline_keeps_an_ordinary_theme(env: dict) -> None:
+    mock_services()
+    track_id = run(env, style="pop", theme="a love song inspired by Paris in spring")[-1].track_id
+    assert env["library"].get(track_id).theme == "a love song inspired by Paris in spring"
 
 
 @respx.mock
