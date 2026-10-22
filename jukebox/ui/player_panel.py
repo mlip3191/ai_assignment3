@@ -132,6 +132,7 @@ def render() -> None:
         label="Cover",
         type="filepath",
         interactive=False,
+        buttons=["download"],
         elem_id="now-cover",
         height=280,
     )

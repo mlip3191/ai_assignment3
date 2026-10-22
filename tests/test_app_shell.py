@@ -103,7 +103,12 @@ def test_player_wires_one_audio() -> None:
     assert audio.autoplay is True
     assert audio.interactive is False
     assert audio.elem_id == "now-playing"
-    assert "share" not in list(getattr(audio, "buttons", []) or [])
+    images = [block for block in demo.blocks.values() if type(block).__name__ == "Image"]
+    assert len(images) == 1
+    assert images[0].elem_id == "now-cover"
+    assert list(images[0].buttons) == ["download"]
+    for block in images + audios:
+        assert "share" not in list(getattr(block, "buttons", []) or [])
     play = _block(demo, "play-queue")
     skip = _block(demo, "skip")
     assert play.interactive is True
