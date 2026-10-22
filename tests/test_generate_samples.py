@@ -746,6 +746,58 @@ def test_lyrics_with_backticks_never_break_the_logs_code_blocks(tmp_path: Path) 
     assert gs._fence("has ``` inside") == "````"
 
 
+@pytest.mark.parametrize(
+    "text, fence", [("", "```"), ("```x", "````"), ("x```", "````"), ("`a` ``b``", "```")]
+)
+def test_a_fence_is_always_longer_than_any_backtick_run(text: str, fence: str) -> None:
+    assert gs._fence(text) == fence
+
+
+def test_backticks_in_the_song_prompt_and_the_flux_prompt_never_break_the_log(tmp_path: Path) -> None:
+    """The C5 review nit: the fence rule was tested only for lyrics."""
+
+    def prompt_with_backticks(spec: gs.SampleSpec) -> list[dict]:
+        return [{"role": "system", "content": "Use ``` around nothing"}, {"role": "user", "content": spec.id}]
+
+    def cover_with_backticks(track: Track, dest: Path) -> str:
+        fake_cover(track, dest)
+        return "A ```quoted``` lake, square album cover"
+
+    build(tmp_path, describe_prompt=prompt_with_backticks, make_cover=cover_with_backticks)
+    log = (tmp_path / "samples" / "GENERATION_LOG.md").read_text(encoding="utf-8")
+    assert "````\nUse ``` around nothing\n````" in log
+    assert "````\nA ```quoted``` lake, square album cover\n````" in log
+
+
+def test_a_title_or_tags_with_a_bar_or_newline_never_break_the_log_layout(tmp_path: Path) -> None:
+    """The C5 review nit: a `|` would split a table row and a newline would end a heading early."""
+
+    class OddTitleSong(FakeSong):
+        def __call__(self, spec: gs.SampleSpec) -> Track:
+            return dataclasses.replace(super().__call__(spec), title="Left | Right\nSide")
+
+    build(tmp_path, make_song=OddTitleSong(tmp_path), describe_tags=lambda spec: "pop | rock\nfolk")
+    log = (tmp_path / "samples" / "GENERATION_LOG.md").read_text(encoding="utf-8")
+    assert "## sample_01: Left | Right Side (instrumental)" in log
+    assert "| ACE-Step tags (exactly as sent) | pop \\| rock folk |" in log
+
+
+def test_a_settings_file_that_cannot_be_read_stops_with_a_clear_line(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """The C5 review nit: reading the settings file can fail (locked, no permission) before main's try."""
+    import jukebox.config as config
+
+    def unreadable():
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(config, "load_config", unreadable)
+    monkeypatch.setattr(gs, "build_samples", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no run")))
+    assert gs.main() == 1
+    out = capsys.readouterr().out
+    assert "Stopped: the settings file could not be read" in out and "samples/ was not changed." in out
+
+
 # ---- brief Windows locks on fresh files (#40 review, @gunnaroc) -------------------------------
 
 
