@@ -191,6 +191,8 @@ _SOUND_WORDS = frozenset(
     brazilian cuban jamaican caribbean mexican american west east coast female male
     sunday monday tuesday wednesday thursday friday saturday motown brazil cuba jamaica mexico japan
     korea india africa ireland scotland spain france italy paris tokyo havana rio
+    beach good tropical island cozy neon phonk afro boom bap hyperpop dancehall nu halloween ocean sea
+    life today tonight love world heaven solo solos moonlight hand ear
     """.split()
 )
 MAX_SCREENED_CHARS = 300  # style and theme are cut to this before screening, so pasted text stays fast
@@ -201,20 +203,31 @@ _NAME_AT_START = re.compile(_NAME)
 # Pointer phrases that say "make it sound like someone". The theme gets only the first group (a theme is
 # a subject, so "a love song inspired by Paris" or "dancing like Nobody is watching" must stay).
 _STYLE_POINTERS = (
-    r"in\s+the\s+(?:style|vein|spirit|manner)\s+of|sounds?\s+like|the\s+voice\s+of|à\s+la"
+    r"in\s+the\s+(?:style|vein|spirit|manner)\s+of|sounds?\s+like|à\s+la"
     r"|a\s+la(?=\s+(?-i:[A-ZÀ-ÖØ-Þ]))"  # "a la carte" isn't one
 )
 _THEME_POINTER = re.compile(rf"\b(?:{_STYLE_POINTERS})\s+", re.IGNORECASE)
+# Credits name who made a song. "by" counts only at the start of a part or after song/track/music/tune,
+# so "folk by the Sea" and "Played by Ear" stay; "feat"/"ft" without a period need a capital after them.
+_CREDITS = (
+    r"(?:sung|performed|produced|written|covered)\s+by|featuring|feat\.|ft\."
+    r"|(?:feat|ft)(?=\s+(?-i:[A-ZÀ-ÖØ-Þ]))"
+    r"|(?<=^)by|(?<=^\s)by|(?<=song\s)by|(?<=track\s)by|(?<=music\s)by|(?<=tune\s)by"
+)
+_CREDIT = re.compile(rf"(?:{_CREDITS})\s*$", re.IGNORECASE)
 _POINTER = re.compile(
-    rf"\b(?:{_STYLE_POINTERS}|inspired\s+by|influenced\s+by|reminiscent\s+of|similar\s+to"
-    r"|featuring|feat\.|ft\.|by"
+    rf"\b(?:{_STYLE_POINTERS}|the\s+voice\s+of|inspired\s+by|influenced\s+by|reminiscent\s+of|similar\s+to"
+    rf"|{_CREDITS}"
     r"|like(?=\s+(?:a|an|my|our|your|his|her|their|this|that)\s))\s+",  # "like a <Name> anthem"
     re.IGNORECASE,
 )
 _NAME_STYLE = re.compile(
     rf"(?<![\w'’-])({_NAME})"
-    r"(?:-(?i:style|esque|inspired|like|ish|vibes?)|\s+(?i:style|esque|inspired|vibes?|type\s+beat))\b"
+    r"(?:-(?i:style|esque|inspired|like|ish|vibes?)|\s+(?i:style|esque|inspired|type\s+beat))\b"
 )
+# "<Name> vibe" with a space counts only for a name of two or more words ("Arctic Monkeys vibe"), so
+# "Beach vibes" or "Good vibes" stay; "Drake vibe" isn't caught (a known limit).
+_NAMES_VIBE = re.compile(rf"(?<![\w'’-])({_NAME})\s+(?i:vibes?)\b")
 _POSSESSIVE = re.compile(
     rf"(?<![\w'’-])({_NAME})['’]s\s+(?i:voice|vocals?|sound|style|music|songs?|singing|band)\b"
 )
@@ -250,7 +263,7 @@ def check_style(text: str) -> StyleCheck:
     style of Detroit techno" becomes "Detroit techno"), and so is a description that starts with "a", "my"
     and the like unless it names someone. B7's form shows `.warning`.
     """
-    return _screen(text, _POINTER, (_POSSESSIVE, _NAME_STYLE, _LIKE_NAME))
+    return _screen(text, _POINTER, (_POSSESSIVE, _NAME_STYLE, _NAMES_VIBE, _LIKE_NAME))
 
 
 def check_theme(text: str) -> StyleCheck:
@@ -302,6 +315,8 @@ def _screen_part(
             part = part[: match.start()] + tail
             ended_with_name = not tail.strip()
             start = match.start()
+        elif name and _CREDIT.search(match.group(0)):
+            start = match.end()  # "pop ft. Heavy Bass": a credit before a sound is ordinary text
         elif name:
             part = part[: match.start()] + rest  # a genre or place ("Latin jazz"): drop only the pointer
             start = match.start()
@@ -314,7 +329,7 @@ def _screen_part(
                 start = match.start()
             else:
                 start = match.end()
-        elif words and _is_sound(words[0]):
+        elif words and _is_sound(words[0]) and not _CREDIT.search(match.group(0)):
             part = part[: match.start()] + rest  # "in the style of 80s synthwave": drop only the pointer
             start = match.start()
         else:
@@ -337,8 +352,14 @@ def _looks_like_rest_of_a_band(part: str) -> bool:
 def _drop_name(match: re.Match[str], removed: list[str]) -> str:
     if _is_sound(match.group(1)):
         return match.group(0)
+    if match.re is _NAMES_VIBE and len(_name_words(match.group(1))) < 2:
+        return match.group(0)  # "Beach vibes": one capitalized word before "vibe" is too often a sound
     removed.append(match.group(0).strip())
     return ""
+
+
+def _name_words(phrase: str) -> list[str]:
+    return [w for w in phrase.split() if w.lower() not in _CONNECTORS]
 
 
 def _is_sound(phrase: str) -> bool:

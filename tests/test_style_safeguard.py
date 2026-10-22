@@ -133,6 +133,7 @@ def test_genres_after_a_pointer_phrase_are_kept(raw: str, cleaned: str) -> None:
         ("in the style of video game music", "video game music"),
         ("inspired by rainy nights", "rainy nights"),
         ("in the spirit of summer", "summer"),
+        ("in the style of ocean waves", "ocean waves"),
         ("sounds like a movie soundtrack", "sounds like a movie soundtrack"),
         ("in the style of a lullaby", "in the style of a lullaby"),
         ("a love song inspired by my grandmother", "a love song inspired by my grandmother"),
@@ -280,7 +281,6 @@ def test_blank_or_missing_text_is_left_alone() -> None:
     [
         "inspired by the sea",
         "sounds like rain",
-        "in the style of ocean waves",
         "inspired by nature, calm",
         "reminiscent of the 90s",
         "à la mode pop",
@@ -355,6 +355,61 @@ def test_the_new_patterns_keep_ordinary_text(raw: str) -> None:
     assert result.removed == ()
 
 
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "Beach vibes",
+        "Good vibes",
+        "Tropical vibes",
+        "Island vibes",
+        "Halloween vibes",
+        "Neon vibes",
+        "Phonk vibe",
+        "Afro vibe",
+        "Dancehall vibes",
+        "Nu Metal vibe",
+        "Cozy vibes, warm piano",
+        "Boom Bap type beat",
+        "Trap type beat",
+        "Hyperpop-ish",
+        "Ocean's voice",
+        "Life's music",
+        "Today's sound",
+        "Summer's sound",
+        "folk by the Sea",
+        "Lullaby by Moonlight",
+        "Played by Ear",
+        "Made by Hand",
+        "Driven By Drums",
+        "pop backed by Strings",
+        "Piano by Night",
+        "pop ft. Heavy Bass",
+        "rock featuring Guitar Solos",
+        "Dreamy music, Heavy bass",
+    ],
+)
+def test_capitalized_ordinary_styles_come_back_unchanged(raw: str) -> None:
+    """Re-review of #38: capitalized everyday words were refused or cut as artist names."""
+    result = songs.check_style(raw)
+    assert (result.text, result.removed) == (raw, ())
+
+
+@pytest.mark.parametrize(
+    ("raw", "cleaned", "removed"),
+    [
+        ("trap, Drake type beat", "trap", "Drake type beat"),
+        ("a song by Drake", "a song", "by Drake"),
+        ("pop, sung by Adele", "pop", "sung by Adele"),
+        ("rock, produced by Rick Rubin", "rock", "produced by Rick Rubin"),
+        ("hip hop ft Drake", "hip hop", "ft Drake"),
+        ("hip hop feat Drake", "hip hop", "feat Drake"),
+    ],
+)
+def test_name_forms_that_still_count(raw: str, cleaned: str, removed: str) -> None:
+    result = songs.check_style(raw)
+    assert (result.text, list(result.removed)) == (cleaned, [removed])
+
+
 def test_long_input_is_capped_and_fast() -> None:
     """Review of #38: 21,000 characters took about 2.8 s to screen."""
     import time
@@ -377,6 +432,9 @@ def test_long_input_is_capped_and_fast() -> None:
         "dancing like Nobody is watching",
         "a road trip like Thelma & Louise",
         "a Beatles-esque daydream",
+        "the voice of God",
+        "the voice of an Angel",
+        "listening to the voice of My Mother",
     ],
 )
 def test_the_theme_keeps_ordinary_names_and_places(theme: str) -> None:
