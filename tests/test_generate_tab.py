@@ -306,6 +306,91 @@ def test_a_style_that_is_only_an_artist_is_refused_before_any_service_call(libra
         assert not mock.calls
     assert last.failed is True
     assert "without naming real artists" in last.status
+    assert last.retry is False  # the same inputs would fail again
+    assert "Retry" not in last.status
+
+
+@pytest.mark.parametrize(
+    "error, retry, says",
+    [
+        (ServiceError("acestep", "timeout"), True, "press **Retry**"),
+        (ServiceError("qwen", "unavailable"), True, "press **Retry**"),
+        (ServiceError("acestep", "bad_response"), True, "press **Retry**"),
+        (
+            ServiceError("acestep", "bad_request", reason="Duration must be between 10 and 600 seconds"),
+            False,
+            "change them",
+        ),
+        (ServiceError("qwen", "auth"), False, "restart the app"),
+        (ServiceError("flux", "config"), False, "restart the app"),
+        ("something odd", True, "press **Retry**"),  # an unknown failure becomes the generic message
+    ],
+)
+def test_retry_is_offered_only_where_7_3_offers_it(library: Library, error, retry: bool, says: str) -> None:
+    """7.3: Retry for timeout, unavailable and bad_response; edit inputs for bad_request; fix and
+    restart for auth and config."""
+    last = views(library, FakeRun(library, fail=error))[-1]
+    assert last.failed is True
+    assert last.retry is retry
+    assert says in last.status
+    assert tab.updates(last)[tab.OUT_RETRY]["visible"] is retry
+    assert tab.updates(last)[tab.OUT_BUTTON]["interactive"] is True
+    if not retry:
+        assert "Retry" not in last.status
+
+
+# ---- the wiring: output order, and the registered handlers ------------------------------------------
+
+EXPECTED_OUTPUTS = {
+    tab.OUT_STATUS: "gen-status",
+    tab.OUT_BUTTON: "gen-button",
+    tab.OUT_RETRY: "gen-retry",
+    tab.OUT_RESULT: "gen-result",
+    tab.OUT_TITLE: "gen-title",
+    tab.OUT_LYRICS: "gen-lyrics",
+    tab.OUT_COVER: "gen-cover",
+    tab.OUT_COVER_NOTE: "gen-cover-note",
+    tab.OUT_PLAY_NOW: "gen-play-now",
+    tab.OUT_ADD: "gen-add-to-queue",
+    tab.OUT_PLAY_NOTE: "gen-play-note",
+}
+
+
+def test_generate_outputs_are_in_the_order_updates_returns(library: Library) -> None:
+    demo, handles = _demo(library)
+    for elem_id in ("gen-button", "gen-retry"):
+        outputs = _fn_for(demo, elem_id, "click").outputs
+        assert len(outputs) == len(tab.updates(tab.GenerateView(status="", running=True)))
+        for index, expected in EXPECTED_OUTPUTS.items():
+            assert outputs[index].elem_id == expected, f"output {index} is {outputs[index].elem_id}"
+        assert outputs[tab.OUT_TRACK] is handles.track_id
+        assert isinstance(outputs[tab.OUT_TIMER], gr.Timer)
+
+
+def test_cover_check_outputs_are_in_the_order_cover_updates_returns(library: Library) -> None:
+    demo, _ = _demo(library)
+    timer = next(b for b in demo.blocks.values() if isinstance(b, gr.Timer))
+    raw = demo.fns.values() if isinstance(demo.fns, dict) else demo.fns
+    tick = next(fn for fn in raw if any(t[0] == timer._id and t[1] == "tick" for t in fn.targets))
+    outputs = tick.outputs
+    assert len(outputs) == len(tab.cover_updates(tab.CoverView("x", "", True)))
+    assert [outputs[0].elem_id, outputs[1].elem_id] == ["gen-cover", "gen-cover-note"]
+    assert outputs[2] is timer
+
+
+def test_the_registered_generate_handler_uses_the_pipeline_render_was_given(library: Library) -> None:
+    """render(run=...) must reach the click handler, so a stand-in never falls through to the class servers."""
+    fake = FakeRun(library)
+    covers: list[str] = []
+    demo, _ = _demo(library, run=fake, start_cover=lambda track: covers.append(track.id))
+    handler = _fn_for(demo, "gen-button", "click").fn
+    with respx.mock(assert_all_called=False) as mock:
+        last = list(handler("pop", "synth", "upbeat", 60, tab.VOCAL, "a road trip"))[-1]
+        assert not mock.calls
+    assert len(fake.calls) == 1
+    assert fake.calls[0]["start_cover"] is not None
+    assert last[tab.OUT_TRACK] == "t1"
+    assert "Open Road" in last[tab.OUT_TITLE]["value"]
 
 
 # ---- what is sent to the pipeline -------------------------------------------------------------------

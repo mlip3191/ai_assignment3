@@ -11,6 +11,7 @@ to connect to the player.
 
 from __future__ import annotations
 
+import functools
 import logging
 import queue
 import re
@@ -18,9 +19,12 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from typing import get_args
 
 import gradio as gr
 
+from jukebox import errors
+from jukebox.errors import Kind, Recovery, Service, ServiceError
 from jukebox.jobs import GENERIC_FAILURE, JobStore
 from jukebox.library import Library, get_library
 from jukebox.models import Job, Track
@@ -77,6 +81,14 @@ OUT_COVER, OUT_COVER_NOTE, OUT_PLAY_NOW, OUT_ADD, OUT_TRACK, OUT_TIMER, OUT_PLAY
 
 PLAYER_NOT_CONNECTED = "Play now and Add to queue work once the player is connected."
 
+# What the status line tells the user to do after a failure (7.3 recovery).
+_NEXT_STEP: dict[Recovery, str] = {
+    "retry": "Your choices are kept: press **Retry**, or change them and press **Generate**.",
+    "edit_inputs": "Your choices are kept: change them and press **Generate**.",
+    "fix_and_restart": "Fix the settings, then restart the app.",
+}
+_PROBE = "\x00reason\x00"  # stands in for a bad_request reason when matching messages
+
 _DONE = object()
 _MARKDOWN_SPECIAL = re.compile(r"([\\`*_{}\[\]<>()#+!|~])")
 _log = logging.getLogger(__name__)
@@ -96,6 +108,7 @@ class GenerateView:
     status: str
     running: bool
     failed: bool = False
+    retry: bool = False  # 7.3 offers Retry for this failure
     elapsed_s: int = 0
     track_id: str | None = None
     title: str | None = None
@@ -218,7 +231,7 @@ def updates(view: GenerateView, *, player_connected: bool = False) -> tuple[obje
     return (
         gr.update(value=view.status),
         gr.update(interactive=not view.running),
-        gr.update(visible=view.failed),
+        gr.update(visible=view.retry),
         gr.update(visible=done),
         gr.update(value=f"### {_escape(view.title)}" if done and view.title else ""),
         gr.update(value=view.lyrics or "", visible=bool(view.lyrics)),
@@ -349,7 +362,7 @@ def render(
     ]
 
     def on_generate(*form: object) -> Iterator[tuple[object, ...]]:
-        for view in generate(*form, library=library, start_cover=start_cover):  # type: ignore[arg-type]
+        for view in generate(*form, library=library, run=run, start_cover=start_cover):  # type: ignore[arg-type]
             yield updates(view, player_connected=player_connected)
 
     def on_cover_tick(current: str | None) -> tuple[object, ...]:
@@ -373,8 +386,11 @@ def _finished(job: Job | None, elapsed_s: int, library: Library) -> GenerateView
     track = library.get(job.track_id) if job and job.status == "succeeded" and job.track_id else None
     if track is None:
         message = job.error if job and job.error else GENERIC_FAILURE
-        status = f"{message} Your choices are kept: press **Retry**, or change them and press **Generate**."
-        return GenerateView(status=status, running=False, failed=True, elapsed_s=elapsed_s)
+        offer = recovery_for(message)
+        status = f"{message} {_NEXT_STEP[offer]}"
+        return GenerateView(
+            status=status, running=False, failed=True, retry=offer == "retry", elapsed_s=elapsed_s
+        )
     return GenerateView(
         status=f"**{songs.STAGE_DONE}** in {elapsed_s} s.",
         running=False,
@@ -384,6 +400,30 @@ def _finished(job: Job | None, elapsed_s: int, library: Library) -> GenerateView
         lyrics=track.lyrics,
         cover=cover_view(track.id, library=library),
     )
+
+
+def recovery_for(message: str) -> Recovery:
+    """What 7.3 offers after this failure message: Retry, edit the inputs, or fix and restart.
+
+    A Job keeps only the message, so it is matched against the messages errors.user_message() builds.
+    Anything else (the generic failure, a stopped run) is worth retrying.
+    """
+    for prefix, offer in _recovery_prefixes():
+        if message.startswith(prefix):
+            return offer
+    return "retry"
+
+
+@functools.cache
+def _recovery_prefixes() -> tuple[tuple[str, Recovery], ...]:
+    found = []
+    for service in get_args(Service):
+        for kind in get_args(Kind):
+            err = ServiceError(service, kind, reason=_PROBE)
+            offer = errors.recovery(err) or "fix_and_restart"  # config: the settings are wrong
+            if offer != "retry":
+                found.append((errors.user_message(err).split(_PROBE)[0], offer))
+    return tuple(found)
 
 
 def _escape(text: str) -> str:
