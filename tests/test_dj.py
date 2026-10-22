@@ -137,6 +137,13 @@ def test_braces_in_a_title_do_not_break_the_prompt() -> None:
     assert "Curly {Brace} Blues" in dj.build_messages(odd)[1]["content"]
 
 
+@pytest.mark.parametrize("title", ["The {mood} Hour", "{title} of {style}", "{previous} Love"])
+def test_placeholder_names_in_a_title_are_not_filled_in(title: str) -> None:
+    odd = SimpleNamespace(**{**vars(TRACK), "title": title})
+    user = dj.build_messages(odd, previous=PREVIOUS)[1]["content"]
+    assert f"Title: {title}" in user
+
+
 # ---- write_script: song-specific, under the word limit -----------------------------------------
 
 
@@ -211,8 +218,24 @@ def test_titles_with_brackets_or_asterisks_can_still_match(fake_qwen, title: str
     ],
 )
 def test_title_must_appear_as_whole_words(title: str, partial: str, whole: str) -> None:
-    assert dj.script_problem(partial, title) is not None
-    assert dj.script_problem(whole, title) is None
+    assert "title" in (dj.script_problem(partial, title) or "")
+    assert "title" not in (dj.script_problem(whole, title) or "")  # these short samples may trip the minimum
+
+
+def test_a_title_with_an_apostrophe_matches_a_curly_one() -> None:
+    reply = "Here on the AI Jukebox, Don’t Stop keeps the mellow folk mood going all night long."
+    assert dj.script_problem(reply, "Don't Stop") is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("\"Hello there, this is Midnight Lanterns.'", "\"Hello there, this is Midnight Lanterns.'"),
+        ("‘Hello, this is Midnight Lanterns.’", "Hello, this is Midnight Lanterns."),
+    ],
+)
+def test_only_a_matched_pair_of_quotes_is_stripped(raw: str, expected: str) -> None:
+    assert dj.clean_script(raw) == expected
 
 
 def test_title_match_ignores_case_and_quote_style(fake_qwen) -> None:
@@ -226,6 +249,20 @@ def test_a_reply_without_the_title_is_retried_once(fake_qwen) -> None:
     assert len(qwen.calls) == 2
     retry = user_text(qwen.calls[1])
     assert TRACK.title in retry and "title" in retry.lower()
+
+
+def test_a_reply_under_the_minimum_is_retried_once(fake_qwen) -> None:
+    qwen = fake_qwen("Up next: Midnight Lanterns.", GOOD)
+    assert dj.write_script(TRACK) == GOOD
+    assert len(qwen.calls) == 2
+    retry = dj.script_problem("Up next: Midnight Lanterns.", TRACK.title) or ""
+    assert str(dj.MIN_WORDS) in retry
+
+
+def test_the_minimum_is_inclusive() -> None:
+    words = ["Midnight", "Lanterns"] + ["la"] * (dj.MIN_WORDS - 2)
+    assert dj.script_problem(" ".join(words), TRACK.title) is None
+    assert dj.script_problem(" ".join(words[:-1]), TRACK.title) is not None
 
 
 def test_a_reply_over_the_word_limit_is_retried_once(fake_qwen) -> None:
@@ -320,6 +357,66 @@ def test_unsafe_characters_in_a_track_id_stay_out_of_the_filename(
         and "\\" not in clip.audio_path.name
         and ".." not in clip.audio_path.name
     )
+
+
+def test_a_briefly_locked_target_is_retried(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    real_replace = dj.os.replace
+    failures = iter([PermissionError("locked"), PermissionError("locked")])
+    waits: list[float] = []
+
+    def flaky_replace(src, dst):
+        error = next(failures, None)
+        if error:
+            raise error
+        real_replace(src, dst)
+
+    monkeypatch.setattr(dj.os, "replace", flaky_replace)
+    monkeypatch.setattr(dj, "_sleep", waits.append)
+    target = tmp_path / "dj_t1_default.mp3"
+
+    dj._write_atomically(target, MP3)
+
+    assert target.read_bytes() == MP3
+    assert waits == [dj.REPLACE_WAIT_S, dj.REPLACE_WAIT_S]
+    assert [p.name for p in tmp_path.iterdir()] == [target.name]
+
+
+def test_a_target_that_stays_locked_raises_and_leaves_no_temp_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def always_locked(src, dst):
+        raise PermissionError("locked")
+
+    monkeypatch.setattr(dj.os, "replace", always_locked)
+    monkeypatch.setattr(dj, "_sleep", lambda s: None)
+    with pytest.raises(PermissionError):
+        dj._write_atomically(tmp_path / "dj_t1_default.mp3", MP3)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_concurrent_saves_of_the_same_clip_all_succeed(tmp_path: Path) -> None:
+    import threading
+
+    target = tmp_path / "dj_t1_default.mp3"
+    errors: list[BaseException] = []
+    start = threading.Barrier(8)
+
+    def save(n: int) -> None:
+        start.wait()
+        try:
+            dj._write_atomically(target, MP3 + bytes([n]))
+        except BaseException as e:  # noqa: BLE001
+            errors.append(e)
+
+    for _ in range(10):
+        threads = [threading.Thread(target=save, args=(n,)) for n in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    assert errors == []
+    assert target.read_bytes().startswith(MP3)
+    assert [p.name for p in tmp_path.iterdir()] == [target.name]
 
 
 def test_speech_errors_pass_through_and_write_nothing(fake_qwen, fake_speech, tmp_path: Path) -> None:

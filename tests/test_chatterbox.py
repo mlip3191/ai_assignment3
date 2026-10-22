@@ -139,7 +139,15 @@ def test_delivery_settings_are_sent_only_when_given(use_config) -> None:
 @respx.mock
 @pytest.mark.parametrize(
     "kwargs",
-    [{"exaggeration": -0.1}, {"exaggeration": 2.5}, {"cfg_weight": -0.1}, {"cfg_weight": 1.5}],
+    [
+        {"exaggeration": -0.1},
+        {"exaggeration": 2.5},
+        {"cfg_weight": -0.1},
+        {"cfg_weight": 1.5},
+        {"exaggeration": True},  # bools compare as 1/0, but aren't a setting
+        {"cfg_weight": False},
+        {"exaggeration": "1.0"},
+    ],
 )
 def test_out_of_range_delivery_settings_are_rejected_without_a_request(use_config, kwargs: dict) -> None:
     route = respx.post(SPEECH_URL)

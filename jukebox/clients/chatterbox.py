@@ -112,7 +112,7 @@ def _check_text(text: str) -> str:
 
 def _check_range(name: str, value: float, bounds: tuple[float, float]) -> float:
     low, high = bounds
-    if not low <= value <= high:
+    if isinstance(value, bool) or not isinstance(value, int | float) or not low <= value <= high:
         raise _bad_request(f"{name} must be between {low:g} and {high:g}")
     return value
 

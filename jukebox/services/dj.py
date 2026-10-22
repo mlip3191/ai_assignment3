@@ -20,18 +20,21 @@ import hashlib
 import os
 import re
 import tempfile
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
 from jukebox.clients import chatterbox, qwen
+from jukebox.config import ROOT
 from jukebox.errors import ServiceError
 
-ROOT = Path(__file__).resolve().parents[2]
 GENERATED_DIR = ROOT / "runtime" / "generated"
 PROMPT_PATH = ROOT / "jukebox" / "prompts" / "dj.md"
 
 MAX_WORDS = 50
+MIN_WORDS = 15  # the prompt asks for 30-45; this floor only catches a one-liner like "Up next: X."
 MAX_ATTEMPTS = 2
 QWEN_MAX_TOKENS = 200
 QWEN_TEMPERATURE = 0.9
@@ -39,6 +42,11 @@ QWEN_TEMPERATURE = 0.9
 # flat, as noted in D1), 0.7/0.3, and 1.0/0.3. The last sounded most like a radio DJ.
 DJ_EXAGGERATION = 1.0
 DJ_CFG_WEIGHT = 0.3
+# Saving a clip on Windows (see _write_atomically): retries when the target is briefly locked.
+REPLACE_ATTEMPTS = 5
+REPLACE_WAIT_S = 0.05
+_REPLACE_LOCK = threading.Lock()
+_sleep = time.sleep  # tests replace this
 
 
 class TrackInfo(Protocol):
@@ -69,6 +77,9 @@ def _prompt_sections() -> tuple[str, str]:
     return system.strip(), user.strip()
 
 
+_PLACEHOLDER = re.compile(r"\{(title|style|mood|theme|previous)\}")
+
+
 def build_messages(track: TrackInfo, previous: TrackInfo | None = None) -> list[dict]:
     system, user = _prompt_sections()
     values = {
@@ -80,8 +91,9 @@ def build_messages(track: TrackInfo, previous: TrackInfo | None = None) -> list[
         if previous
         else "",
     }
-    for key, value in values.items():  # replace, not str.format: titles may contain braces
-        user = user.replace("{" + key + "}", value)
+    # One pass over the template: a value that itself contains "{mood}" etc. is never filled in again,
+    # and braces in a title can't break anything (no str.format).
+    user = _PLACEHOLDER.sub(lambda m: values[m.group(1)], user)
     return [{"role": "system", "content": system}, {"role": "user", "content": user.strip()}]
 
 
@@ -98,7 +110,7 @@ _STAGE = re.compile(
     re.IGNORECASE,
 )
 _LABEL = re.compile(r"^\s*(?:dj|intro|announcer|host)\s*:\s*", re.IGNORECASE)
-_QUOTES = "\"'“”‘’"
+_QUOTE_PAIRS = {'"': '"', "'": "'", "“": "”", "‘": "’"}  # strip only a matched opening/closing pair
 
 
 def clean_script(text: str) -> str:
@@ -108,7 +120,7 @@ def clean_script(text: str) -> str:
     script = script.replace("#", " ").replace("`", " ")
     script = " ".join(script.split())
     script = _LABEL.sub("", script)
-    if len(script) >= 2 and script[0] in _QUOTES and script[-1] in _QUOTES:
+    if len(script) >= 2 and _QUOTE_PAIRS.get(script[0]) == script[-1]:
         script = script[1:-1].strip()
     return script
 
@@ -129,6 +141,8 @@ def script_problem(script: str, title: str) -> str | None:
     wanted = _normalize(clean_script(title))
     if wanted and f" {wanted} " not in f" {_normalize(script)} ":
         return f'it didn\'t say the song title, "{title}"'
+    if words < MIN_WORDS:
+        return f"it was only {words} words; use at least {MIN_WORDS}"
     return None
 
 
@@ -195,12 +209,25 @@ def make_clip(
 
 
 def _write_atomically(path: Path, data: bytes) -> None:
-    """Write to a temp file in the same folder, then rename, so a reader never sees half a clip."""
+    """Write to a temp file in the same folder, then rename, so a reader never sees half a clip.
+
+    On Windows, renaming onto a file that another thread is replacing at the same moment, or that the
+    player still has open, raises PermissionError (macOS and Linux allow it). The lock serializes our
+    own swaps, and a short retry rides out a brief open handle. Same approach as the cover saves (C4).
+    """
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".dj-", suffix=".part")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
-        os.replace(tmp, path)
+        with _REPLACE_LOCK:
+            for attempt in range(REPLACE_ATTEMPTS):
+                try:
+                    os.replace(tmp, path)
+                    break
+                except PermissionError:
+                    if attempt == REPLACE_ATTEMPTS - 1:
+                        raise
+                    _sleep(REPLACE_WAIT_S)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
