@@ -51,6 +51,69 @@ def test_the_app_dependencies_are_present() -> None:
     assert "gradio==6.30.0" in requirement_lines()  # the version E1 tested playback on
 
 
+# ---- constraints.txt (every package underneath requirements.txt, pinned) ------------------------
+
+
+def normalized(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def constraint_pins() -> dict[str, str]:
+    pins = {}
+    for line in code_lines(ROOT / "constraints.txt", "#"):
+        assert re.fullmatch(r"[A-Za-z0-9_.\-]+==[0-9][A-Za-z0-9.+]*", line), line
+        name, version = line.split("==")
+        assert normalized(name) not in pins, f"{name} listed twice"
+        pins[normalized(name)] = version
+    return pins
+
+
+def test_constraints_pin_every_line_exactly_and_agree_with_requirements() -> None:
+    pins = constraint_pins()
+    for line in requirement_lines():
+        name, version = line.split("==")
+        assert pins.get(normalized(name)) == version, (
+            f"{name}: constraints.txt disagrees with requirements.txt"
+        )
+
+
+def test_constraints_hold_the_versions_smart_app_control_blocked_when_left_open() -> None:
+    # pandas 3.1.0 (released 10/21) was blocked by Windows Smart App Control in the D6 ZIP test;
+    # 3.0.6 is what the team's installs ran on. Change only after a fresh-ZIP test on Windows.
+    assert constraint_pins()["pandas"] == "3.0.6"
+
+
+def test_the_constraints_cover_everything_gradio_and_httpx_need() -> None:
+    from importlib.metadata import PackageNotFoundError, distribution
+
+    from packaging.requirements import Requirement
+
+    pins = constraint_pins()
+    missing: list[str] = []
+    seen: set[str] = set()
+
+    def walk(name: str) -> None:
+        key = normalized(name)
+        if key in seen:
+            return
+        seen.add(key)
+        try:
+            dist = distribution(name)
+        except PackageNotFoundError:
+            return  # not installed on this OS (for example a macOS-only dependency)
+        if key not in pins:
+            missing.append(key)
+        for spec in dist.requires or []:
+            req = Requirement(spec)
+            if req.marker and not req.marker.evaluate({"extra": ""}):
+                continue
+            walk(req.name)
+
+    for line in requirement_lines():
+        walk(line.split("==")[0])
+    assert missing == [], f"add these to constraints.txt: {missing}"
+
+
 # ---- run.bat (Windows) -------------------------------------------------------------------------
 
 

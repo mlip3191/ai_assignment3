@@ -272,7 +272,10 @@ def check_settings(root: Path, deps: Deps) -> int | None:
 
 def install_packages(root: Path, deps: Deps) -> int | None:
     requirements = root / "requirements.txt"
-    digest = hashlib.sha256(requirements.read_bytes()).hexdigest()
+    # constraints.txt holds every package underneath requirements.txt to the tested version, so a fresh
+    # install on grading day gets what the team ran (and what Windows Smart App Control already trusts).
+    constraints = root / "constraints.txt"
+    digest = hashlib.sha256(requirements.read_bytes() + b"\0" + constraints.read_bytes()).hexdigest()
     stamp = root / ".venv" / STAMP_NAME
     if stamp.is_file() and stamp.read_text(encoding="utf-8").strip() == digest:
         return None
@@ -280,7 +283,18 @@ def install_packages(root: Path, deps: Deps) -> int | None:
         "Installing what the app needs. The first time takes a few minutes; lots of text will scroll by."
     )
     code = deps.run(
-        [deps.python, "-m", "pip", "install", "--disable-pip-version-check", "-r", str(requirements)], root
+        [
+            deps.python,
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "-r",
+            str(requirements),
+            "-c",
+            str(constraints),
+        ],
+        root,
     )
     if code != 0:
         deps.say(RULE)
@@ -316,9 +330,12 @@ def run_app(root: Path, deps: Deps) -> int:
     deps.say("Opening the app. Keep this window open while you use it; close it or press Ctrl+C to stop.")
     process = deps.start([deps.python, "-u", str(app)], root)
     opened = False
+    blocked_by_windows = False
     try:
         for line in process.stdout:
             deps.say(line.rstrip("\r\n"))
+            if "Application Control policy has blocked" in line:
+                blocked_by_windows = True
             match = APP_URL.search(line)
             if match and not opened:
                 opened = True
@@ -333,6 +350,15 @@ def run_app(root: Path, deps: Deps) -> int:
         return EXIT_OK
     if code == 0:
         deps.say("The app has stopped.")
+    elif blocked_by_windows:
+        deps.say(RULE)
+        deps.say(
+            "Windows blocked one of the app's files (Smart App Control: \"An Application Control policy has\n"
+            'blocked this file"). This happens when a package version is too new for Windows to recognise.\n'
+            "Delete the .venv folder in the app folder and run the launcher again; it reinstalls the tested\n"
+            "versions. If it happens again, tell the team which file was blocked (the line above)."
+        )
+        deps.say(RULE)
     else:
         deps.say(
             f"The app stopped with an error (exit code {code}). Read the messages above, then run the launcher again."
@@ -342,7 +368,8 @@ def run_app(root: Path, deps: Deps) -> int:
 
 def check_files(root: Path, deps: Deps) -> int | None:
     """The files the launcher needs from the ZIP. A partial extract gets a plain message, not a traceback."""
-    missing = [name for name in (".env.example", "requirements.txt") if not (root / name).is_file()]
+    shipped = (".env.example", "requirements.txt", "constraints.txt")
+    missing = [name for name in shipped if not (root / name).is_file()]
     if not missing:
         return None
     deps.say(

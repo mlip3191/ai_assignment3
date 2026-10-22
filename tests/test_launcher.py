@@ -116,6 +116,7 @@ class World:
 def world(tmp_path: Path) -> World:
     shutil.copy(ROOT / ".env.example", tmp_path / ".env.example")
     (tmp_path / "requirements.txt").write_text("httpx==0.28.1\n", encoding="utf-8")
+    (tmp_path / "constraints.txt").write_text("httpx==0.28.1\nh11==0.16.0\n", encoding="utf-8")
     (tmp_path / "app.py").write_text("print('app')\n", encoding="utf-8")
     (tmp_path / "scripts").mkdir()
     (tmp_path / "scripts" / "check_endpoints.py").write_text("", encoding="utf-8")
@@ -231,8 +232,11 @@ def test_a_port_9000_url_is_reported_as_a_problem(world: World) -> None:
 
 def test_a_good_env_installs_checks_then_starts_the_app(world: World) -> None:
     assert ready(world).main() == 0
-    assert world.ran[0][:4] == ["PYTHON", "-m", "pip", "install"]
-    assert "requirements.txt" in world.ran[0][-1]
+    install = world.ran[0]
+    assert install[:4] == ["PYTHON", "-m", "pip", "install"]
+    assert install[install.index("-r") + 1].endswith("requirements.txt")
+    # every package underneath gradio/httpx is held to the tested version (PROJECT.md §4)
+    assert install[install.index("-c") + 1].endswith("constraints.txt")
     assert world.ran[1][-1].endswith("check_endpoints.py")
     assert world.started == [["PYTHON", "-u", str(world.root / "app.py")]]
     assert "http://127.0.0.1:7860" in world.text
@@ -245,12 +249,24 @@ def test_install_is_skipped_when_requirements_are_unchanged(world: World) -> Non
     assert not any("pip" in cmd for cmd in world.ran)
 
 
-def test_install_runs_again_when_requirements_change(world: World) -> None:
+@pytest.mark.parametrize("changed", ["requirements.txt", "constraints.txt"])
+def test_install_runs_again_when_requirements_or_constraints_change(world: World, changed: str) -> None:
     ready(world).main()
-    (world.root / "requirements.txt").write_text("httpx==0.28.1\ngradio==6.30.0\n", encoding="utf-8")
+    path = world.root / changed
+    path.write_text(path.read_text(encoding="utf-8") + "anyio==4.15.1\n", encoding="utf-8")
     world.ran.clear()
     world.main()
     assert any("pip" in cmd for cmd in world.ran)
+
+
+def test_a_file_blocked_by_windows_is_explained_in_plain_words(world: World) -> None:
+    world.app_lines = [
+        "ImportError: DLL load failed while importing tslib: An Application Control policy has blocked this file.\n"
+    ]
+    world.app_code = 1
+    assert ready(world).main() == 1
+    assert "Smart App Control" in world.text
+    assert "delete the .venv folder" in world.text.lower()
 
 
 def test_a_failed_install_stops_with_a_plain_message_and_retries_next_time(world: World) -> None:
@@ -372,9 +388,9 @@ def test_the_app_can_print_any_unicode_on_windows(tmp_path: Path) -> None:
     assert lines[0].rstrip() == "\u266a Neon Overdrive \u2192 \u6771\u4eac \U0001f3b8"
 
 
-@pytest.mark.parametrize("missing", [".env.example", "requirements.txt"])
+@pytest.mark.parametrize("missing", [".env.example", "requirements.txt", "constraints.txt"])
 def test_a_missing_file_from_the_zip_is_a_plain_message(world: World, missing: str) -> None:
-    if missing == "requirements.txt":
+    if missing != ".env.example":
         ready(world)
     (world.root / missing).unlink()
     assert world.main() == launcher.EXIT_ERROR
