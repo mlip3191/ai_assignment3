@@ -133,7 +133,6 @@ def test_genres_after_a_pointer_phrase_are_kept(raw: str, cleaned: str) -> None:
         ("in the style of video game music", "video game music"),
         ("inspired by rainy nights", "rainy nights"),
         ("in the spirit of summer", "summer"),
-        ("in the style of ocean waves", "ocean waves"),
         ("sounds like a movie soundtrack", "sounds like a movie soundtrack"),
         ("in the style of a lullaby", "in the style of a lullaby"),
         ("a love song inspired by my grandmother", "a love song inspired by my grandmother"),
@@ -281,6 +280,7 @@ def test_blank_or_missing_text_is_left_alone() -> None:
     [
         "inspired by the sea",
         "sounds like rain",
+        "in the style of ocean waves",
         "inspired by nature, calm",
         "reminiscent of the 90s",
         "à la mode pop",
@@ -323,10 +323,6 @@ def test_genre_possessives_are_kept() -> None:
         ("pop, by Drake", "pop", "by Drake"),
         ("hip hop featuring Eminem", "hip hop", "featuring Eminem"),
         ("rap, feat. Nicki Minaj", "rap", "feat. Nicki Minaj"),
-        ("trap, Dr. Dre type beat", "trap", "Dr. Dre type beat"),
-        ("indie, Arctic Monkeys vibe", "indie", "Arctic Monkeys vibe"),
-        ("Taylor-Swift-like pop", "pop", "Taylor-Swift-like"),
-        ("rock, Nirvana-ish", "rock", "Nirvana-ish"),
         ("in the manner of Bob Dylan, folk", "folk", "in the manner of Bob Dylan"),
         ("soul with the voice of Aretha Franklin", "soul with", "the voice of Aretha Franklin"),
         ("pop (like Adele)", "pop", "like Adele"),
@@ -372,9 +368,6 @@ def test_the_new_patterns_keep_ordinary_text(raw: str) -> None:
         "Boom Bap type beat",
         "Trap type beat",
         "Hyperpop-ish",
-        "Ocean's voice",
-        "Life's music",
-        "Today's sound",
         "Summer's sound",
         "folk by the Sea",
         "Lullaby by Moonlight",
@@ -386,6 +379,19 @@ def test_the_new_patterns_keep_ordinary_text(raw: str) -> None:
         "pop ft. Heavy Bass",
         "rock featuring Guitar Solos",
         "Dreamy music, Heavy bass",
+        "Deep House vibes",
+        "Golden Hour vibes",
+        "Late Night Drive vibes",
+        "Sad Girl vibes",
+        "Workout type beat",
+        "Club Banger type beat",
+        "Cottagecore-ish",
+        "Tiki-ish lounge",
+        "Forest-like ambience",
+        "song by Candlelight",
+        "music by Fire",
+        "Christmas song by the Fireplace",
+        "Heavy Guitars ft. Big Drums",
     ],
 )
 def test_capitalized_ordinary_styles_come_back_unchanged(raw: str) -> None:
@@ -397,8 +403,6 @@ def test_capitalized_ordinary_styles_come_back_unchanged(raw: str) -> None:
 @pytest.mark.parametrize(
     ("raw", "cleaned", "removed"),
     [
-        ("trap, Drake type beat", "trap", "Drake type beat"),
-        ("a song by Drake", "a song", "by Drake"),
         ("pop, sung by Adele", "pop", "sung by Adele"),
         ("rock, produced by Rick Rubin", "rock", "produced by Rick Rubin"),
         ("hip hop ft Drake", "hip hop", "ft Drake"),
@@ -408,6 +412,76 @@ def test_capitalized_ordinary_styles_come_back_unchanged(raw: str) -> None:
 def test_name_forms_that_still_count(raw: str, cleaned: str, removed: str) -> None:
     result = songs.check_style(raw)
     assert (result.text, list(result.removed)) == (cleaned, [removed])
+
+
+# ---- narrowed after the re-review: explicit forms only ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "cleaned", "removed"),
+    [
+        ("in the style of Adele, Drake", "", "in the style of Adele, Drake"),
+        ("in the style of Beyoncé, Rihanna", "", "in the style of Beyoncé, Rihanna"),
+        ("in the style of Adele, Drake, soul", "soul", "in the style of Adele, Drake"),
+    ],
+)
+def test_names_listed_after_a_removed_name_are_removed_too(raw: str, cleaned: str, removed: str) -> None:
+    """Mike's review of #38: listing several artists is the natural way to write this."""
+    result = songs.check_style(raw)
+    assert (result.text, list(result.removed)) == (cleaned, [removed])
+
+
+@pytest.mark.parametrize(
+    ("raw", "cleaned", "removed"),
+    [
+        ("jazz, vocals by Frank Sinatra", "jazz", "vocals by Frank Sinatra"),
+        ("acoustic, cover of Elvis", "acoustic", "cover of Elvis"),
+        ("rock, covers of Queen", "rock", "covers of Queen"),
+        ("pop featuring Beyoncé", "pop", "featuring Beyoncé"),
+        ("the voice of Morgan Freeman", "", "the voice of Morgan Freeman"),
+    ],
+)
+def test_credit_and_cover_phrases_are_removed(raw: str, cleaned: str, removed: str) -> None:
+    result = songs.check_style(raw)
+    assert (result.text, list(result.removed)) == (cleaned, [removed])
+
+
+@pytest.mark.parametrize(
+    ("raw", "removed"),
+    [
+        ("in the style of Beach House", "in the style of Beach House"),
+        ("in the style of Neon Indian", "in the style of Neon Indian"),
+        ("sounds like Love", "sounds like Love"),
+        ("sounds like Ocean", "sounds like Ocean"),
+    ],
+)
+def test_names_made_of_everyday_words_are_caught(raw: str, removed: str) -> None:
+    """Re-review of #38: over-general sound words let these real names through."""
+    assert list(songs.check_style(raw).removed) == [removed]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "trap, Drake type beat",
+        "indie, Arctic Monkeys vibe",
+        "Taylor-Swift-like pop",
+        "rock, Nirvana-ish",
+        "a song by Drake",
+    ],
+)
+def test_loose_name_forms_are_a_known_limit(raw: str) -> None:
+    """Narrowed after the re-review: a pattern can't tell "Golden Hour vibes" from "Arctic Monkeys vibe",
+    so "vibe", "type beat", "-ish", "-like" and "song by" aren't screened. Listed in B9."""
+    assert songs.check_style(raw).text == raw
+
+
+@pytest.mark.parametrize("raw", ["Ocean's voice", "Life's music", "Today's sound"])
+def test_possessives_of_everyday_words_are_flagged_with_a_visible_warning(raw: str) -> None:
+    """The accepted cost of catching "Adele's voice": B7 shows this warning before Generate is clicked."""
+    result = songs.check_style(raw)
+    assert result.removed == (raw,)
+    assert result.warning is not None
 
 
 def test_long_input_is_capped_and_fast() -> None:
