@@ -1,16 +1,18 @@
-"""The one player (PROJECT.md 8.4, E1 Option A, E4).
+"""The player panel (PROJECT.md 8.4, E1 Option A, E4).
 
-One ``gr.Audio(autoplay=True)`` plays whatever ``Player`` returns. Play queue
-starts it. Skip and the audio ``stop`` event both advance, and a token in the
-served filename drops a late end event so Skip cannot advance twice. Pause and
-resume are the native controls (``interactive=False`` still plays). This module
-calls the library, the cover lookup, and the queue. It does not call a model.
+Each browser session has its own ``Player``. One ``gr.Audio(autoplay=True)``
+plays whatever that session returns. Play queue starts it. Skip and the audio
+``stop`` event both advance, and a token in the served filename drops a late
+end event so Skip cannot advance twice. Pause and resume are the native
+controls (``interactive=False`` still plays). This module calls the library,
+the cover lookup, and the queue. It does not call a model.
 """
 
 from __future__ import annotations
 
 import re
 import shutil
+import uuid
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -69,6 +71,26 @@ def open_player(library: Library, dj_clips: Mapping[str, str] | None = None) -> 
     return Player(LibrarySongs(library), clips)
 
 
+_SESSIONS: dict[str, Player] = {}
+
+
+def player_for(session_id: str, library: Library) -> tuple[Player, str]:
+    """The player for this browser session. A blank id starts a new one.
+
+    Gradio state resets on reload, so the new page does not keep another tab's
+    current song. The id stays server-side. ``Player`` holds a lock, so it is
+    not stored in ``gr.State`` itself.
+    """
+    if session_id:
+        found = _SESSIONS.get(session_id)
+        if found is not None:
+            return found, session_id
+    new_id = uuid.uuid4().hex
+    player = open_player(library, _CLIPS)
+    _SESSIONS[new_id] = player
+    return player, new_id
+
+
 def on_play(player: Player, library: Library, token: int, runtime: Path) -> PlayerView:
     """Start the queue. A second Play while something is already playing does nothing.
 
@@ -123,9 +145,8 @@ def panel_text(view: PlayerView) -> str:
 
 
 def render() -> None:
-    """Wire Play queue, Skip, and the end event to the one audio component."""
+    """Wire Play queue, Skip, and the end event to this session's player."""
     library = get_library()
-    player = open_player(library, _CLIPS)
     runtime = ROOT / "runtime" / "player"
     status = gr.Markdown(_idle_text(), elem_id="player-panel")
     cover = gr.Image(
@@ -154,22 +175,29 @@ def render() -> None:
         elem_id="up-next",
     )
     token = gr.State(0)
+    session = gr.State("")
     play_btn = gr.Button("Play queue", elem_id="play-queue")
     skip_btn = gr.Button("Skip", elem_id="skip")
-    outputs = [audio, status, cover, upcoming, token]
+    outputs = [audio, status, cover, upcoming, token, session]
 
-    def play_clicked(current: int) -> tuple[object, ...]:
-        return _gradio(on_play(player, library, int(current), runtime))
+    def play_clicked(current: int, session_id: str) -> tuple[object, ...]:
+        player, session_id = player_for(session_id, library)
+        view = _gradio(on_play(player, library, int(current), runtime))
+        return (*view, session_id)
 
-    def skip_clicked(current: int) -> tuple[object, ...]:
-        return _gradio(on_skip(player, library, int(current), runtime))
+    def skip_clicked(current: int, session_id: str) -> tuple[object, ...]:
+        player, session_id = player_for(session_id, library)
+        view = _gradio(on_skip(player, library, int(current), runtime))
+        return (*view, session_id)
 
-    def end_fired(audio_value: object, current: int) -> tuple[object, ...]:
-        return _gradio(on_end(player, library, int(current), audio_value, runtime))
+    def end_fired(audio_value: object, current: int, session_id: str) -> tuple[object, ...]:
+        player, session_id = player_for(session_id, library)
+        view = _gradio(on_end(player, library, int(current), audio_value, runtime))
+        return (*view, session_id)
 
-    play_btn.click(play_clicked, inputs=[token], outputs=outputs)
-    skip_btn.click(skip_clicked, inputs=[token], outputs=outputs)
-    audio.stop(end_fired, inputs=[audio, token], outputs=outputs)
+    play_btn.click(play_clicked, inputs=[token, session], outputs=outputs)
+    skip_btn.click(skip_clicked, inputs=[token, session], outputs=outputs)
+    audio.stop(end_fired, inputs=[audio, token, session], outputs=outputs)
 
 
 def token_from_audio(value: object) -> int | None:
@@ -192,7 +220,20 @@ def _show(
 ) -> PlayerView:
     if item is None:
         return _view(player, library, token, audio=None, ignored=False)
-    served = _serve(item.audio_path, token, runtime)
+    try:
+        served = _serve(item.audio_path, token, runtime)
+    except OSError:
+        failed = _view(player, library, token, audio=None, ignored=False)
+        return PlayerView(
+            None,
+            failed.label,
+            failed.title,
+            failed.cover,
+            DJ_UNAVAILABLE,
+            failed.up_next,
+            token,
+            False,
+        )
     return _view(player, library, token, audio=str(served), ignored=False)
 
 
@@ -225,17 +266,26 @@ def _view(
 
 
 def _serve(source: str, token: int, runtime: Path) -> Path:
-    """Copy the clip to a new name that carries the token. The previous file stays put."""
-    src = Path(source)
-    if not src.is_file():
-        rooted = ROOT / src
-        if rooted.is_file():
-            src = rooted
+    """Copy the clip to a new name that carries the token.
+
+    The name is new on every play. A reload starts its token at 1 again, and
+    the old ``t1-`` file stays on disk untouched.
+    """
+    src = _source_file(source)
     runtime.mkdir(parents=True, exist_ok=True)
-    dest = runtime / f"t{token}-{src.name}"
-    if not dest.exists():
-        shutil.copyfile(src, dest)
+    dest = runtime / f"t{token}-{uuid.uuid4().hex}-{src.name}"
+    shutil.copyfile(src, dest)
     return dest
+
+
+def _source_file(source: str) -> Path:
+    src = Path(source)
+    if src.is_file():
+        return src
+    rooted = ROOT / src
+    if rooted.is_file():
+        return rooted
+    raise FileNotFoundError(source)
 
 
 def _audio_path(value: object) -> str | None:

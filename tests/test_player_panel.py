@@ -13,6 +13,7 @@ from jukebox.library import Library  # noqa: E402
 from jukebox.services.art import cover_for  # noqa: E402
 from jukebox.services.player import DJ_UNAVAILABLE, FINISHED  # noqa: E402
 from jukebox.ui.player_panel import (  # noqa: E402
+    _SESSIONS,
     NOW_PLAYING,
     SPEAKING,
     on_end,
@@ -20,6 +21,7 @@ from jukebox.ui.player_panel import (  # noqa: E402
     on_skip,
     open_player,
     panel_text,
+    player_for,
 )
 
 PANEL = ROOT / "jukebox" / "ui" / "player_panel.py"
@@ -89,7 +91,8 @@ def test_play_queues_the_three_samples_and_starts_the_first(tmp_path: Path, make
     assert view.cover == _cover(library, "sample_01")
     assert view.token == 1
     assert view.audio is not None
-    assert Path(view.audio).name == "t1-sample_01.wav"
+    assert Path(view.audio).name.startswith("t1-")
+    assert Path(view.audio).name.endswith("-sample_01.wav")
     assert [title for title, _cover in view.up_next] == ["Two", "Three"]
     assert "DJ speaking…" in panel_text(view)
     assert "One" in panel_text(view)
@@ -189,6 +192,60 @@ def test_a_stale_end_token_does_not_advance(tmp_path: Path, make_track) -> None:
     assert player.current is not None
     assert player.current.kind == "song"
     assert player.current.track_id == "sample_01"
+
+
+def test_a_new_play_does_not_reuse_a_served_file(tmp_path: Path, make_track) -> None:
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    runtime = tmp_path / "served"
+    first = on_play(open_player(library, {}), library, 0, runtime)
+    stale = Path(first.audio)
+    stale.write_bytes(b"stale")
+    second = on_play(open_player(library, {}), library, 0, runtime)
+    source = tmp_path / "samples" / "audio" / "sample_01.wav"
+    assert second.audio != first.audio
+    assert Path(second.audio).read_bytes() == source.read_bytes()
+    assert stale.read_bytes() == b"stale"
+
+
+def test_each_browser_session_has_its_own_player(tmp_path: Path, make_track) -> None:
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    _SESSIONS.clear()
+    first, first_id = player_for("", library)
+    second, second_id = player_for("", library)
+    same, same_id = player_for(first_id, library)
+    runtime = tmp_path / "served"
+    on_play(first, library, 0, runtime)
+    other = on_play(second, library, 0, runtime)
+    assert first is same
+    assert same_id == first_id
+    assert first is not second
+    assert first_id != second_id
+    assert other.ignored is False
+    assert other.title == "One"
+    assert first.current is not None
+    assert first.current.track_id == "sample_01"
+    assert second.current is not None
+    assert second.current.track_id == "sample_01"
+    _SESSIONS.clear()
+
+
+def test_a_missing_song_file_shows_unavailable_and_skip_still_moves(tmp_path: Path, make_track) -> None:
+    library, clips = _library(tmp_path, make_track)
+    (tmp_path / "samples" / "audio" / "sample_01.wav").unlink()
+    player = open_player(library, clips)
+    runtime = tmp_path / "served"
+    view = on_play(player, library, 0, runtime)
+    assert view.label == SPEAKING
+    view = on_end(player, library, view.token, view.audio, runtime)
+    assert view.audio is None
+    assert view.title == "One"
+    assert view.notice == DJ_UNAVAILABLE
+    assert DJ_UNAVAILABLE in panel_text(view)
+    assert player.current is not None
+    assert player.current.track_id == "sample_01"
+    skipped = on_skip(player, library, view.token, runtime)
+    assert skipped.title == "Two"
+    assert skipped.audio is not None
 
 
 def test_skip_with_nothing_playing_leaves_the_queue(tmp_path: Path, make_track) -> None:
