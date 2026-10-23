@@ -198,23 +198,31 @@ _SOUND_WORDS = frozenset(
 )
 MAX_SCREENED_CHARS = 300  # style and theme are cut to this before screening, so pasted text stays fast
 _CONNECTORS = frozenset({"of", "the", "and", "or", "&", "de", "la", "del", "van", "von", "da", "y"})
-# A capitalized word. "/" keeps "AC/DC" and "Gaga/Madonna" together; "$" keeps "A$AP", "Ke$ha" and
-# "$uicideboy$" whole (Mike's review of #48: "A$AP Rocky" left "$AP Rocky" behind).
-_CAP = r"(?:[A-ZÀ-ÖØ-Þ]|\$(?=[A-Za-z]))[\w'’.&+/$-]*"
-_NAME = rf"(?:[Tt]he\s+)?{_CAP}(?:\s+(?:(?:of|the|and|or|&|de|la|del|van|von|da|y)\s+)*{_CAP})*"
+# A capitalized word. "/" keeps "AC/DC" and "Gaga/Madonna" together; "$" inside keeps "A$AP" and "Ke$ha"
+# whole (Mike's review of #48: "A$AP Rocky" left "$AP Rocky" behind).
+_WORD_TAIL = r"[\w'’.&+/$-]*"
+_CAP = rf"[A-ZÀ-ÖØ-Þ]{_WORD_TAIL}"
+# A word that starts with "$" is a name only with a second "$" ("$uicideboy$") or after another name word
+# ("Ty Dolla $ign"), so "$ummer", "$ad" and "$mall" stay everyday words.
+_DOLLAR_NAME = r"\$[A-Za-z][\w'’.&+/-]*\$[\w'’.&+/$-]*"
+_NAME = (
+    rf"(?:[Tt]he\s+)?(?:{_CAP}|{_DOLLAR_NAME})"
+    rf"(?:\s+(?:(?:of|the|and|or|&|de|la|del|van|von|da|y)\s+)*(?:{_CAP}|\$[A-Za-z]{_WORD_TAIL}))*"
+)
+_NAME_AHEAD = rf"(?=\s+(?-i:[A-ZÀ-ÖØ-Þ]|{_DOLLAR_NAME}))"  # a name follows: "feat Drake", "a la $uicideboy$"
 _NAME_AT_START = re.compile(_NAME)
 # Pointer phrases that say "make it sound like someone". The theme gets only the first group (a theme is
 # a subject, so "a love song inspired by Paris" or "dancing like Nobody is watching" must stay).
 _STYLE_POINTERS = (
     r"in\s+the\s+(?:style|vein|spirit|manner)\s+of|sounds?\s+like|à\s+la"
-    r"|a\s+la(?=\s+(?-i:[A-ZÀ-ÖØ-Þ]))"  # "a la carte" isn't one
+    rf"|a\s+la{_NAME_AHEAD}"  # "a la carte" isn't one
 )
 _THEME_POINTER = re.compile(rf"\b(?:{_STYLE_POINTERS})\s+", re.IGNORECASE)
 # Credits name who made a song. A bare "by" counts only at the start of a part, so "folk by the Sea",
 # "song by Candlelight" and "Played by Ear" stay; "feat"/"ft" without a period need a capital after them.
 _CREDITS = (
     r"(?:sung|performed|produced|written|covered|vocals)\s+by|covers?\s+of|featuring|feat\.|ft\."
-    r"|(?:feat|ft)(?=\s+(?-i:[A-ZÀ-ÖØ-Þ]))"
+    rf"|(?:feat|ft){_NAME_AHEAD}"
     r"|(?<=^)by|(?<=^\s)by"
 )
 _CREDIT = re.compile(rf"(?:{_CREDITS})\s*$", re.IGNORECASE)

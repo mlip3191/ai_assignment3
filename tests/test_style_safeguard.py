@@ -540,9 +540,45 @@ def test_names_with_a_dollar_sign_are_removed_whole(raw: str, cleaned: str, remo
     assert "$" not in result.text or removed is None
 
 
-@pytest.mark.parametrize("raw", ["pop, $100 bills", "lo-fi, cash money $", "trap, money $ign"])
+@pytest.mark.parametrize(
+    ("raw", "cleaned", "removed"),
+    [
+        ("trap ft $uicideboy$", "trap", "ft $uicideboy$"),
+        ("pop feat $uicideboy$", "pop", "feat $uicideboy$"),
+        ("a la $uicideboy$", "", "a la $uicideboy$"),
+    ],
+)
+def test_short_credits_catch_a_name_that_starts_with_a_dollar_sign(
+    raw: str, cleaned: str, removed: str
+) -> None:
+    """Agent review of the "$" fix: "ft", "feat" and "a la" looked only for a capital letter."""
+    result = songs.check_style(raw)
+    assert (result.text, list(result.removed)) == (cleaned, [removed])
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "pop, $100 bills",
+        "lo-fi, cash money $",
+        "trap, money $ign",
+        "sounds like $ummer",
+        "in the style of $ummer",
+        "sounds like $unset",
+        "inspired by $mall town vibes",
+        "trap, $$$",
+        "cash $tyle",
+    ],
+)
 def test_ordinary_text_with_a_dollar_sign_is_unchanged(raw: str) -> None:
+    """Agent review of the "$" fix: a word that only starts with "$" is an everyday word, not a name."""
     assert songs.check_style(raw).text == raw
+    assert songs.check_theme(raw).text == raw
+
+
+def test_a_dollar_word_after_a_removed_name_is_kept() -> None:
+    result = songs.check_style("in the style of Drake, $ad")
+    assert (result.text, list(result.removed)) == ("$ad", ["in the style of Drake"])
 
 
 def test_a_band_name_with_a_comma_is_a_known_limit() -> None:
