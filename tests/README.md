@@ -28,6 +28,7 @@ One file per module, named `test_<module>.py`:
 | `test_flux.py` | `jukebox/clients/flux.py`: `generate_image()` request format, defaults, decoded JPEG, each error kind, FLUX on 9006 only, key and image data never logged |
 | `test_art_prompt.py` | `jukebox/services/art.py` prompt builder (C3): the `cover_art.md` template, filled placeholders and lyrics excerpt, reply cleanup, the safety suffix added once, Qwen errors, never FLUX |
 | `test_art_service.py` | `jukebox/services/art.py` cover job (C4): saved by `track_id`, cover attached by id, placeholder on failure, Retry cover, job status, the committed placeholder, Qwen and FLUX only |
+| `test_generate_samples.py` | `scripts/generate_samples.py` (C5): the 3 sample specs, files and manifest under `samples/`, the manifest loads in the library, the generation log (inputs, prompts, lyrics, models and ports, no host or key), all-or-nothing runs, B6's song pipeline, no client used directly |
 | `test_<service>.py` | One per client in `jukebox/clients/` (added by lanes B, C, D) |
 
 A good test case covers the happy path, at least one failure path (service down, bad input, timeout), and each "Done when" criterion of its task.
