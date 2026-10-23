@@ -69,6 +69,7 @@ If someone asks you to read this file and tell them what to do, follow these rul
 
 | Windows | macOS |
 |---|---|
+| **First, unblock the ZIP:** right-click it → **Properties** → at the bottom of the General tab, tick **Unblock** → **OK**. Without this, Smart App Control blocks `run.bat`. (No Unblock box means it's already unblocked.) | |
 | Right-click the ZIP → **Extract All…** → set the destination to `C:\jukebox` → **Extract**. | Double-click the ZIP in Downloads. Drag the folder it creates into your home folder (Finder → Go → Home). |
 | Open the extracted folder until you see `run.bat`, `README.md`, and `PROJECT.md`. That's the **app folder**. | Open the folder until you see `run.sh`, `README.md`, and `PROJECT.md`. That's the **app folder**. |
 
@@ -123,6 +124,7 @@ Songs you generate stay in the library **until you stop the app**. The 3 samples
 
 | What you see | What to do |
 |---|---|
+| Windows: "Smart App Control blocked a file that may be unsafe" when you start `run.bat` | Delete the app folder, unblock the ZIP (§0.4.3), and extract it again. Don't use **Run as administrator**, and don't turn Smart App Control off (it can't be turned back on without reinstalling Windows). |
 | Windows: the black window flashes and disappears | Open Terminal in the app folder (§0.7), type `.\run.bat`, press Enter, and read the message. |
 | "Python was not found" / `py` not recognized | Re-run the Python installer (Windows: tick **Add python.exe to PATH**), then open a **new** Terminal window. |
 | The launcher says `.env` is missing or still has placeholders | Fill in `.env` as in §0.4.4 and save. On macOS, Finder hides files whose names start with a dot. Press **Cmd+Shift+.** to show them. |
