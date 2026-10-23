@@ -327,7 +327,9 @@ def run_app(root: Path, deps: Deps) -> int:
             f"Can't find app.py in {root}. Make sure you extracted the whole ZIP and ran the launcher from that folder."
         )
         return EXIT_ERROR
-    deps.say("Opening the app. Keep this window open while you use it; close it or press Ctrl+C to stop.")
+    # On Windows, Ctrl+C makes cmd ask "Terminate batch job (Y/N)?", so only closing the window is offered.
+    stop = "close this window" if deps.platform == "windows" else "close this window or press Ctrl+C"
+    deps.say(f"Opening the app. Keep this window open while you use it. To stop it, {stop}.")
     process = deps.start([deps.python, "-u", str(app)], root)
     opened = False
     blocked_by_windows = False
@@ -390,7 +392,7 @@ def reuse_running_app(deps: Deps) -> int | None:
         "For a fresh copy, close that other launcher window first, then run this one again."
     )
     deps.open_browser(url)
-    return EXIT_OK
+    return EXIT_ACTION  # not OK: run.bat pauses on any other code, so this message stays readable
 
 
 def main(*, root: Path = ROOT, deps: Deps | None = None) -> int:

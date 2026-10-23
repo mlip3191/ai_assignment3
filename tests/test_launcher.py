@@ -191,10 +191,27 @@ def test_macos_second_run_repeats_the_hidden_file_tip(world: World) -> None:
 
 def test_a_second_launch_reuses_the_running_app(world: World) -> None:
     world.already_running = "http://127.0.0.1:7860"
-    assert ready(world).main() == 0
+    # Not EXIT_OK: run.bat pauses on any other code, so a double-click user can read the message
+    # instead of seeing a window flash and close (found in the Windows ZIP test).
+    assert ready(world).main() == launcher.EXIT_ACTION
     assert "already running" in world.text.lower()
     assert world.browsed == ["http://127.0.0.1:7860"]
     assert world.ran == [] and world.started == []  # no install, no second app
+
+
+def test_windows_says_to_stop_by_closing_the_window(world: World) -> None:
+    # Ctrl+C in cmd asks "Terminate batch job (Y/N)?", which confuses a first-time user.
+    ready(world).main()
+    line = next(s for s in world.said if s.startswith("Opening the app"))
+    assert "close this window" in line
+    assert "Ctrl+C" not in line
+
+
+def test_macos_still_offers_ctrl_c_to_stop(world: World) -> None:
+    world.platform = "macos"
+    ready(world).main()
+    line = next(s for s in world.said if s.startswith("Opening the app"))
+    assert "close" in line and "Ctrl+C" in line
 
 
 @pytest.mark.parametrize("step", ["pip", "check_endpoints"])
