@@ -209,6 +209,7 @@ _NAME = (
     rf"(?:[Tt]he\s+)?(?:{_CAP}|{_DOLLAR_NAME})"
     rf"(?:\s+(?:(?:of|the|and|or|&|de|la|del|van|von|da|y)\s+)*(?:{_CAP}|\$[A-Za-z]{_WORD_TAIL}))*"
 )
+_EVERYDAY_DOLLAR = re.compile(r"\$[a-z][^$]*")  # one leading "$" and no second one ("$ummer", "$ad")
 _NAME_AHEAD = rf"(?=\s+(?-i:[A-ZÀ-ÖØ-Þ]|{_DOLLAR_NAME}))"  # a name follows: "feat Drake", "a la $uicideboy$"
 _NAME_AT_START = re.compile(_NAME)
 # Pointer phrases that say "make it sound like someone". The theme gets only the first group (a theme is
@@ -370,9 +371,12 @@ def _drop_name(match: re.Match[str], removed: list[str]) -> str:
 
 
 def _is_sound(phrase: str) -> bool:
-    """True if every word describes a sound (a genre, place, era or descriptor), so it isn't a name."""
+    """True if every word describes a sound (a genre, place, era or descriptor), so it isn't a name.
+
+    An everyday "$" word ("$ummer", "$ound") is neutral: "Detroit $ound" is a sound, "Ty Dolla $ign" isn't.
+    """
     words = [w.lower().strip(".,'’\"()") for w in phrase.split()]
-    words = [w for w in words if w and w not in _CONNECTORS]
+    words = [w for w in words if w and w not in _CONNECTORS and not _EVERYDAY_DOLLAR.fullmatch(w)]
     return bool(words) and all(_is_sound_word(w) for w in words)
 
 

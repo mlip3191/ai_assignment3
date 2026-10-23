@@ -576,6 +576,21 @@ def test_ordinary_text_with_a_dollar_sign_is_unchanged(raw: str) -> None:
     assert songs.check_theme(raw).text == raw
 
 
+@pytest.mark.parametrize(
+    ("raw", "cleaned"),
+    [
+        ("sounds like Detroit $ound", "Detroit $ound"),
+        ("in the style of Detroit $ummer techno", "Detroit $ummer techno"),
+        ("inspired by Paris $ummer", "Paris $ummer"),
+        ("sounds like Summer $ad", "Summer $ad"),
+    ],
+)
+def test_a_dollar_word_after_a_sound_word_keeps_the_phrase(raw: str, cleaned: str) -> None:
+    """Second agent review of the "$" fix: "$ummer" after "Detroit" joined a "name", so the style was refused."""
+    assert songs.check_style(raw).text == cleaned
+    assert songs.check_theme(raw).text in (raw, cleaned)
+
+
 def test_a_dollar_word_after_a_removed_name_is_kept() -> None:
     result = songs.check_style("in the style of Drake, $ad")
     assert (result.text, list(result.removed)) == ("$ad", ["in the style of Drake"])
