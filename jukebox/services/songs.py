@@ -198,7 +198,9 @@ _SOUND_WORDS = frozenset(
 )
 MAX_SCREENED_CHARS = 300  # style and theme are cut to this before screening, so pasted text stays fast
 _CONNECTORS = frozenset({"of", "the", "and", "or", "&", "de", "la", "del", "van", "von", "da", "y"})
-_CAP = r"[A-ZÀ-ÖØ-Þ][\w'’.&+/-]*"  # a capitalized word; "/" keeps "AC/DC" and "Gaga/Madonna" together
+# A capitalized word. "/" keeps "AC/DC" and "Gaga/Madonna" together; "$" keeps "A$AP", "Ke$ha" and
+# "$uicideboy$" whole (Mike's review of #48: "A$AP Rocky" left "$AP Rocky" behind).
+_CAP = r"(?:[A-ZÀ-ÖØ-Þ]|\$(?=[A-Za-z]))[\w'’.&+/$-]*"
 _NAME = rf"(?:[Tt]he\s+)?{_CAP}(?:\s+(?:(?:of|the|and|or|&|de|la|del|van|von|da|y)\s+)*{_CAP})*"
 _NAME_AT_START = re.compile(_NAME)
 # Pointer phrases that say "make it sound like someone". The theme gets only the first group (a theme is

@@ -522,6 +522,37 @@ def test_loose_name_forms_are_a_known_limit(raw: str) -> None:
     assert songs.check_style(raw).text == raw
 
 
+@pytest.mark.parametrize(
+    ("raw", "cleaned", "removed"),
+    [
+        ("in the style of A$AP Rocky", "", "in the style of A$AP Rocky"),
+        ("sounds like Ke$ha", "", "sounds like Ke$ha"),
+        ("pop, Ty Dolla $ign style", "pop", "Ty Dolla $ign style"),
+        ("trap, inspired by $uicideboy$", "trap", "inspired by $uicideboy$"),
+        ("hip hop, A$AP Rocky's flow", "hip hop, A$AP Rocky's flow", None),  # "flow" isn't an owner word
+    ],
+)
+def test_names_with_a_dollar_sign_are_removed_whole(raw: str, cleaned: str, removed: str | None) -> None:
+    """Mike's review of #48: "in the style of A$AP Rocky" left "$AP Rocky" in the style sent to the models."""
+    result = songs.check_style(raw)
+    assert result.text == cleaned
+    assert list(result.removed) == ([removed] if removed else [])
+    assert "$" not in result.text or removed is None
+
+
+@pytest.mark.parametrize("raw", ["pop, $100 bills", "lo-fi, cash money $", "trap, money $ign"])
+def test_ordinary_text_with_a_dollar_sign_is_unchanged(raw: str) -> None:
+    assert songs.check_style(raw).text == raw
+
+
+def test_a_band_name_with_a_comma_is_a_known_limit() -> None:
+    """Mike's nit on #48: the comma splits "Earth, Wind & Fire style", so "Earth" stays. Removing the part
+    before a "<Name> style" part would also remove everyday tags ("Summer, Drake-style"). Listed in B9."""
+    result = songs.check_style("Earth, Wind & Fire style")
+    assert (result.text, list(result.removed)) == ("Earth", ["Wind & Fire style"])
+    assert songs.check_style("Summer, Drake-style").text == "Summer"
+
+
 @pytest.mark.parametrize("raw", ["Ocean's voice", "Life's music", "Today's sound"])
 def test_possessives_of_everyday_words_are_flagged_with_a_visible_warning(raw: str) -> None:
     """The accepted cost of catching "Adele's voice": B7 shows this warning before Generate is clicked."""
