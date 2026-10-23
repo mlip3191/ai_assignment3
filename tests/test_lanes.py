@@ -121,6 +121,19 @@ def test_a12_gate_parity_task_is_in_lane_a() -> None:
     assert "sys.path" in criteria
 
 
+def test_a13_pin_dev_tools_task_is_in_lane_a() -> None:
+    spec, _ = load()
+    lane_a = next(lane for lane in spec["lanes"] if lane["role"] == "A")
+    task = next((t for t in lane_a["tasks"] if t["key"] == "A13"), None)
+    assert task is not None
+    assert task["milestone"] == "M2"
+    assert task["depends"] == []
+    assert "§4" in task["refs"]
+    criteria = " ".join(task["criteria"])
+    for needle in ("requirements-dev.txt", "pytest", "respx", "ruff", "==", "CI"):
+        assert needle in criteria, needle
+
+
 def test_project_md_load_tables_match_the_backlog() -> None:
     """The per-lane task counts (section 19) and the per-checkpoint load table must match issues.json."""
     spec, _ = load()
