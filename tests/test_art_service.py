@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from jukebox.errors import ServiceError  # noqa: E402
-from jukebox.jobs import JobStore  # noqa: E402
+from jukebox.jobs import GENERIC_FAILURE, JobStore  # noqa: E402
 from jukebox.library import Library, LibraryError  # noqa: E402
 from jukebox.services import art  # noqa: E402
 
@@ -481,3 +481,32 @@ def test_cover_job_for_reports_the_latest_attempt(library: Library, root: Path) 
     )
     assert art.cover_job_for("t2").status == "succeeded"
     assert art.cover_job_for("t3") is None
+
+
+# ---- every failure is recorded on a job (B7 review on #48) --------------------------------------
+
+
+def test_a_cover_hook_wired_to_the_wrong_library_ends_in_a_failed_job(
+    library: Library, root: Path, make_track
+) -> None:
+    """The song is in one library, the hook looks in another: the UI must see a failure, not wait
+    on "Painting cover…" forever (the B7 result card polls cover_job_for)."""
+    stray = make_track(id="t9")  # added to no library the hook can see
+    art.start_cover(stray, library=library, root=root, chat=fake_chat, generate=FakeFlux()).join(5)
+    job = art.cover_job_for("t9")
+    assert job is not None and job.status == "failed"
+    assert job.error == GENERIC_FAILURE  # a plain sentence, never "no track 't9'" or a path
+
+
+def test_an_unsafe_id_from_retry_also_ends_in_a_failed_job(library: Library, root: Path) -> None:
+    with pytest.raises(ValueError):
+        art.retry_cover("a/b", library=library, root=root, chat=fake_chat, generate=FakeFlux())
+    job = art.cover_job_for("a/b")
+    assert job is not None and (job.status, job.error) == ("failed", GENERIC_FAILURE)
+
+
+def test_a_failed_check_still_raises_for_direct_callers(library: Library, root: Path) -> None:
+    jobs = JobStore()
+    with pytest.raises(LibraryError):
+        cover("nope", library, root, jobs=jobs)
+    assert [(j.status, j.track_id) for j in jobs.list()] == [("failed", "nope")]

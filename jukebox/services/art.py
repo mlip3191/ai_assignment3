@@ -222,19 +222,20 @@ def make_cover(
     On a service failure the track keeps playing with no cover (the UI shows the placeholder and
     "Retry cover"), the job (if given) records the plain-language message, and the ServiceError is
     re-raised for the caller. Raises LibraryError for an unknown track, ValueError for an unsafe id.
+    The job is created before any check, so every failure, these included, ends on a job: a UI that
+    polls cover_job_for() never waits on "Painting cover…" for a cover that will never come.
     """
-    if not _SAFE_ID.fullmatch(track_id) or _DEVICE_NAME.fullmatch(track_id):
-        raise ValueError(f"track id {track_id!r} can't be used as a file name")
-    lib = library or get_library()
-    track = lib.get(track_id)
-    if track is None:
-        raise LibraryError(f"no track {track_id!r} in the library")
-
     job = jobs.create("cover", COVER_STAGE) if jobs else None
     if jobs and job:
         jobs.set_stage(job.id, COVER_STAGE, track_id)
-    relative = f"{COVER_DIR}/{track_id}.{COVER_EXT}"
     try:
+        if not _SAFE_ID.fullmatch(track_id) or _DEVICE_NAME.fullmatch(track_id):
+            raise ValueError(f"track id {track_id!r} can't be used as a file name")
+        lib = library or get_library()
+        track = lib.get(track_id)
+        if track is None:
+            raise LibraryError(f"no track {track_id!r} in the library")
+        relative = f"{COVER_DIR}/{track_id}.{COVER_EXT}"
         prompt, image = _paint(track, chat=chat, generate=generate)  # slow, so outside the lock
         with _write_lock:
             _write_atomically(Path(root) / relative, image)
