@@ -145,6 +145,44 @@ def test_tags_combine_style_mood_and_voice(env: dict) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "style",
+    [
+        "upbeat pop, warm natural female vocals",
+        "cinematic folk, deep male vocal",
+        "soul, powerful female vocalist",
+        "folk, raspy voice",
+        "gospel, choir",
+        "indie, Female Vocals",
+        "soul, male vocalists",
+        "ambient, layered voices",
+        "gospel, singers",
+        "choirs, organ",
+    ],
+)
+def test_voice_tag_is_added_only_when_the_style_names_no_voice(style: str) -> None:
+    """Review of #40: sample_02 would have been sent "...female vocals, joyful, warm natural vocals"."""
+    assert songs.build_tags(style, "joyful", vocal=True) == f"{style}, joyful"
+
+
+def test_default_voice_tag_is_kept_for_styles_without_a_voice() -> None:
+    assert songs.build_tags("synth-pop", "upbeat", vocal=True) == "synth-pop, upbeat, warm natural vocals"
+    assert (
+        songs.build_tags("country rock, steel guitar", "triumphant", vocal=True)
+        == "country rock, steel guitar, triumphant, warm natural vocals"
+    )
+    assert songs.build_tags("vocal jazz", "smooth", vocal=False) == "vocal jazz, smooth, instrumental"
+    # A genre or production effect is not a singing voice, so the sung song still gets the warmer default.
+    assert (
+        songs.build_tags("singer-songwriter", "joyful", vocal=True)
+        == "singer-songwriter, joyful, warm natural vocals"
+    )
+    assert (
+        songs.build_tags("house, vocal chops", "joyful", vocal=True)
+        == "house, vocal chops, joyful, warm natural vocals"
+    )
+
+
 @respx.mock
 def test_seed_is_sent_and_kept_on_the_track(env: dict) -> None:
     mock_qwen()
