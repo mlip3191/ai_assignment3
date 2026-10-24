@@ -100,7 +100,7 @@ Run the launcher again (double-click `run.bat`, or the `bash` + drag `run.sh` st
 2. Checks it can reach the class servers.
 3. Opens your web browser at **http://127.0.0.1:7860**. That's the app. If the browser doesn't open, type that address into it yourself.
 
-**Keep the launcher window open** while you use the app; closing it stops the app. To stop on purpose, close the window, or click in it and press **Ctrl+C**.
+**Keep the launcher window open** while you use the app; closing it stops the app. To stop on purpose: on Windows, close the window; on macOS, close it or click in it and press **Ctrl+C**.
 
 #### 0.4.6 Try the three features
 

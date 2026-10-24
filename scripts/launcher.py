@@ -45,6 +45,9 @@ MIN_PYTHON = (3, 11)
 STAMP_NAME = ".requirements.sha256"  # inside .venv, so a fresh .venv always reinstalls
 APP_URL = re.compile(r"http://127\.0\.0\.1:\d+")
 APP_PORTS = (7860, 7861)  # the app's port and its fallback (jukebox/ui/launch.py)
+# gr.Blocks(title=...) in jukebox/ui/layout.py; tells our page from other Gradio apps.
+APP_TITLE = "AI Jukebox"
+BROWSER_WAIT_S = 5.0  # a second launch waits this long for the browser to open before exiting
 EDITOR_NAMES = {"windows": "Notepad", "macos": "TextEdit"}
 RULE = "-" * 68
 
@@ -67,7 +70,7 @@ class Deps:
     run: Callable[[Sequence[str], Path], int]
     start: Callable[[Sequence[str], Path], Process]
     open_editor: Callable[[Path], bool]
-    open_browser: Callable[[str], None]
+    open_browser: Callable[[str], object]  # may return the background thread that opens it
     say: Callable[[str], None]
     running_app: Callable[[], str | None]  # the address of an already-running AI Jukebox, if any
 
@@ -162,7 +165,8 @@ def _say(message: str) -> None:
 def find_running_app(ports: Sequence[int] = APP_PORTS) -> str | None:
     """The address of an AI Jukebox that's already running here (a second launch), or None.
 
-    Only a Gradio page counts, so some other program on 7860 isn't mistaken for the app.
+    Only a Gradio page with our title counts, so another program or Gradio app on 7860 isn't mistaken
+    for the app.
     This asks our own app on 127.0.0.1 for its page with a plain socket. It never contacts a class
     service or anything off this computer (AI calls stay in jukebox/clients/, PROJECT.md §7.0).
     """
@@ -178,7 +182,7 @@ def find_running_app(ports: Sequence[int] = APP_PORTS) -> str | None:
                     page += chunk
         except OSError:
             continue
-        if b"gradio" in page.lower():
+        if b"gradio" in page.lower() and f'"title":"{APP_TITLE}"'.encode() in page:
             return f"http://127.0.0.1:{port}"
     return None
 
@@ -391,7 +395,10 @@ def reuse_running_app(deps: Deps) -> int | None:
         f"The app is already running in another window, at {url}. Opening it in your browser.\n"
         "For a fresh copy, close that other launcher window first, then run this one again."
     )
-    deps.open_browser(url)
+    opening = deps.open_browser(url)
+    # open_when_ready opens it on a background thread, which exiting now would stop.
+    if isinstance(opening, threading.Thread):
+        opening.join(BROWSER_WAIT_S)
     return EXIT_ACTION  # not OK: run.bat pauses on any other code, so this message stays readable
 
 

@@ -72,6 +72,7 @@ class World:
     started: list[list[str]] = field(default_factory=list)
     edited: list[Path] = field(default_factory=list)
     browsed: list[str] = field(default_factory=list)
+    open_browser: object = None  # replaces the instant recorder, e.g. with the real open_when_ready
     process: FakeProcess | None = None
 
     def deps(self):
@@ -99,7 +100,7 @@ class World:
             run=run,
             start=start,
             open_editor=open_editor,
-            open_browser=self.browsed.append,
+            open_browser=self.open_browser or self.browsed.append,
             say=self.said.append,
             running_app=lambda: self.already_running,
         )
@@ -197,6 +198,21 @@ def test_a_second_launch_reuses_the_running_app(world: World) -> None:
     assert "already running" in world.text.lower()
     assert world.browsed == ["http://127.0.0.1:7860"]
     assert world.ran == [] and world.started == []  # no install, no second app
+
+
+def test_a_second_launch_opens_the_browser_before_the_launcher_exits(world: World) -> None:
+    # The real opener waits on a background thread; the launcher must not exit before it fires.
+    import socket
+
+    opened: list[str] = []
+    with socket.socket() as app:
+        app.bind(("127.0.0.1", 0))
+        app.listen()
+        url = f"http://127.0.0.1:{app.getsockname()[1]}"
+        world.already_running = url
+        world.open_browser = lambda u: launcher.open_when_ready(u, opener=opened.append, poll_s=0.01)
+        assert ready(world).main() == launcher.EXIT_ACTION
+        assert opened == [url]  # checked the moment main() returns, with no waiting here
 
 
 def test_windows_says_to_stop_by_closing_the_window(world: World) -> None:
@@ -453,10 +469,24 @@ def _serve_once(body: bytes) -> tuple[int, threading.Thread]:
     return server.getsockname()[1], thread
 
 
-def test_find_running_app_recognises_a_gradio_page() -> None:
-    port, thread = _serve_once(b"<html><script>window.gradio_config = {}</script></html>")
+def test_find_running_app_recognises_the_jukebox_page() -> None:
+    # What Gradio 6.30 serves for gr.Blocks(title="AI Jukebox"): the title is in its config.
+    port, thread = _serve_once(b'<html><script>window.gradio_config = {"title":"AI Jukebox"}</script></html>')
     assert launcher.find_running_app([port]) == f"http://127.0.0.1:{port}"
     thread.join(5)
+
+
+def test_find_running_app_ignores_another_gradio_app() -> None:
+    # Found on the macOS ZIP test: an unrelated Gradio app on 7860 was opened instead of starting ours.
+    port, thread = _serve_once(b'<html><script>window.gradio_config = {"title":"Gradio"}</script></html>')
+    assert launcher.find_running_app([port]) is None
+    thread.join(5)
+
+
+def test_the_launcher_looks_for_the_title_the_app_uses() -> None:
+    from jukebox.ui import layout
+
+    assert layout.build_demo().title == launcher.APP_TITLE
 
 
 def test_find_running_app_ignores_another_program_on_the_port() -> None:
