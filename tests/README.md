@@ -21,6 +21,7 @@ One file per module, named `test_<module>.py`:
 | `test_app_shell.py` | E2 shell: placeholder panels, loopback launch, no model clients |
 | `test_config.py` | `jukebox/config.py`: required variables, one port per service, no port 9000, no secrets in output |
 | `test_check_config.py` | `scripts/check_config.py`: OK/missing table that never prints values |
+| `test_requirements_dev.py` | `requirements-dev.txt`: exact `==` pins for pytest, respx and ruff; CI and `setup_dev.py` install it |
 | `test_player.py` | `jukebox/services/player.py`: queue order, skip, a missing DJ clip, end of queue |
 | `test_chatterbox.py` | `jukebox/clients/chatterbox.py`: `speak()` request format (default and reference voice), local input checks, each error kind with no retry, speech endpoint on 9008 only |
 | `test_dj.py` | `jukebox/services/dj.py` and `prompts/dj.md`: song-specific script (title, word limit, cleanup, one retry), clip saved under `runtime/generated/`, only the Qwen and Chatterbox clients |
