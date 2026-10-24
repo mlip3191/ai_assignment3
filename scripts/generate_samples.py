@@ -457,7 +457,7 @@ def render_log(
             "|---|---|---|---|---|---|",
         ]
         lines += [
-            f"| {i} | {SERVICE_NAMES.get(c.service, c.service)} | `{_cell(models.get(c.service) or 'not set')}` "
+            f"| {i} | {SERVICE_NAMES.get(c.service, c.service)} | {_code(models.get(c.service) or 'not set')} "
             f"| {c.port} | {c.status} | {c.ms} ms |"
             for i, c in enumerate(e.calls, 1)
         ]
@@ -522,6 +522,17 @@ def _cell(text: str) -> str:
     return _one_line(text).replace("|", "\\|")
 
 
+def _code(text: str) -> str:
+    """A table cell's text as a Markdown code span that a backtick inside it can't close early: the span
+    uses one more backtick than the longest run in the text (with spaces when it needs more than one)."""
+    text = _cell(text)
+    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    if longest == 0:
+        return f"`{text}`"
+    fence = "`" * (longest + 1)
+    return f"{fence} {text} {fence}"
+
+
 def main() -> int:
     from jukebox.config import ConfigError, load_config
 
@@ -538,8 +549,8 @@ def main() -> int:
         # The file exists but can't be opened (locked by an editor, or no permission). Never print the
         # error itself: it would include the file's full path.
         print(
-            "Stopped: the settings file could not be read. Close any program that has it open, then run "
-            "this again. samples/ was not changed."
+            "Stopped: the settings file could not be read. Close any program that has it open, or check "
+            "that you can read it, then run this again. samples/ was not changed."
         )
         return 1
     models = {"qwen": config.qwen.model, "acestep": config.acestep.model, "flux": config.flux.model}
@@ -559,7 +570,7 @@ def main() -> int:
         print(f"Stopped: {err} samples/ was not changed.")
         return 1
     for t in tracks:
-        print(f"  {t.id}: {t.title}  ({t.audio_path}, {t.cover_path})")
+        print(f"  {t.id}: {_one_line(t.title)}  ({t.audio_path}, {t.cover_path})")
     print("Done. Now listen to each song, look at each cover, and fill in samples/GENERATION_LOG.md.")
     return 0
 
