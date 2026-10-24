@@ -34,11 +34,11 @@ class Preview:
 
 @dataclass(frozen=True)
 class LibraryTab:
-    """What the page connects to the player: both buttons pass the chosen song's id."""
+    """What the page connects to the player: both buttons read the list, whose value is the chosen id."""
 
     play_now: gr.Button
     add_to_queue: gr.Button
-    selected: gr.State
+    selected: gr.Radio
 
 
 def choices(library: Library) -> list[tuple[str, str]]:
@@ -64,12 +64,6 @@ def preview(library: Library, track_id: str | None) -> Preview:
     return Preview(str(cover_for(track.id, library=library)), "\n\n".join(lines), track.id)
 
 
-def refresh(library: Library, selected: str | None) -> tuple[list[tuple[str, str]], str | None]:
-    """The current list, and the chosen id if that song is still in it (otherwise None)."""
-    found = choices(library)
-    return found, selected if selected in {track_id for _label, track_id in found} else None
-
-
 def snapshot(library: Library) -> tuple[tuple[str, str | None], ...]:
     """Which songs there are and which have covers: when this changes, the tab has something new to show."""
     return tuple((t.id, t.cover_path) for t in library.list())
@@ -84,17 +78,14 @@ def pick(library: Library, track_id: str | None) -> tuple[str, str, str | None]:
 def tick(library: Library, current: str | None, last: object) -> tuple[object, ...]:
     """Show new songs and new covers. When nothing changed, touch nothing, so the list doesn't flicker.
 
-    The list's own choice is left alone unless that song is gone: a click made while this runs must
-    never be undone by an older value.
+    The list's own choice is never set here: a click made while this runs must not be undone by an
+    older value. (The library has no way to remove a song, so a chosen song can't vanish.)
     """
     now = snapshot(library)
     if now == last:
-        return (gr.skip(),) * 5
-    found, still = refresh(library, current)
-    shown = preview(library, still)
-    gone = current is not None and still is None
-    listing = gr.update(choices=found, value=None) if gone else gr.update(choices=found)
-    return listing, shown.cover, shown.details, still if gone else gr.skip(), now
+        return (gr.skip(),) * 4
+    shown = preview(library, current)
+    return gr.update(choices=choices(library)), shown.cover, shown.details, now
 
 
 def render(*, library: Library | None = None) -> LibraryTab:
@@ -137,7 +128,7 @@ def render(*, library: Library | None = None) -> LibraryTab:
     timer.tick(
         lambda current, last: tick(library, current, last),
         inputs=[selected, seen],
-        outputs=[listing, cover, details, selected, seen],
+        outputs=[listing, cover, details, seen],
         **lane,
     )
-    return LibraryTab(play_now, add_to_queue, selected)
+    return LibraryTab(play_now, add_to_queue, listing)

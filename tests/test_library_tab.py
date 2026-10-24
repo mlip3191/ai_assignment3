@@ -18,7 +18,6 @@ from jukebox.ui.library_tab import (  # noqa: E402
     choices,
     pick,
     preview,
-    refresh,
     render,
     snapshot,
     tick,
@@ -91,24 +90,13 @@ def test_a_song_that_is_not_in_the_library_gets_a_plain_message(tmp_path: Path, 
     assert shown.details == UNKNOWN_TRACK
 
 
-def test_a_refresh_keeps_the_selection_while_the_song_is_still_there(tmp_path: Path, make_track) -> None:
-    library = Library(root=tmp_path)
-    _add(library, make_track, tmp_path, "t1", "First Song")
-    _add(library, make_track, tmp_path, "t2", "Second Song")
-    found, selected = refresh(library, "t2")
-    assert [track_id for _label, track_id in found] == ["t1", "t2"]
-    assert selected == "t2"
-    _found, selected = refresh(library, "gone")
-    assert selected is None
-
-
-def test_render_exposes_the_buttons_and_the_selected_id_for_the_player() -> None:
+def test_render_exposes_the_buttons_and_the_list_whose_value_is_the_chosen_id() -> None:
     with gr.Blocks():
         tab = render(library=Library(root=ROOT))
     assert isinstance(tab, LibraryTab)
     assert tab.play_now.elem_id == "lib-play-now"
     assert tab.add_to_queue.elem_id == "lib-add-to-queue"
-    assert isinstance(tab.selected, gr.State)
+    assert isinstance(tab.selected, gr.Radio)  # read at the click, so it can't lag a pick
 
 
 def test_the_tab_imports_no_model_client() -> None:
@@ -118,7 +106,7 @@ def test_the_tab_imports_no_model_client() -> None:
 
 
 def _skips(out: tuple) -> bool:
-    return len(out) == 5 and all(item == gr.skip() for item in out)
+    return len(out) == 4 and all(item == gr.skip() for item in out)
 
 
 def test_the_preview_escapes_every_generated_field(tmp_path: Path, make_track) -> None:
@@ -163,10 +151,10 @@ def test_a_tick_adds_a_new_song_without_touching_the_choice(tmp_path: Path, make
     _add(library, make_track, tmp_path, "t1", "First Song")
     seen = snapshot(library)
     _add(library, make_track, tmp_path, "t2", "Brand New")
-    listing, _cover, _details, selected, now = tick(library, "t1", seen)
+    listing, _cover, details, now = tick(library, "t1", seen)
     assert [track_id for _label, track_id in listing["choices"]] == ["t1", "t2"]
     assert "value" not in listing  # a click made while the tick runs is never undone
-    assert selected == gr.skip()
+    assert "First Song" in details  # the chosen song's details stay
     assert now == snapshot(library)
     assert now != seen
 
@@ -175,10 +163,10 @@ def test_a_tick_leaves_an_empty_choice_alone_too(tmp_path: Path, make_track) -> 
     library = Library(root=tmp_path)
     seen = snapshot(library)
     _add(library, make_track, tmp_path, "t1", "First Song")
-    listing, _cover, _details, selected, _now = tick(library, None, seen)
+    listing, _cover, details, _now = tick(library, None, seen)
     assert len(listing["choices"]) == 1
     assert "value" not in listing  # the user may have just picked it
-    assert selected == gr.skip()
+    assert details == preview(library, None).details
 
 
 def test_a_tick_shows_the_cover_that_just_arrived_for_the_chosen_song(tmp_path: Path, make_track) -> None:
@@ -188,20 +176,10 @@ def test_a_tick_shows_the_cover_that_just_arrived_for_the_chosen_song(tmp_path: 
     cover = tmp_path / "runtime" / "generated" / "t1.jpg"
     cover.write_bytes(b"\xff\xd8\xff\xe0cover")
     library.attach_cover("t1", "runtime/generated/t1.jpg", "a quiet scene")
-    _listing, shown_cover, details, _selected, now = tick(library, "t1", seen)
+    _listing, shown_cover, details, now = tick(library, "t1", seen)
     assert shown_cover == str(cover)
     assert "First Song" in details
     assert now != seen
-
-
-def test_a_tick_resets_the_choice_only_when_that_song_is_gone(tmp_path: Path, make_track) -> None:
-    library = Library(root=tmp_path)
-    _add(library, make_track, tmp_path, "t1", "First Song")
-    listing, cover, details, selected, _now = tick(library, "gone", ())
-    assert listing["value"] is None
-    assert selected is None
-    assert cover == str(placeholder_path())
-    assert details == preview(library, None).details
 
 
 def test_the_pick_and_the_tick_run_one_at_a_time_so_a_slow_tick_cannot_overwrite_a_pick() -> None:

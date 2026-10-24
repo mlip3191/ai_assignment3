@@ -225,6 +225,19 @@ def test_generate_and_library_buttons_are_connected_to_the_player() -> None:
     }
 
 
+def test_the_library_buttons_read_the_list_itself_not_a_state_that_lags_behind_it() -> None:
+    demo = build_demo()
+    by_elem = {block.elem_id: block for block in demo.blocks.values() if getattr(block, "elem_id", None)}
+    for button in ("lib-play-now", "lib-add-to-queue"):
+        block_id = by_elem[button]._id
+        wired = [
+            fn for fn in demo.fns.values() if any(target == (block_id, "click") for target in fn.targets)
+        ]
+        assert len(wired) == 1
+        first_input = wired[0].inputs[0]
+        assert first_input is by_elem["lib-list"]  # the id the user can see, read at the click
+
+
 def test_the_generate_tab_is_told_the_player_is_connected(monkeypatch: pytest.MonkeyPatch) -> None:
     from jukebox.ui import generate_tab
 
