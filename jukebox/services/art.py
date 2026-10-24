@@ -58,6 +58,20 @@ _THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
 _EDGE_PUNCT = " \t\n.,;:"
 _QUOTE_PAIRS = {'"': '"', "'": "'", "“": "”", "‘": "’"}
 _TAG_LINE = re.compile(r"^\s*\[[^\]]*\]\s*$")
+# People and body parts in an image prompt ("the hands of a clock" is not a person).
+_PEOPLE = re.compile(
+    r"\b(?:people|persons?|man|men|woman|women|boys?|girls?|child(?:ren)?|kids?|teens?|friends?|couples?"
+    r"|crowds?|figures?|silhouettes?|someone|family|lovers|dancers?|singers?|musicians?|drivers?"
+    r"|passengers?|travell?ers?|hikers?|faces?|arms?|legs?|bodies|body"
+    r"|hands?(?!\s+of\s+(?:a|the)\s+clock))\b",
+    re.IGNORECASE,
+)
+# Added to any prompt with people in it. FLUX follows positive descriptions better than "no ...": small,
+# backlit figures with faces in shadow have no identifiable face, and soft hands hide its anatomy mistakes.
+SOFT_PEOPLE = (
+    "people shown small in the frame as soft-focus backlit silhouettes, faces in shadow and not detailed, "
+    "hands not in focus"
+)
 # A chatty opener such as "Here is your prompt:" or "Sure! Here's the image prompt:" (only these forms,
 # so a real prompt with a colon in it, like "A quiet room: soft light", is left alone).
 _LEAD_IN = re.compile(
@@ -135,7 +149,17 @@ def write_cover_prompt(
     body = _clean(reply, t.suffix)
     if not body:
         raise ServiceError("qwen", "bad_response", "the cover prompt reply was empty")
+    if mentions_people(body):
+        # People stay in the scene, drawn so faces aren't defined and hands aren't prominent.
+        body = body.replace(SOFT_PEOPLE, "").strip(_EDGE_PUNCT)
+        body = f"{body}, {SOFT_PEOPLE}"
     return f"{body}, {t.suffix}"
+
+
+def mentions_people(text: str) -> bool:
+    """True if an image prompt describes people or body parts. FLUX draws them from the front with
+    detailed faces, and sometimes wrong hands or an extra arm (TC-04 dry run, 10/24)."""
+    return bool(_PEOPLE.search(text))
 
 
 def _lyrics_block(vocal: bool, lyrics: str | None) -> str:

@@ -78,7 +78,7 @@ def test_template_has_system_user_and_suffix_sections() -> None:
 
 def test_template_system_rules_forbid_text_real_people_and_real_artists() -> None:
     system = art.load_template().system.lower()
-    for phrase in ("text", "real artists", "real person", "original", "no visible face"):
+    for phrase in ("text", "real artists", "real person", "original"):
         assert phrase in system
 
 
@@ -248,3 +248,93 @@ def test_a_colon_inside_a_real_prompt_is_kept() -> None:
 def test_an_unmatched_quote_inside_the_prompt_is_kept() -> None:
     prompt = art.write_cover_prompt(**LOFI, chat=FakeQwen(reply='A sign that reads nothing, a "quiet street'))
     assert prompt == f'A sign that reads nothing, a "quiet street, {SUFFIX}'
+
+
+# ---- people on covers: small, backlit, faces not defined (TC-04 dry run, 10/24) ----------------
+# A cover showed two front-facing, recognizable faces and a man with three arms. People may stay in a
+# scene, but drawn so faces aren't defined and hands aren't prominent (where FLUX's mistakes show).
+
+
+class ScriptedQwen:
+    """Answers each call with the next scripted reply and records the messages it got."""
+
+    def __init__(self, *replies: str) -> None:
+        self.replies = list(replies)
+        self.calls: list[list[dict]] = []
+
+    def __call__(self, messages: list[dict], *, max_tokens: int, temperature: float) -> str:
+        self.calls.append(messages)
+        return self.replies.pop(0)
+
+
+def test_a_prompt_without_people_is_left_as_written() -> None:
+    chat = ScriptedQwen("An empty convertible on a coast road at sunset, warm golden light")
+    prompt = art.write_cover_prompt(**POP, chat=chat)
+    assert prompt == f"An empty convertible on a coast road at sunset, warm golden light, {SUFFIX}"
+    assert art.SOFT_PEOPLE not in prompt
+
+
+def test_people_stay_but_get_the_soft_figure_style_in_one_call() -> None:
+    chat = ScriptedQwen("Two friends stand in a convertible with their arms raised at sunset")
+    prompt = art.write_cover_prompt(**POP, chat=chat)
+    assert len(chat.calls) == 1  # no extra Qwen call
+    assert prompt == (
+        f"Two friends stand in a convertible with their arms raised at sunset, {art.SOFT_PEOPLE}, {SUFFIX}"
+    )
+
+
+def test_the_soft_figure_style_is_added_once_and_before_the_suffix() -> None:
+    reply = f"A crowd at a summer concert, {art.SOFT_PEOPLE}. {SUFFIX}."
+    prompt = art.write_cover_prompt(**POP, chat=ScriptedQwen(reply))
+    assert prompt.count(art.SOFT_PEOPLE) == 1 and prompt.count(SUFFIX) == 1
+    assert prompt.endswith(f"{art.SOFT_PEOPLE}, {SUFFIX}")
+
+
+def test_the_soft_figure_style_asks_for_undefined_faces_and_hands_out_of_focus() -> None:
+    style = art.SOFT_PEOPLE.lower()
+    for phrase in ("small in the frame", "backlit", "faces in shadow", "not detailed", "hands"):
+        assert phrase in style
+
+
+def test_the_template_keeps_people_soft_and_never_a_portrait() -> None:
+    system = art.load_template().system.lower()
+    for phrase in ("small in the frame", "faces", "never a close-up"):
+        assert phrase in system
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Two friends in a car",
+        "a woman reading",
+        "A MAN on a pier",
+        "children playing",
+        "a crowd cheering",
+        "hands raised to the sky",
+        "a lone figure at the gate",
+        "a smiling face in the window",
+        "dancers under neon",
+        "a couple on a bench",
+        "a person walking",
+        "people on the street",
+        "a girl with a kite",
+        "the driver waves",
+    ],
+)
+def test_people_are_noticed(text: str) -> None:
+    assert art.mentions_people(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "An empty convertible on a coast road",
+        "a rainy window with a steaming mug",
+        "a manmade lake at dusk",
+        "a humming neon sign, no letters",
+        "a figurehead-free wooden boat",
+        "the hands of a clock tower",
+    ],
+)
+def test_scenes_without_people_are_left_alone(text: str) -> None:
+    assert not art.mentions_people(text)
