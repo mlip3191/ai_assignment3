@@ -391,7 +391,9 @@ def render(
         track = library.get(current) if current else None
         if track is None:
             return cover_updates(CoverView(str(art.placeholder_path()), "", True))
-        start_cover(track)
+        running = art.cover_job_for(track.id)
+        if running is None or running.finished_at is not None:  # a double click paints once
+            start_cover(track)
         return cover_updates(CoverView(str(art.placeholder_path()), art.COVER_STAGE, False))
 
     for trigger in (button, retry):

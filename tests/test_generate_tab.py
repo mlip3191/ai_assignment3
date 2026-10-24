@@ -609,6 +609,29 @@ def test_retry_cover_restarts_the_cover_and_the_check(library: Library, make_tra
     assert out[2]["active"] is False
 
 
+def test_a_double_click_on_retry_cover_starts_one_cover(
+    library: Library, make_track, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Agent review: the button hides only after the first reply, so a double click started two FLUX jobs."""
+    jobs = JobStore()
+    monkeypatch.setattr(art, "_cover_jobs", jobs)
+    _track(library, make_track)
+    started: list[str] = []
+
+    def hook(track: Track) -> None:  # records a running job the way art.start_cover does
+        started.append(track.id)
+        job = jobs.create("cover", art.COVER_STAGE)
+        jobs.set_stage(job.id, art.COVER_STAGE, track.id)
+
+    demo, _ = _demo(library, start_cover=hook)
+    retry_cover = _fn_for(demo, "gen-retry-cover", "click").fn
+    first, second = retry_cover("t1"), retry_cover("t1")
+    assert started == ["t1"]
+    for out in (first, second):
+        assert out[1]["value"] == art.COVER_STAGE
+        assert out[2]["active"] is True
+
+
 def test_the_result_card_offers_retry_cover_only_when_the_cover_failed() -> None:
     painting = tab.GenerateView(status="", running=False, track_id="t1", cover=tab.CoverView("p", "x", False))
     failed = tab.GenerateView(
