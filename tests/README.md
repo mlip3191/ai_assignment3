@@ -19,6 +19,7 @@ One file per module, named `test_<module>.py`:
 | `test_lanes.py` | Lane issue generation |
 | `test_playback_spike.py` | E1 Option A queue: clip order, skip, stale end event, one autoplay Audio |
 | `test_app_shell.py` | E2 shell: placeholder panels, loopback launch, no model clients |
+| `test_generate_tab.py` | B7 Generate tab: the 8.1 controls and help text, Generate disabled while running and re-enabled after success or failure, each stage with elapsed time and the usual wait, 7.3 errors with Retry and inputs kept, the result card, the cover by `track_id`, B8 warnings before Generate, one run end to end with Qwen and ACE-Step mocked |
 | `test_config.py` | `jukebox/config.py`: required variables, one port per service, no port 9000, no secrets in output |
 | `test_check_config.py` | `scripts/check_config.py`: OK/missing table that never prints values |
 | `test_requirements_dev.py` | `requirements-dev.txt`: exact `==` pins for pytest, respx and ruff; CI and `setup_dev.py` install it |
