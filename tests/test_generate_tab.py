@@ -178,6 +178,7 @@ def test_help_text_explains_every_control(library: Library) -> None:
     for word in ("Style", "Mood", "Length", "Vocal", "Instrumental", "Song idea", "Generate"):
         assert word in help_text
     assert "real artist" in help_text
+    assert "imitat" not in help_text  # the default voice can still resemble a singer (README, Known issues)
     for elem_id in ("gen-genre", "gen-extra", "gen-mood", "gen-duration", "gen-type", "gen-theme"):
         assert _by_id(demo, elem_id).info, f"{elem_id} has no help line"
 
@@ -719,7 +720,7 @@ def test_cover_for_an_unknown_track_stops_quietly(library: Library) -> None:
 
 def test_style_and_theme_warnings_show_before_generate() -> None:
     assert "Taylor Swift" in tab.style_note("pop", "in the style of Taylor Swift")
-    assert "never imitate real artists" in tab.style_note("pop", "in the style of Taylor Swift")
+    assert "aren't sent to the song models" in tab.style_note("pop", "in the style of Taylor Swift")
     assert tab.style_note("pop", "warm pads") == ""
     assert "Adele" in tab.theme_note("a breakup song in the style of Adele")
     assert tab.theme_note("a road trip") == ""

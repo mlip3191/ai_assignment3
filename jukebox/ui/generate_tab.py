@@ -62,7 +62,7 @@ HELP = "\n".join(
         "**Make a new song.** Pick a style and a mood, choose the length, and press **Generate**.",
         "",
         "- **Style:** the kind of music. Add your own words under *Extra style tags*, like instruments or "
-        "an era. Names of real artists are removed: every song is original and never imitates a real artist.",
+        "an era. Names of real artists are removed before anything is sent to the models.",
         "- **Mood:** how the song should feel.",
         f"- **Length:** {MIN_DURATION_S} to {MAX_DURATION_S} seconds. Vocal songs sound best at 30 seconds "
         "or more.",
