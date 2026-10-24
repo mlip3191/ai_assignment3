@@ -18,7 +18,8 @@ One file per module, named `test_<module>.py`:
 | `test_check_models.py` | Only-the-four-class-models check |
 | `test_lanes.py` | Lane issue generation |
 | `test_playback_spike.py` | E1 Option A queue: clip order, skip, stale end event, one autoplay Audio |
-| `test_library_tab.py` | A7 Library tab: list, preview by track id, refresh, no model client |
+| `test_library_tab.py` | A7 Library tab: list, preview by track id, escaped fields, pick and timer tick, no model client |
+| `test_markdown.py` | A7 shared escape: generated text stays plain text (characters, line breaks, list markers) |
 | `test_integration.py` | A7 integration with mocked services: generate, library, queue, cover later, DJ clip, failures |
 | `test_app_shell.py` | E2 shell: placeholder panels, loopback launch, no model clients |
 | `test_player_panel.py` | E4 player: one autoplay Audio, Play queue, Skip, end event, cover and title; A7 Add to queue, Play now, DJ clip plug point |

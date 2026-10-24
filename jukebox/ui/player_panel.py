@@ -28,6 +28,7 @@ from jukebox.config import ROOT
 from jukebox.library import Library, get_library
 from jukebox.services.art import cover_for
 from jukebox.services.player import DJ_UNAVAILABLE, FINISHED, Player, PlayerError, PlayItem
+from jukebox.ui.markdown import escape
 
 SPEAKING = "DJ speaking…"
 NOW_PLAYING = "Now playing"
@@ -162,14 +163,14 @@ def panel_text(view: PlayerView) -> str:
     """The now-playing line, the title, a DJ notice, and the up-next titles."""
     lines = [f"**{view.label}**", ""]
     if view.title:
-        lines.append(view.title)
+        lines.append(escape(view.title))
         lines.append("")
     if view.notice and view.notice != view.label:
         lines.append(view.notice)
         lines.append("")
     if view.up_next:
         lines.append("Up next:")
-        lines.extend(f"- {title}" for title, _cover in view.up_next)
+        lines.extend(f"- {escape(title)}" for title, _cover in view.up_next)
     else:
         lines.append("Up next: nothing queued.")
     return "\n".join(lines)

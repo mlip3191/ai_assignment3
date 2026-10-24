@@ -16,9 +16,12 @@ from jukebox.ui.library_tab import (  # noqa: E402
     EMPTY_TEXT,
     LibraryTab,
     choices,
+    pick,
     preview,
     refresh,
     render,
+    snapshot,
+    tick,
 )
 from jukebox.ui.player_panel import UNKNOWN_TRACK  # noqa: E402
 
@@ -112,3 +115,99 @@ def test_the_tab_imports_no_model_client() -> None:
     source = (ROOT / "jukebox" / "ui" / "library_tab.py").read_text(encoding="utf-8")
     assert "jukebox.clients" not in source
     assert "httpx" not in source
+
+
+def _skips(out: tuple) -> bool:
+    return len(out) == 5 and all(item == gr.skip() for item in out)
+
+
+def test_the_preview_escapes_every_generated_field(tmp_path: Path, make_track) -> None:
+    library = Library(root=tmp_path)
+    _add(
+        library,
+        make_track,
+        tmp_path,
+        "t1",
+        "# Big *Title*",
+        style="lo-fi\n# injected",
+        mood="<b>calm</b>",
+        theme="x\n- a list",
+    )
+    lines = preview(library, "t1").details.split("\n")
+    assert lines[0] == "### \\# Big \\*Title\\*"
+    assert not any(line.startswith(("# ", "- ", "<")) for line in lines)
+    assert not any("injected" in line and line.startswith("\\#") for line in lines)
+    assert "<b>" not in "\n".join(lines)
+
+
+def test_pick_returns_the_cover_details_and_the_chosen_id(tmp_path: Path, make_track) -> None:
+    library = Library(root=tmp_path)
+    _add(library, make_track, tmp_path, "t1", "First Song")
+    cover, details, selected = pick(library, "t1")
+    assert selected == "t1"
+    assert "First Song" in details
+    assert cover == preview(library, "t1").cover
+    assert pick(library, None)[2] is None  # nothing chosen
+    assert pick(library, "nope")[2] is None  # a song that is gone is not chosen
+
+
+def test_a_tick_with_nothing_new_touches_nothing(tmp_path: Path, make_track) -> None:
+    library = Library(root=tmp_path)
+    _add(library, make_track, tmp_path, "t1", "First Song")
+    assert _skips(tick(library, "t1", snapshot(library)))
+    assert _skips(tick(library, None, snapshot(library)))
+
+
+def test_a_tick_adds_a_new_song_without_touching_the_choice(tmp_path: Path, make_track) -> None:
+    library = Library(root=tmp_path)
+    _add(library, make_track, tmp_path, "t1", "First Song")
+    seen = snapshot(library)
+    _add(library, make_track, tmp_path, "t2", "Brand New")
+    listing, _cover, _details, selected, now = tick(library, "t1", seen)
+    assert [track_id for _label, track_id in listing["choices"]] == ["t1", "t2"]
+    assert "value" not in listing  # a click made while the tick runs is never undone
+    assert selected == gr.skip()
+    assert now == snapshot(library)
+    assert now != seen
+
+
+def test_a_tick_leaves_an_empty_choice_alone_too(tmp_path: Path, make_track) -> None:
+    library = Library(root=tmp_path)
+    seen = snapshot(library)
+    _add(library, make_track, tmp_path, "t1", "First Song")
+    listing, _cover, _details, selected, _now = tick(library, None, seen)
+    assert len(listing["choices"]) == 1
+    assert "value" not in listing  # the user may have just picked it
+    assert selected == gr.skip()
+
+
+def test_a_tick_shows_the_cover_that_just_arrived_for_the_chosen_song(tmp_path: Path, make_track) -> None:
+    library = Library(root=tmp_path)
+    _add(library, make_track, tmp_path, "t1", "First Song", cover_path=None)
+    seen = snapshot(library)
+    cover = tmp_path / "runtime" / "generated" / "t1.jpg"
+    cover.write_bytes(b"\xff\xd8\xff\xe0cover")
+    library.attach_cover("t1", "runtime/generated/t1.jpg", "a quiet scene")
+    _listing, shown_cover, details, _selected, now = tick(library, "t1", seen)
+    assert shown_cover == str(cover)
+    assert "First Song" in details
+    assert now != seen
+
+
+def test_a_tick_resets_the_choice_only_when_that_song_is_gone(tmp_path: Path, make_track) -> None:
+    library = Library(root=tmp_path)
+    _add(library, make_track, tmp_path, "t1", "First Song")
+    listing, cover, details, selected, _now = tick(library, "gone", ())
+    assert listing["value"] is None
+    assert selected is None
+    assert cover == str(placeholder_path())
+    assert details == preview(library, None).details
+
+
+def test_the_pick_and_the_tick_run_one_at_a_time_so_a_slow_tick_cannot_overwrite_a_pick() -> None:
+    with gr.Blocks() as demo:
+        render(library=Library(root=ROOT))
+    ids = {fn.concurrency_id for fn in demo.fns.values()}
+    limits = {fn.concurrency_limit for fn in demo.fns.values()}
+    assert len(ids) == 1  # both handlers share one lane
+    assert limits == {1}

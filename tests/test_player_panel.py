@@ -23,6 +23,7 @@ from jukebox.ui.player_panel import (  # noqa: E402
     SPEAKING,
     UNKNOWN_TRACK,
     PlayerPanel,
+    PlayerView,
     _gradio,
     on_add,
     on_end,
@@ -466,3 +467,22 @@ def test_render_returns_a_panel_that_binds_buttons_to_this_players_outputs() -> 
         if target[1] == "click"
     }
     assert {add._id, now._id} <= clicks
+
+
+def test_panel_text_escapes_generated_titles_so_they_stay_plain_text() -> None:
+    view = PlayerView(
+        None,
+        NOW_PLAYING,
+        "# Hello *world*\nMix <b>1</b>",
+        None,
+        None,
+        (("1. Intro", "cover.jpg"), ("- Sneaky\n> quote", "cover.jpg")),
+        1,
+        False,
+    )
+    lines = panel_text(view).split("\n")
+    assert "\\# Hello \\*world\\* Mix \\<b\\>1\\</b\\>" in lines  # one plain line, nothing formatted
+    assert "- 1\\. Intro" in lines  # the list item is ours, the song's own number is text
+    assert "- \\- Sneaky \\> quote" in lines
+    assert not any(line.startswith(("#", ">")) for line in lines)
+    assert "<b>" not in panel_text(view)
