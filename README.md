@@ -37,8 +37,8 @@ _TODO: song generation (B), cover art (C), DJ (D), playback controls (E)._
 
 ## Sample songs
 
-The app ships with three ready-to-play sample songs, so the library and the AI DJ work the moment the
-app starts. Each has a title and its own cover.
+The app ships with three ready-to-play sample songs, so the library and the player have something to play
+the moment the app starts: press **Play queue**. Each has a title and its own cover.
 
 | # | Title | Kind | Style | Mood | Length |
 |---|---|---|---|---|---|
