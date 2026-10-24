@@ -69,6 +69,7 @@ If someone asks you to read this file and tell them what to do, follow these rul
 
 | Windows | macOS |
 |---|---|
+| **First, unblock the ZIP:** right-click it → **Properties** → at the bottom of the General tab, tick **Unblock** → **OK**. Without this, Smart App Control blocks `run.bat`. (No Unblock box means it's already unblocked.) | |
 | Right-click the ZIP → **Extract All…** → set the destination to `C:\jukebox` → **Extract**. | Double-click the ZIP in Downloads. Drag the folder it creates into your home folder (Finder → Go → Home). |
 | Open the extracted folder until you see `run.bat`, `README.md`, and `PROJECT.md`. That's the **app folder**. | Open the folder until you see `run.sh`, `README.md`, and `PROJECT.md`. That's the **app folder**. |
 
@@ -99,7 +100,7 @@ Run the launcher again (double-click `run.bat`, or the `bash` + drag `run.sh` st
 2. Checks it can reach the class servers.
 3. Opens your web browser at **http://127.0.0.1:7860**. That's the app. If the browser doesn't open, type that address into it yourself.
 
-**Keep the launcher window open** while you use the app; closing it stops the app. To stop on purpose, close the window, or click in it and press **Ctrl+C**.
+**Keep the launcher window open** while you use the app; closing it stops the app. To stop on purpose: on Windows, close the window; on macOS, close it or click in it and press **Ctrl+C**.
 
 #### 0.4.6 Try the three features
 
@@ -123,6 +124,7 @@ Songs you generate stay in the library **until you stop the app**. The 3 samples
 
 | What you see | What to do |
 |---|---|
+| Windows: "Smart App Control blocked a file that may be unsafe" when you start `run.bat` | Delete the app folder, unblock the ZIP (§0.4.3), and extract it again. Don't use **Run as administrator**, and don't turn Smart App Control off (it can't be turned back on without reinstalling Windows). |
 | Windows: the black window flashes and disappears | Open Terminal in the app folder (§0.7), type `.\run.bat`, press Enter, and read the message. |
 | "Python was not found" / `py` not recognized | Re-run the Python installer (Windows: tick **Add python.exe to PATH**), then open a **new** Terminal window. |
 | The launcher says `.env` is missing or still has placeholders | Fill in `.env` as in §0.4.4 and save. On macOS, Finder hides files whose names start with a dot. Press **Cmd+Shift+.** to show them. |
@@ -363,7 +365,7 @@ IDs start with **DL** so they're never confused with the AI DJ issue keys (D1–
 | 10/12 | **Avoid an ffmpeg dependency** | One less system install for the grader; decode MP3/WAV with `soundfile` (wheels bundle libsndfile with MP3 support; verify in M0) | pydub/ffmpeg |
 | 10/12 | **Shared Claude Code skills, hooks, and permissions committed in `.claude/`** | Everyone's agent follows the same session routine and the same guardrails; a guard hook blocks the most damaging mistakes (touching `.env`, pushing to main, port 9000) even when a human forgets | Each member configuring Claude Code individually |
 | 10/12 | **Branch names carry the lane issue number and task key** (`feat/2-b4-acestep-client`) | Skills and the session hook find the lane and task automatically; PRs tie to the right checkbox | `feat/<area>-<desc>` |
-| 10/12 | **One GitHub issue per person (5 "lanes")**, each holding that person's task checklist (48 tasks total), owned files, and hand-offs | Each person has one clear place to look and a lane nobody else works in; GitHub shows "3 of 10 tasks" progress per person; still one branch + one PR per task, so reviews stay small | 45 separate issues (too much to track); one issue per feature with shared ownership |
+| 10/12 | **One GitHub issue per person (5 "lanes")**, each holding that person's task checklist (49 tasks total), owned files, and hand-offs | Each person has one clear place to look and a lane nobody else works in; GitHub shows "3 of 10 tasks" progress per person; still one branch + one PR per task, so reviews stay small | 45 separate issues (too much to track); one issue per feature with shared ownership |
 | 10/12 | **Task boxes tick automatically on merge** (`tick-task.yml` reads `Part of #N` + `Task: B4` from the PR) | Lane progress stays accurate without anyone remembering to update it | Manual ticking |
 | 10/12 | **Backlog lives in `scripts/github/issues.json`** and is created by `bootstrap.py` | One reviewed source for lanes, tasks, and dependencies; re-runnable | Typing issues by hand |
 | 10/12 | **Support macOS and native Windows equally** | The team (and probably the grader) uses both; anything that only works on one OS fails the independent-deploy test | Mac-only scripts; requiring WSL |
@@ -471,7 +473,7 @@ ai-jukebox/
 │   ├── check_models.py         # Fails if anything could use a model other than the four class models
 │   ├── scan_secrets.py         # Fails on key-like strings, .env, runtime/, stray audio, port 9000 (--zip for releases)
 │   └── github/
-│       ├── issues.json         # The backlog: 5 lanes, 48 tasks, owned files, hand-offs, dependencies
+│       ├── issues.json         # The backlog: 5 lanes, 49 tasks, owned files, hand-offs, dependencies
 │       ├── lanes.py            # Renders lane issue bodies (used by the two scripts below)
 │       ├── bootstrap.py        # Creates labels, the milestone, the 5 lane issues; invites team; protects main (§18)
 │       ├── assignments.py      # Prints the §19 lane tables from issues.json + team.json
@@ -1733,7 +1735,7 @@ Each person owns one lane, and each lane is **one GitHub issue** (label `lane`) 
 
 | Lane | Owner | OS | Tasks | Reviewer of their PRs | Mission (short) |
 |---|---|---|---|---|---|
-| **A: Platform & Release** | TBD | TBD | 12 | E | Make it possible for everyone else to build, and make sure what we submit installs, passes, and arrives on Canvas correctly. |
+| **A: Platform & Release** | TBD | TBD | 13 | E | Make it possible for everyone else to build, and make sure what we submit installs, passes, and arrives on Canvas correctly. |
 | **B: Song Generation** | TBD | TBD | 10 | D | Turn a user's style, mood, duration, and theme into a playable song in the library: instrumental, or vocal with original AI-written lyrics. |
 | **C: Cover Art, Samples & Evidence** | TBD | TBD | 9 | B | Give every song its own matching FLUX cover, produce the three bundled sample songs and their generation log, and own the evidence the grader sees: starter prompt, screenshots, and the non-technical usability run. |
 | **D: AI DJ & Launchers** | TBD | TBD | 9 | C | Make the DJ talk: a short, song-specific intro written by Qwen and spoken by Chatterbox before each queued song, with an optional uploaded MP3/WAV voice. |
@@ -1757,6 +1759,7 @@ Each person owns one lane, and each lane is **one GitHub issue** (label `lane`) 
 | A6 | M1 (Sun 10/25) | Track/Job models, thread-safe library, sample manifest loader, job store | A2 |
 | A11 | M1 (Sun 10/25) | Make the pre-push hook executable in git and have doctor catch it | — |
 | A12 | M2 (Tue 10/27) | Make the pre-push gate run the tests the way CI does | — |
+| A13 | M2 (Tue 10/27) | Pin the developer tools in requirements-dev.txt | — |
 | A7 | M2 (Tue 10/27) | Integration: song → cover → library → queue → DJ prefetch | B7 (B), C4 (C), D3 (D), E4 (E) |
 | A8 | M3 (Wed 10/28) | Tag release candidate rc1 and fix deploy findings | A7, C6 (C), D6 (D) |
 | A9 | M4 (Thu 10/29) | README assembly: setup, architecture, safeguards, contributions | E7 (E) |
@@ -1848,6 +1851,6 @@ Each person owns one lane, and each lane is **one GitHub issue** (label `lane`) 
 |---|---|---|---|---|---|---|
 | M0 Foundations & spikes (due Wed 10/21) | 5 | 2 | 2 | 1 | 2 | 12 |
 | M1 Vertical slices (due Sun 10/25) | 2 | 5 | 3 | 3 | 2 | 15 |
-| M2 Integration & samples (due Tue 10/27) | 2 | 1 | 2 | 2 | 1 | 8 |
+| M2 Integration & samples (due Tue 10/27) | 3 | 1 | 2 | 2 | 1 | 9 |
 | M3 Independent deploy test (due Wed 10/28) | 1 | 0 | 1 | 1 | 2 | 5 |
 | M4 Docs, evidence, submit (due Thu 10/29) | 2 | 2 | 1 | 2 | 1 | 8 |

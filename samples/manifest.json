@@ -1,0 +1,50 @@
+[
+  {
+    "id": "sample_01",
+    "title": "Midnight Notes Fade",
+    "style": "lo-fi hip hop, jazzy keys, vinyl crackle, soft drums",
+    "mood": "mellow",
+    "theme": "late-night study session",
+    "duration_s": 60,
+    "vocal": false,
+    "lyrics": null,
+    "audio_path": "samples/audio/sample_01.mp3",
+    "cover_path": "samples/covers/sample_01.jpg",
+    "cover_prompt": "A cluttered desk bathed in dim blue twilight, featuring an open notebook with fading ink and a steaming mug. Soft rain streaks the window behind, while warm lamplight highlights scattered books and headphones resting on wood. The scene evokes quiet solitude and mellow focus, rendered in a textured digital illustration style with muted tones and gentle shadows, square album cover, no text, no letters, no logos, no real people",
+    "source": "sample",
+    "seed": 101,
+    "created_at": "2026-10-24T18:41:24+00:00"
+  },
+  {
+    "id": "sample_02",
+    "title": "Windows Down",
+    "style": "upbeat pop, summery, bright synths, catchy chorus, warm natural female vocals",
+    "mood": "joyful",
+    "theme": "road trip with friends",
+    "duration_s": 60,
+    "vocal": true,
+    "lyrics": "[intro]\n\n[verse]\nSunlight spills on the dashboard light\nLaughter echoes in the night\nMaps are gone, we trust the vibe\nHolding hands, keeping alive\n\n[chorus]\nWe are flying, free and wild\nChasing dreams, no time to hide\nWindows down, hearts open wide\nTogether now, side by side\n\n[outro]\nKeep it rolling, never stop\nThis is our forever drop",
+    "audio_path": "samples/audio/sample_02.mp3",
+    "cover_path": "samples/covers/sample_02.jpg",
+    "cover_prompt": "A vintage convertible speeds along a coastal highway, bathed in golden hour sunlight. Two distant silhouettes sit inside with windows down, arms raised joyfully toward the sky. The scene features vibrant blues and warm oranges, capturing a carefree road trip atmosphere. Bright natural lighting highlights the open landscape and the feeling of freedom, rendered in a cheerful, high-resolution photographic style, square album cover, no text, no letters, no logos, no real people",
+    "source": "sample",
+    "seed": 202,
+    "created_at": "2026-10-24T18:41:34+00:00"
+  },
+  {
+    "id": "sample_03",
+    "title": "Dust on the Gate",
+    "style": "cinematic folk, acoustic guitar, strings, warm natural male vocals",
+    "mood": "melancholy",
+    "theme": "leaving a hometown",
+    "duration_s": 60,
+    "vocal": true,
+    "lyrics": "[intro]\n\n[verse]\nThe old oak door creaks in the wind\nI pack my bag with a heavy hand\nThe town sleeps tight, I’m barely seen\nLeaving behind this quiet land\n\n[chorus]\nI’m walking away from the familiar street\nWhere the shadows stretch and the memories meet\nNo looking back at the fading light\nJust the long road waiting for me tonight\n\n[outro]\nThe engine starts, a low hum grows\nI watch the porch lights fade to snow",
+    "audio_path": "samples/audio/sample_03.mp3",
+    "cover_path": "samples/covers/sample_03.jpg",
+    "cover_prompt": "A lone silhouette stands before a weathered wooden gate in twilight, back turned to the viewer. The scene is bathed in muted earth tones and fading amber light, with long shadows stretching across the dirt path. Soft focus surrounds a distant, sleeping town under a deepening blue sky, evoking a sense of quiet melancholy and departure through cinematic, naturalistic composition, square album cover, no text, no letters, no logos, no real people",
+    "source": "sample",
+    "seed": 303,
+    "created_at": "2026-10-24T18:41:43+00:00"
+  }
+]

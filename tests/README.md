@@ -19,8 +19,11 @@ One file per module, named `test_<module>.py`:
 | `test_lanes.py` | Lane issue generation |
 | `test_playback_spike.py` | E1 Option A queue: clip order, skip, stale end event, one autoplay Audio |
 | `test_app_shell.py` | E2 shell: placeholder panels, loopback launch, no model clients |
+| `test_player_panel.py` | E4 player: one autoplay Audio, Play queue, Skip, end event, cover and title |
+| `test_generate_tab.py` | B7 Generate tab: the 8.1 controls and help text, Generate disabled while running and re-enabled after success or failure, each stage with elapsed time and the usual wait, 7.3 errors with Retry and inputs kept, the result card, the cover by `track_id`, B8 warnings before Generate, one run end to end with Qwen and ACE-Step mocked |
 | `test_config.py` | `jukebox/config.py`: required variables, one port per service, no port 9000, no secrets in output |
 | `test_check_config.py` | `scripts/check_config.py`: OK/missing table that never prints values |
+| `test_requirements_dev.py` | `requirements-dev.txt`: exact `==` pins for pytest, respx and ruff; CI and `setup_dev.py` install it |
 | `test_player.py` | `jukebox/services/player.py`: queue order, skip, a missing DJ clip, end of queue |
 | `test_chatterbox.py` | `jukebox/clients/chatterbox.py`: `speak()` request format (default and reference voice), local input checks, each error kind with no retry, speech endpoint on 9008 only |
 | `test_dj.py` | `jukebox/services/dj.py` and `prompts/dj.md`: song-specific script (title, word limit, cleanup, one retry), clip saved under `runtime/generated/`, only the Qwen and Chatterbox clients |

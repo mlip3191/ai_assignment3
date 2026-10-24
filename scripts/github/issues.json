@@ -416,6 +416,24 @@
             "§16.5"
           ],
           "depends": []
+        },
+        {
+          "key": "A13",
+          "title": "Pin the developer tools in requirements-dev.txt",
+          "milestone": "M2",
+          "goal": "Everyone and CI install the same pytest, respx and ruff. requirements-dev.txt lists them unpinned, so a new release can change ruff's formatting or break the suite for one person or one OS (CI installs this file on Ubuntu, Windows and macOS). Runtime dependencies are pinned in requirements.txt (lane D); this task covers the developer tools only.",
+          "criteria": [
+            "requirements-dev.txt pins pytest, respx and ruff to exact versions with `==`, at the versions the suite and `ruff format --check` pass with today",
+            "A test fails if any line in requirements-dev.txt is unpinned or uses a range, if pytest, respx or ruff is missing, or if CI or scripts/setup_dev.py stops installing this file",
+            "The pins install on Windows, macOS and Python 3.11 (CI's Ubuntu job), and CI passes",
+            "Full pytest suite, ruff, scan_secrets and check_models pass",
+            "requirements.txt is not changed"
+          ],
+          "reqs": [],
+          "refs": [
+            "§4"
+          ],
+          "depends": []
         }
       ]
     },
