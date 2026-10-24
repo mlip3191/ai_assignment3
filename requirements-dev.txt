@@ -1,4 +1,6 @@
-# Developer and CI tools. Pin exact versions once the team settles them (issue: pinned requirements).
-pytest
-respx
-ruff
+# Developer and CI tools, each pinned to an exact version (PROJECT.md §4, task A13). Owned by lane A (@mlip3191).
+# CI and scripts/setup_dev.py install this file, so everyone and every OS gets the same tools.
+# To upgrade a tool, change its version here in a PR; the full suite and `ruff format --check` must still pass.
+pytest==9.1.1
+respx==0.23.1
+ruff==0.17.0

@@ -166,6 +166,240 @@ def write_song_text(*, style: str, mood: str, theme: str | None, duration_s: int
     return parse_song_reply(reply, vocal=vocal)
 
 
+# ---- the real-artist safeguard (B8) -------------------------------------------------------------
+
+# Words that describe a sound rather than name someone, so "in the style of Latin jazz", "Detroit techno"
+# or "Retro style synths" are kept. Anything else after a pointer phrase ("in the style of", "sounds like",
+# ...) is treated as a name and removed. Bare names with no pointer phrase are not caught.
+_SOUND_WORDS = frozenset(
+    """
+    pop rock jazz blues soul funk disco house techno trance edm electronic electronica dance ambient
+    classical orchestral orchestra cinematic folk country bluegrass americana punk metal grunge emo indie
+    alternative hip hop hip-hop rap trap drill r&b rnb gospel reggae reggaeton ska dub dubstep drum bass
+    jungle garage grime lo-fi lofi chillhop chillwave synthwave vaporwave synth synths synth-pop synthpop
+    wave shoegaze dream psychedelic psych prog progressive post-rock krautrock industrial gothic goth
+    darkwave latin salsa bossa nova samba tango flamenco mariachi cumbia afrobeat afrobeats highlife
+    celtic irish bollywood k-pop j-pop kpop jpop anime chiptune 8-bit baroque opera choral acoustic
+    electric piano guitar guitars strings brass lounge swing bebop big band music beats neo christmas
+    holiday western spaghetti southern bedroom yacht trip city video game games movie film soundtrack
+    lullaby ballad ballads show tune tunes
+    retro vintage classic modern old new epic dreamy dark soft heavy chill upbeat mellow warm bright
+    moody lush minimal experimental instrumental vocal vocals live raw smooth funky jazzy groovy early late
+    rainy sunny stormy summer winter spring autumn fall night nights midnight morning sunset sunrise
+    detroit chicago nashville memphis orleans london berlin ibiza uk british english french spanish
+    italian german greek nordic scandinavian russian japanese korean chinese indian arabic african
+    brazilian cuban jamaican caribbean mexican american west east coast female male
+    sunday monday tuesday wednesday thursday friday saturday motown brazil cuba jamaica mexico japan
+    korea india africa ireland scotland spain france italy paris tokyo havana rio
+    tropical island cozy phonk afro boom bap hyperpop dancehall nu halloween solo solos moonlight
+    heartfelt emotional drums pad pads chorus tempo slow fast hooks catchy reverb beat driving deep sad
+    happy road
+    """.split()
+)
+MAX_SCREENED_CHARS = 300  # style and theme are cut to this before screening, so pasted text stays fast
+_CONNECTORS = frozenset({"of", "the", "and", "or", "&", "de", "la", "del", "van", "von", "da", "y"})
+# A capitalized word. "/" keeps "AC/DC" and "Gaga/Madonna" together; "$" inside keeps "A$AP" and "Ke$ha"
+# whole (Mike's review of #48: "A$AP Rocky" left "$AP Rocky" behind).
+_WORD_TAIL = r"[\w'’.&+/$-]*"
+_CAP = rf"[A-ZÀ-ÖØ-Þ]{_WORD_TAIL}"
+# A word that starts with "$" is a name only with a second "$" ("$uicideboy$") or after another name word
+# ("Ty Dolla $ign"), so "$ummer", "$ad" and "$mall" stay everyday words.
+_DOLLAR_NAME = r"\$[A-Za-z][\w'’.&+/-]*\$[\w'’.&+/$-]*"
+_NAME = (
+    rf"(?:[Tt]he\s+)?(?:{_CAP}|{_DOLLAR_NAME})"
+    rf"(?:\s+(?:(?:of|the|and|or|&|de|la|del|van|von|da|y)\s+)*(?:{_CAP}|\$[A-Za-z]{_WORD_TAIL}))*"
+)
+_EVERYDAY_DOLLAR = re.compile(r"\$[a-z][^$]*")  # one leading "$" and no second one ("$ummer", "$ad")
+_NAME_AHEAD = rf"(?=\s+(?-i:[A-ZÀ-ÖØ-Þ]|{_DOLLAR_NAME}))"  # a name follows: "feat Drake", "a la $uicideboy$"
+_NAME_AT_START = re.compile(_NAME)
+# Pointer phrases that say "make it sound like someone". The theme gets only the first group (a theme is
+# a subject, so "a love song inspired by Paris" or "dancing like Nobody is watching" must stay).
+_STYLE_POINTERS = (
+    r"in\s+the\s+(?:style|vein|spirit|manner)\s+of|sounds?\s+like|à\s+la"
+    rf"|a\s+la{_NAME_AHEAD}"  # "a la carte" isn't one
+)
+_THEME_POINTER = re.compile(rf"\b(?:{_STYLE_POINTERS})\s+", re.IGNORECASE)
+# Credits name who made a song. A bare "by" counts only at the start of a part, so "folk by the Sea",
+# "song by Candlelight" and "Played by Ear" stay; "feat"/"ft" without a period need a capital after them.
+_CREDITS = (
+    r"(?:sung|performed|produced|written|covered|vocals)\s+by|covers?\s+of|featuring|feat\.|ft\."
+    rf"|(?:feat|ft){_NAME_AHEAD}"
+    r"|(?<=^)by|(?<=^\s)by"
+)
+_CREDIT = re.compile(rf"(?:{_CREDITS})\s*$", re.IGNORECASE)
+_POINTER = re.compile(
+    rf"\b(?:{_STYLE_POINTERS}|the\s+voice\s+of|inspired\s+by|influenced\s+by|reminiscent\s+of|similar\s+to"
+    rf"|{_CREDITS}"
+    r"|like(?=\s+(?:a|an|my|our|your|his|her|their|this|that)\s))\s+",  # "like a <Name> anthem"
+    re.IGNORECASE,
+)
+# Only the explicit "-style / -esque / -inspired". Looser forms ("<Name> vibe", "type beat", "-ish",
+# "-like") can't be told apart from everyday styles ("Golden Hour vibes", "Workout type beat"), so they
+# are a known limit (B9).
+_NAME_STYLE = re.compile(rf"(?<![\w'’-])({_NAME})(?:-|\s+)(?i:style|esque|inspired)\b")
+_POSSESSIVE = re.compile(
+    rf"(?<![\w'’-])({_NAME})['’]s\s+(?i:voice|vocals?|sound|style|music|songs?|singing|band)\b"
+)
+_LIKE_NAME = re.compile(rf"(?i:\blike)\s+({_NAME})")
+_JOINER = re.compile(r"^\s*(?:and|or|&|/)\s+", re.IGNORECASE)  # "Ed Sheeran and pop" leaves "pop"
+_OWNER = frozenset({"a", "an", "my", "our", "your", "his", "her", "their", "this", "that"})
+_ERA = re.compile(r"'?\d{2,4}s")
+
+
+@dataclass(frozen=True)
+class StyleCheck:
+    """Style or theme text with anything pointing at a real artist removed (PROJECT.md 8.1, H10)."""
+
+    text: str
+    removed: tuple[str, ...] = ()
+
+    @property
+    def warning(self) -> str | None:
+        """What the UI shows when something was removed, or None."""
+        if not self.removed:
+            return None
+        quoted = [f"“{phrase}”" for phrase in self.removed]
+        listed = quoted[0] if len(quoted) == 1 else ", ".join(quoted[:-1]) + " and " + quoted[-1]
+        return f"Removed {listed}. Songs are original and never imitate real artists."
+
+
+def check_style(text: str) -> StyleCheck:
+    """Remove "in the style of <Name>", "sounds like <Name>", "<Name>-esque", "<Name>'s voice",
+    "featuring <Name>", "like <Name>" and similar from the style.
+
+    A name is a capitalized word run ("Taylor Swift", "AC/DC", "Adele or Drake"); lowercase words are
+    never treated as a name, so "inspired by the sea" stays. Genres, places and eras are kept ("in the
+    style of Detroit techno" becomes "Detroit techno"), and so is a description that starts with "a", "my"
+    and the like unless it names someone. B7's form shows `.warning`.
+    """
+    return _screen(text, _POINTER, (_POSSESSIVE, _NAME_STYLE, _LIKE_NAME))
+
+
+def check_theme(text: str) -> StyleCheck:
+    """The theme's screen: only obvious style pointers ("in the style of <Name>", "sounds like <Name>",
+    "à la <Name>"). A theme is a subject, so names and places in it stay ("inspired by Paris", "Mom").
+    B7's form shows `.warning` for the theme too."""
+    return _screen(text, _THEME_POINTER, (), list_rule=False)
+
+
+def _screen(
+    text: str, pointer: re.Pattern[str], patterns: tuple[re.Pattern[str], ...], *, list_rule: bool = True
+) -> StyleCheck:
+    if not isinstance(text, str) or not text.strip():
+        return StyleCheck(text if isinstance(text, str) else "")
+    text = text[:MAX_SCREENED_CHARS]
+    removed: list[str] = []
+    parts = re.split(r"([,;])", text)
+    screened: list[str] = []
+    after_name = False  # the last part ended with a removed name, so a listed name ("Adele, Drake") goes too
+    for part in parts:
+        if part in (",", ";"):
+            screened.append(part)
+        elif list_rule and after_name and _looks_like_another_name(part):
+            removed[-1] += f", {part.strip()}"
+            screened.append("")
+        else:
+            part, after_name = _screen_part(part, removed, pointer, patterns)
+            screened.append(part)
+    if screened == parts:
+        return StyleCheck(text)
+    joined = re.sub(r"\(\s*\)|\[\s*\]", "", "".join(screened))  # "pop (like Adele)" leaves no "()"
+    joined = re.sub(r"\s+", " ", joined)
+    joined = re.sub(r"\s*([,;])\s*", r"\1 ", joined)
+    joined = re.sub(r"(?:[,;]\s*){2,}", ", ", joined)
+    return StyleCheck(joined.strip(" ,;-"), tuple(removed))
+
+
+def _screen_part(
+    part: str, removed: list[str], pointer: re.Pattern[str], patterns: tuple[re.Pattern[str], ...]
+) -> tuple[str, bool]:
+    """One comma-separated part with any pointer at a real artist taken out, and whether it ended with a
+    removed name."""
+    start, ended_with_name = 0, False
+    while match := pointer.search(part, start):
+        rest = part[match.end() :]
+        name = _NAME_AT_START.match(rest)
+        words = rest.split()
+        if name and not _is_sound(name.group(0)):
+            removed.append(part[match.start() : match.end() + name.end()].strip())
+            tail = _JOINER.sub("", rest[name.end() :])
+            part = part[: match.start()] + tail
+            ended_with_name = not tail.strip()
+            start = match.start()
+        elif name and _CREDIT.search(match.group(0)):
+            start = match.end()  # "pop ft. Heavy Bass": a credit before a sound is ordinary text
+        elif name:
+            part = part[: match.start()] + rest  # a genre or place ("Latin jazz"): drop only the pointer
+            start = match.start()
+        elif words and words[0].lower() in _OWNER:
+            # "sounds like a movie soundtrack" describes and is kept, unless it names someone
+            # ("in the style of a Taylor Swift song"): then the whole description goes.
+            if any(not _is_sound(m.group(0)) for m in _NAME_AT_START.finditer(rest)):
+                removed.append(part[match.start() :].strip())
+                part = part[: match.start()]
+                start = match.start()
+            else:
+                start = match.end()
+        elif words and _is_sound(words[0]) and not _CREDIT.search(match.group(0)):
+            part = part[: match.start()] + rest  # "in the style of 80s synthwave": drop only the pointer
+            start = match.start()
+        else:
+            # Lowercase words are a description ("inspired by the sea"), not a name. A lowercase artist
+            # name isn't caught either; that is a known limit, like a bare name (B9).
+            start = match.end()
+    for pattern in patterns:
+        part = pattern.sub(lambda m: _drop_name(m, removed), part)
+    return part, ended_with_name
+
+
+def _looks_like_another_name(part: str) -> bool:
+    """A comma part right after a removed name that is another name ("in the style of Adele, Drake") or
+    the rest of one ("Earth, Wind & Fire"): a capitalized name with no sound word in it. A title-case tag
+    with any sound word ("Warm Pads", "Rainy Day", "Female Vocals") is kept and ends the list."""
+    text = part.strip()
+    if not _NAME_AT_START.fullmatch(text):
+        return False
+    words = [w.lower().strip(".,'’\"()") for w in text.split()]
+    return not any(_is_sound_word(w) for w in words if w and w not in _CONNECTORS)
+
+
+def _drop_name(match: re.Match[str], removed: list[str]) -> str:
+    if _is_sound(match.group(1)):
+        return match.group(0)
+    removed.append(match.group(0).strip())
+    return ""
+
+
+def _is_sound(phrase: str) -> bool:
+    """True if every word describes a sound (a genre, place, era or descriptor), so it isn't a name.
+
+    An everyday "$" word ("$ummer", "$ound") is neutral: "Detroit $ound" is a sound, "Ty Dolla $ign" isn't.
+    """
+    words = [w.lower().strip(".,'’\"()") for w in phrase.split()]
+    words = [w for w in words if w and w not in _CONNECTORS and not _EVERYDAY_DOLLAR.fullmatch(w)]
+    return bool(words) and all(_is_sound_word(w) for w in words)
+
+
+def _is_sound_word(word: str) -> bool:
+    if word in _SOUND_WORDS or _ERA.fullmatch(word):
+        return True
+    pieces = [p for p in re.split(r"[-/]", word) if p]
+    return len(pieces) > 1 and all(p in _SOUND_WORDS or _ERA.fullmatch(p) for p in pieces)
+
+
+def _screen_artists(style: str, theme: str | None) -> tuple[str, str | None]:
+    """Apply check_style to the style and check_theme to the theme before any model call. A style that
+    named only an artist is refused; a theme that named only an artist becomes no theme."""
+    if isinstance(style, str):
+        checked = check_style(style)
+        if checked.removed and not checked.text:
+            raise _bad_input("Describe the style without naming real artists.")
+        style = checked.text
+    if isinstance(theme, str):
+        theme = check_theme(theme).text or None
+    return style, theme
+
+
 # ---- the pipeline (B6) --------------------------------------------------------------------------
 
 STAGE_QUEUED = "Queued"
@@ -175,6 +409,12 @@ STAGE_MUSIC = "Composing music…"
 STAGE_SAVING = "Saving your song…"
 STAGE_DONE = "Added to your library"
 GENERATED_DIR = "runtime/generated"  # stored paths are relative to the repo root (PROJECT.md 6.3)
+# A singing voice named in the style; "singer-songwriter" (a genre) and "vocal chops" (an effect) are not.
+_VOICE_WORDS = re.compile(
+    r"\b(?:vocal(?:s|ists?)?|voices?|singers?|singing|choirs?|rappers?|sopranos?|falsetto|crooners?"
+    r"|a\s+cappella|acapella)\b(?!-songwriter|\s+chops?\b|\s+sax)",
+    re.IGNORECASE,
+)
 
 # Song jobs go here unless the caller passes the app's own store.
 JOBS = JobStore()
@@ -183,10 +423,17 @@ JOBS = JobStore()
 def build_tags(style: str, mood: str, *, vocal: bool) -> str:
     """ACE-Step's style tags: the style, the mood, and the voice or "instrumental".
 
-    "warm natural vocals" because the default voice came out too high-pitched and whiny (B2, B6). A voice
-    the user puts in the style ("deep male vocals") comes first, so it wins.
+    "warm natural vocals" because the default voice came out too high-pitched and whiny (B2, B6). It is
+    added only when the style names no voice of its own ("deep male vocals", "choir"), so the tags never
+    carry two voices (review of #40).
     """
-    return ", ".join([style.strip(), mood.strip(), "warm natural vocals" if vocal else "instrumental"])
+    if not vocal:
+        voice = "instrumental"
+    elif _VOICE_WORDS.search(style):
+        voice = ""
+    else:
+        voice = "warm natural vocals"
+    return ", ".join(part for part in (style.strip(), mood.strip(), voice) if part)
 
 
 def generate_song(
@@ -215,6 +462,7 @@ def generate_song(
     track: Track | None = None
     try:
         yield job
+        style, theme = _screen_artists(style, theme)
         duration_s, seed = _check_inputs(style, mood, duration_s, seed)
         library = get_library() if library is None else library
         yield jobs.set_stage(job.id, STAGE_LYRICS if vocal else STAGE_TITLE)
