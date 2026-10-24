@@ -27,29 +27,34 @@ _TODO (A): what the app does + main screenshot._
 - **Python 3.11 or newer** (3.12 recommended). The steps below show how to install it.
 - **Network access to the class servers.** A VPN or the campus network was not needed when tested from a
   home network.
-- **The class credentials** in `class-endpoints.txt`, from the course materials.
+- **The class credentials** in `class-endpoints.txt`, from the course materials (ask the instructors if you
+  don't have it).
+- **The app ZIP:** from the Canvas submission, or from the repository's **Releases** page on GitHub
+  (**Source code (zip)**).
 - **A browser.** Browsers block sound until you click on the page, so start playback with **Play queue**.
 
 ## Setup
 The launcher does the technical work: on the first start it creates your settings file and opens it for
 you; on the next start it installs what the app needs, checks the class servers, and opens the app in your
-browser at **http://127.0.0.1:7860**.
+browser, usually at **http://127.0.0.1:7860** (if that port is busy, the launcher shows the address it used).
 
 ### Windows
 1. **Install Python** from **python.org/downloads** (3.12 recommended). On the installer's first screen,
    tick **Add python.exe to PATH**, then click **Install Now**.
-2. **Unblock the ZIP before you extract it.** Right-click the downloaded ZIP, choose **Properties**, tick
-   **Unblock** at the bottom, and click **OK**. Without this, Windows' Smart App Control blocks `run.bat`
-   ("Smart App Control blocked a file that may be unsafe"), with no option to run it anyway.
+2. **Unblock the ZIP before you extract it.** Right-click the downloaded ZIP, choose **Properties**, and at
+   the bottom of the General tab tick **Unblock**, then click **OK** (no Unblock box means it's already
+   unblocked). Without this, Windows' Smart App Control blocks `run.bat` ("Smart App Control blocked a file
+   that may be unsafe"), with no option to run it anyway.
 3. **Extract the ZIP:** right-click it, choose **Extract All…**, set the destination to `C:\jukebox`, and
-   click **Extract**. Don't put the folder inside OneDrive, and don't run anything from inside the ZIP.
-4. **First start:** in the extracted folder, double-click **`run.bat`**. If Windows shows "Windows protected
-   your PC", click **More info**, then **Run anyway**. The launcher creates a settings file called `.env`,
-   opens it in Notepad, and stops.
+   click **Extract**. Open the extracted folder until you see `run.bat` and `README.md`: that's the **app
+   folder**. Don't put it inside OneDrive, and don't run anything from inside the ZIP.
+4. **First start:** in the app folder, double-click **`run.bat`**. If Windows shows "Windows protected your
+   PC", click **More info**, then **Run anyway**. The launcher creates a settings file called `.env`, opens
+   it in Notepad, and waits: press any key or close its window.
 5. **Fill in the settings:** change only the first 5 settings, `CLASS_API_KEY` and the four lines ending in
-   `_BASE_URL`, using the values from `class-endpoints.txt`. Put each value right after the `=`, with no
-   spaces or quotes. Leave the other lines as they are. Save, close Notepad, and keep the name `.env`. This
-   file stays on your computer: never email it or upload it.
+   `_BASE_URL`. For each one, replace the placeholder text after the `=` with the value from
+   `class-endpoints.txt`, with no spaces or quotes. Leave the other lines as they are. Save, close Notepad,
+   and keep the name `.env`. This file stays on your computer: never email it or upload it.
 6. **Start the app:** double-click **`run.bat`** again. The first time, it installs what the app needs,
    which takes a few minutes. Then it checks the class servers and opens the app in your browser. Keep the
    black launcher window open while you use the app; **close that window to stop the app**.
@@ -57,13 +62,15 @@ browser at **http://127.0.0.1:7860**.
 ### macOS
 1. **Install Python** from **python.org/downloads** (3.12 recommended, the `.pkg` installer).
 2. **Extract the ZIP:** double-click it in Downloads, then drag the folder it creates into your home folder
-   (Finder > Go > Home). Don't put it inside iCloud Drive.
+   (Finder > Go > Home). Open the folder until you see `run.sh` and `README.md`: that's the **app folder**.
+   Don't put it inside iCloud Drive.
 3. **First start:** open **Terminal**, type `bash ` (with a space after it), drag **`run.sh`** from the
    folder into the Terminal window, and press **Enter**. The launcher creates a settings file called `.env`,
    opens it in TextEdit, and stops.
 4. **Fill in the settings:** change only the first 5 settings, `CLASS_API_KEY` and the four lines ending in
-   `_BASE_URL`, using the values from `class-endpoints.txt`. Put each value right after the `=`, with no
-   spaces or quotes. Leave the other lines as they are. Save and keep the name `.env`. Finder hides files
+   `_BASE_URL`. For each one, replace the placeholder text after the `=` with the value from
+   `class-endpoints.txt`, with no spaces or quotes. Leave the other lines as they are. Save and keep the
+   name `.env`. Finder hides files
    whose names begin with a dot: press **Cmd+Shift+.** to see it. This file stays on your computer: never
    email it or upload it.
 5. **Start the app:** run `bash run.sh` again the same way. The first time, it installs what the app needs,
@@ -73,11 +80,14 @@ browser at **http://127.0.0.1:7860**.
 ### If something goes wrong
 | What you see | What to do |
 |---|---|
-| "Smart App Control blocked a file that may be unsafe" (Windows) | Delete the extracted folder, unblock the ZIP (Windows step 2), and extract it again. |
+| "Smart App Control blocked a file that may be unsafe" (Windows) | Delete the extracted folder, unblock the ZIP (Windows step 2), and extract it again. Don't use **Run as administrator**, and don't turn Smart App Control off: it can't be turned back on without reinstalling Windows. |
+| "An Application Control policy has blocked this file" (Windows, while the app starts) | Delete the `.venv` folder in the app folder and start the launcher again; it reinstalls the tested versions. |
 | "Python 3.11 or newer was not found" | Re-run the Python installer (Windows: tick **Add python.exe to PATH**), then open a new window and start the launcher again. |
 | The launcher lists settings that still need fixing | Open `.env` (the launcher opens it for you), fix the named settings, save, and start the launcher again. |
 | "The app is already running in another window" | It is: the launcher opens the running app in your browser instead of starting a second copy. |
-| A service "is unreachable right now" or "took too long" | The class servers may be busy, or your network may block them. Try again later. |
+| A service "rejected our credentials" | A value in `.env` is wrong. Copy it again from `class-endpoints.txt`, with no extra spaces, then restart the launcher. |
+| A service "is unreachable right now" or "took too long" | The class servers may be busy, or your network may block them. Use **Retry** in the app, or try again later. |
+| The browser says it "can't connect" | The launcher window must stay open while you use the app. Start the launcher again. |
 | No sound | Click on the page first, then check your volume and output device. |
 
 ## Using the app
