@@ -1,4 +1,5 @@
-# Runtime dependencies, pinned to exact versions. Owned by lane D (@dilloncsmart); lane D adds
-# gradio, soundfile and the rest. Added here by A3 because jukebox/clients/base.py needs httpx.
+# Runtime dependencies, each pinned to an exact version (PROJECT.md §4). Owned by lane D (@dilloncsmart).
+# run.sh / run.bat install these into .venv; they reinstall automatically when this file changes.
+# Only add packages here with a PR; scripts/check_models.py rejects AI SDKs and local-model packages.
 httpx==0.28.1
 gradio==6.30.0
