@@ -19,6 +19,7 @@ One file per module, named `test_<module>.py`:
 | `test_lanes.py` | Lane issue generation |
 | `test_playback_spike.py` | E1 Option A queue: clip order, skip, stale end event, one autoplay Audio |
 | `test_app_shell.py` | E2 shell: placeholder panels, loopback launch, no model clients |
+| `test_player_panel.py` | E4 player: one autoplay Audio, Play queue, Skip, end event, cover and title |
 | `test_config.py` | `jukebox/config.py`: required variables, one port per service, no port 9000, no secrets in output |
 | `test_check_config.py` | `scripts/check_config.py`: OK/missing table that never prints values |
 | `test_requirements_dev.py` | `requirements-dev.txt`: exact `==` pins for pytest, respx and ruff; CI and `setup_dev.py` install it |

@@ -95,22 +95,26 @@ def test_how_to_covers_play_generate_voice_and_measured_waits() -> None:
     assert "usually takes" not in text.lower()
 
 
-def test_player_has_one_unwired_audio() -> None:
+def test_player_wires_one_audio() -> None:
     demo = build_demo()
     audios = [block for block in demo.blocks.values() if type(block).__name__ == "Audio"]
     assert len(audios) == 1
     audio = audios[0]
-    assert audio.autoplay is False
+    assert audio.autoplay is True
     assert audio.interactive is False
     assert audio.elem_id == "now-playing"
+    images = [block for block in demo.blocks.values() if type(block).__name__ == "Image"]
+    assert len(images) == 1
+    assert images[0].elem_id == "now-cover"
+    assert list(images[0].buttons) == ["download"]
+    for block in images + audios:
+        assert "share" not in list(getattr(block, "buttons", []) or [])
     play = _block(demo, "play-queue")
     skip = _block(demo, "skip")
-    assert play.interactive is False
-    assert skip.interactive is False
+    assert play.interactive is True
+    assert skip.interactive is True
     bindings = _event_bindings(demo)
-    assert ("now-playing", "stop") not in bindings
-    assert ("play-queue", "click") not in bindings
-    assert ("skip", "click") not in bindings
+    assert bindings >= {("now-playing", "stop"), ("play-queue", "click"), ("skip", "click")}
 
 
 def test_launch_is_loopback_and_share_is_refused(tmp_path: Path) -> None:
