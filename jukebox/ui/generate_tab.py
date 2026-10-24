@@ -19,6 +19,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import get_args
 
 import gradio as gr
@@ -78,6 +79,8 @@ HELP = "\n".join(
 # Positions in the tuple updates() returns, matching the outputs list in render().
 OUT_STATUS, OUT_BUTTON, OUT_RETRY, OUT_RESULT, OUT_TITLE, OUT_LYRICS = range(6)
 OUT_COVER, OUT_COVER_NOTE, OUT_PLAY_NOW, OUT_ADD, OUT_TRACK, OUT_TIMER, OUT_PLAY_NOTE = range(6, 13)
+OUT_RETRY_COVER = 13
+COVER_WAIT_S = 60  # no cover job this long after the song means the cover never started (C1: ~2.3 s)
 
 PLAYER_NOT_CONNECTED = "Play now and Add to queue work once the player is connected."
 
@@ -101,6 +104,7 @@ class CoverView:
     path: str  # the cover, or the placeholder
     note: str  # "Painting cover…", the failure message, or ""
     done: bool  # True once there is nothing more to wait for
+    failed: bool = False  # the cover failed: offer Retry cover (7.3, 8.2)
 
 
 @dataclass(frozen=True)
@@ -182,8 +186,8 @@ def generate(
 
     start = clock()
     stage = songs.STAGE_QUEUED
+    threading.Thread(target=work, name="generate-song", daemon=True).start()  # before the first yield
     yield _running(stage, 0)
-    threading.Thread(target=work, name="generate-song", daemon=True).start()
     last: Job | None = None
     while True:
         try:
@@ -201,9 +205,16 @@ def generate(
 
 
 def cover_view(
-    track_id: str | None, *, library: Library | None = None, jobs: JobStore | None = None
+    track_id: str | None,
+    *,
+    library: Library | None = None,
+    jobs: JobStore | None = None,
+    now: datetime | None = None,
 ) -> CoverView:
-    """The result card's cover, looked up by `track_id`: the cover, or the placeholder and why."""
+    """The result card's cover, looked up by `track_id`: the cover, or the placeholder and why.
+
+    A cover that has no job a minute after its song counts as failed, so the card never waits forever.
+    """
     library = get_library() if library is None else library
     placeholder = str(art.placeholder_path())
     track = library.get(track_id) if track_id else None
@@ -213,10 +224,9 @@ def cover_view(
         return CoverView(str(art.cover_for(track_id, library=library)), "", True)
     job = art.cover_job_for(track_id, jobs=jobs)
     if job is not None and job.status == "failed":
-        message = job.error or GENERIC_FAILURE
-        return CoverView(
-            placeholder, f"{message} Your song is safe; it plays with a placeholder cover.", True
-        )
+        return _cover_failed(placeholder, job.error)
+    if job is None and _age_s(track, now) > COVER_WAIT_S:
+        return _cover_failed(placeholder, None)
     return CoverView(placeholder, art.COVER_STAGE, False)
 
 
@@ -242,15 +252,17 @@ def updates(view: GenerateView, *, player_connected: bool = False) -> tuple[obje
         view.track_id,
         gr.update(active=bool(cover and not cover.done)),
         gr.update(value=PLAYER_NOT_CONNECTED, visible=done and not player_connected),
+        gr.update(visible=bool(cover and cover.failed)),
     )
 
 
 def cover_updates(view: CoverView) -> tuple[object, ...]:
-    """One cover check: the image, its note, and whether the check keeps running."""
+    """One cover check: the image, its note, whether the check keeps running, and Retry cover."""
     return (
         gr.update(value=view.path),
         gr.update(value=view.note, visible=bool(view.note)),
         gr.update(active=not view.done),
+        gr.update(visible=view.failed),
     )
 
 
@@ -263,6 +275,8 @@ def render(
 ) -> GenerateTab:
     """Build the tab inside the current Blocks. The cover is painted for each new song by default.
 
+    A custom `start_cover` must record its job in art's shared cover job store (as `art.start_cover`
+    does), or the card can't follow it and reports the cover as failed after a minute.
     Pass `player_connected=True` once the returned buttons are connected to the player (A7); until
     then they stay off and the card says why.
     """
@@ -270,7 +284,8 @@ def render(
     if start_cover is None:
 
         def start_cover(track: Track) -> object:
-            return art.start_cover(track, library=library)
+            # Save the cover where this library reads it from (the repo root for the app's library).
+            return art.start_cover(track, library=library, root=library.resolve("."))
 
     gr.Markdown(HELP, elem_id="gen-help")
     with gr.Row():
@@ -336,6 +351,7 @@ def render(
             elem_id="gen-cover",
         )
         cover_note = gr.Markdown("", visible=False, elem_id="gen-cover-note")
+        retry_cover = gr.Button("Retry cover", size="sm", visible=False, elem_id="gen-retry-cover")
         lyrics = gr.Textbox(label="Lyrics", lines=8, interactive=False, visible=False, elem_id="gen-lyrics")
         with gr.Row():
             play_now = gr.Button("Play now", interactive=False, elem_id="gen-play-now")
@@ -359,7 +375,9 @@ def render(
         track_id,
         timer,
         play_note,
+        retry_cover,
     ]
+    cover_outputs = [cover, cover_note, timer, retry_cover]
 
     def on_generate(*form: object) -> Iterator[tuple[object, ...]]:
         for view in generate(*form, library=library, run=run, start_cover=start_cover):  # type: ignore[arg-type]
@@ -368,9 +386,18 @@ def render(
     def on_cover_tick(current: str | None) -> tuple[object, ...]:
         return cover_updates(cover_view(current, library=library))
 
+    def on_retry_cover(current: str | None) -> tuple[object, ...]:
+        """Paint the cover again through the same hook; the timer follows the new job."""
+        track = library.get(current) if current else None
+        if track is None:
+            return cover_updates(CoverView(str(art.placeholder_path()), "", True))
+        start_cover(track)
+        return cover_updates(CoverView(str(art.placeholder_path()), art.COVER_STAGE, False))
+
     for trigger in (button, retry):
         trigger.click(on_generate, inputs=inputs, outputs=outputs, show_progress="hidden")
-    timer.tick(on_cover_tick, inputs=[track_id], outputs=[cover, cover_note, timer], show_progress="hidden")
+    timer.tick(on_cover_tick, inputs=[track_id], outputs=cover_outputs, show_progress="hidden")
+    retry_cover.click(on_retry_cover, inputs=[track_id], outputs=cover_outputs, show_progress="hidden")
     for box in (genre, extra):
         box.change(style_note, inputs=[genre, extra], outputs=[style_warning], show_progress="hidden")
     theme.change(theme_note, inputs=[theme], outputs=[theme_warning], show_progress="hidden")
@@ -387,7 +414,7 @@ def _finished(job: Job | None, elapsed_s: int, library: Library) -> GenerateView
     if track is None:
         message = job.error if job and job.error else GENERIC_FAILURE
         offer = recovery_for(message)
-        status = f"{message} {_NEXT_STEP[offer]}"
+        status = f"{_escape(message)} {_NEXT_STEP[offer]}"  # a refused request's reason is plain text
         return GenerateView(
             status=status, running=False, failed=True, retry=offer == "retry", elapsed_s=elapsed_s
         )
@@ -424,6 +451,22 @@ def _recovery_prefixes() -> tuple[tuple[str, Recovery], ...]:
             if offer != "retry":
                 found.append((errors.user_message(err).split(_PROBE)[0], offer))
     return tuple(found)
+
+
+def _cover_failed(placeholder: str, error: str | None) -> CoverView:
+    note = f"{error or GENERIC_FAILURE} Your song is safe; it plays with a placeholder cover."
+    return CoverView(placeholder, note, True, failed=True)
+
+
+def _age_s(track: Track, now: datetime | None) -> float:
+    """Seconds since the song was made; 0 if its time can't be read."""
+    try:
+        made = datetime.fromisoformat(track.created_at)
+    except ValueError:
+        return 0.0
+    if made.tzinfo is None:
+        made = made.replace(tzinfo=UTC)
+    return ((now or datetime.now(UTC)) - made).total_seconds()
 
 
 def _escape(text: str) -> str:

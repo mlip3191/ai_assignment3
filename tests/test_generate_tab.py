@@ -9,7 +9,9 @@ from __future__ import annotations
 import json
 import sys
 import threading
+import time
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -28,7 +30,7 @@ from jukebox.clients.acestep import AceStepClient  # noqa: E402
 from jukebox.clients.qwen import QwenClient  # noqa: E402
 from jukebox.config import load_config  # noqa: E402
 from jukebox.errors import ServiceError  # noqa: E402
-from jukebox.jobs import JobStore  # noqa: E402
+from jukebox.jobs import GENERIC_FAILURE, JobStore  # noqa: E402
 from jukebox.library import Library  # noqa: E402
 from jukebox.models import Job, Track  # noqa: E402
 from jukebox.services import art  # noqa: E402
@@ -47,8 +49,11 @@ FORM = {
 class FakeRun:
     """Stands in for songs.generate_song: yields the real stages and adds a real Track to the library."""
 
-    def __init__(self, library: Library, *, fail: object = None, title: str = "Open Road") -> None:
+    def __init__(
+        self, library: Library, *, fail: object = None, title: str = "Open Road", track_id: str = "t1"
+    ) -> None:
         self.library = library
+        self.track_id = track_id
         self.fail = fail
         self.title = title
         self.calls: list[dict] = []
@@ -65,10 +70,10 @@ class FakeRun:
             yield jobs.fail(job.id, self.fail)
             return
         yield jobs.set_stage(job.id, songs.STAGE_SAVING)
-        _audio(self.library, "runtime/generated/t1.mp3")
+        _audio(self.library, f"runtime/generated/{self.track_id}.mp3")
         track = self.library.add(
             Track(
-                id="t1",
+                id=self.track_id,
                 title=self.title,
                 style=kwargs["style"],
                 mood=kwargs["mood"],
@@ -76,14 +81,16 @@ class FakeRun:
                 duration_s=kwargs["duration_s"],
                 vocal=kwargs["vocal"],
                 lyrics=LYRICS if kwargs["vocal"] else None,
-                audio_path="runtime/generated/t1.mp3",
+                audio_path=f"runtime/generated/{self.track_id}.mp3",
                 cover_path=None,
                 cover_prompt=None,
                 source="generated",
                 seed=None,
-                created_at="2026-10-22T12:00:00+00:00",
+                created_at=datetime.now(UTC).isoformat(timespec="seconds"),  # just made, like the pipeline
             )
         )
+        if kwargs.get("start_cover"):
+            kwargs["start_cover"](track)
         yield jobs.succeed(job.id, track.id)
 
 
@@ -353,6 +360,7 @@ EXPECTED_OUTPUTS = {
     tab.OUT_PLAY_NOW: "gen-play-now",
     tab.OUT_ADD: "gen-add-to-queue",
     tab.OUT_PLAY_NOTE: "gen-play-note",
+    tab.OUT_RETRY_COVER: "gen-retry-cover",
 }
 
 
@@ -372,10 +380,11 @@ def test_cover_check_outputs_are_in_the_order_cover_updates_returns(library: Lib
     timer = next(b for b in demo.blocks.values() if isinstance(b, gr.Timer))
     raw = demo.fns.values() if isinstance(demo.fns, dict) else demo.fns
     tick = next(fn for fn in raw if any(t[0] == timer._id and t[1] == "tick" for t in fn.targets))
-    outputs = tick.outputs
-    assert len(outputs) == len(tab.cover_updates(tab.CoverView("x", "", True)))
-    assert [outputs[0].elem_id, outputs[1].elem_id] == ["gen-cover", "gen-cover-note"]
-    assert outputs[2] is timer
+    for outputs in (tick.outputs, _fn_for(demo, "gen-retry-cover", "click").outputs):
+        assert len(outputs) == len(tab.cover_updates(tab.CoverView("x", "", True)))
+        assert [outputs[0].elem_id, outputs[1].elem_id] == ["gen-cover", "gen-cover-note"]
+        assert outputs[2] is timer
+        assert outputs[3].elem_id == "gen-retry-cover"
 
 
 def test_the_registered_generate_handler_uses_the_pipeline_render_was_given(library: Library) -> None:
@@ -512,12 +521,17 @@ def _track(library: Library, make_track, **overrides) -> Track:
     return library.add(make_track(id="t1", **overrides))
 
 
+SOON = datetime(2026, 10, 19, 12, 0, 5, tzinfo=UTC)  # make_track's song was made at 12:00:00
+LATE = datetime(2026, 10, 19, 12, 2, 0, tzinfo=UTC)
+
+
 def test_cover_shows_the_placeholder_while_it_is_painted(library: Library, make_track) -> None:
     _track(library, make_track)
-    view = tab.cover_view("t1", library=library, jobs=JobStore())
+    view = tab.cover_view("t1", library=library, jobs=JobStore(), now=SOON)
     assert Path(view.path) == art.placeholder_path()
     assert view.note == art.COVER_STAGE
     assert view.done is False
+    assert view.failed is False
 
 
 def test_cover_shows_the_cover_when_ready(library: Library, make_track, tmp_path: Path) -> None:
@@ -541,18 +555,135 @@ def test_a_failed_cover_keeps_the_song_and_says_so(library: Library, make_track)
     assert "unreachable" in view.note
     assert "song is safe" in view.note
     assert view.done is True
+    assert view.failed is True
+    assert tab.cover_updates(view)[3]["visible"] is True  # Retry cover
 
 
 def test_the_cover_check_stops_once_the_cover_is_settled(library: Library, make_track) -> None:
     _track(library, make_track)
     jobs = JobStore()
-    out = tab.cover_updates(tab.cover_view("t1", library=library, jobs=jobs))
-    assert out[-1]["active"] is True
+    out = tab.cover_updates(tab.cover_view("t1", library=library, jobs=jobs, now=SOON))
+    assert out[2]["active"] is True
     job = jobs.create("cover", art.COVER_STAGE)
     jobs.set_stage(job.id, art.COVER_STAGE, "t1")
     jobs.fail(job.id, "boom")
     out = tab.cover_updates(tab.cover_view("t1", library=library, jobs=jobs))
-    assert out[-1]["active"] is False
+    assert out[2]["active"] is False
+
+
+def test_no_cover_job_after_a_minute_shows_a_failed_cover_with_retry(library: Library, make_track) -> None:
+    """Felipe's and Dillon's reviews of #48: with no cover job at all, the card waited forever."""
+    _track(library, make_track)
+    view = tab.cover_view("t1", library=library, jobs=JobStore(), now=LATE)
+    assert view.done is True and view.failed is True
+    assert GENERIC_FAILURE in view.note and "song is safe" in view.note
+    out = tab.cover_updates(view)
+    assert out[2]["active"] is False
+    assert out[3]["visible"] is True
+
+
+def test_retry_cover_is_hidden_while_painting_and_once_the_cover_is_there(
+    library: Library, make_track, tmp_path: Path
+) -> None:
+    _track(library, make_track)
+    painting = tab.cover_view("t1", library=library, jobs=JobStore(), now=SOON)
+    assert tab.cover_updates(painting)[3]["visible"] is False
+    (tmp_path / "runtime" / "generated" / "t1.jpg").write_bytes(b"\xff\xd8fake")
+    library.attach_cover("t1", "runtime/generated/t1.jpg", "a lake")
+    assert tab.cover_updates(tab.cover_view("t1", library=library, jobs=JobStore()))[3]["visible"] is False
+
+
+def test_retry_cover_restarts_the_cover_and_the_check(library: Library, make_track) -> None:
+    """Felipe's review of #48: a failed cover needs a Retry cover button (7.3, 8.2)."""
+    _track(library, make_track)
+    started: list[str] = []
+    demo, _ = _demo(library, start_cover=lambda track: started.append(track.id))
+    retry_cover = _fn_for(demo, "gen-retry-cover", "click").fn
+    out = retry_cover("t1")
+    assert started == ["t1"]
+    assert out[1]["value"] == art.COVER_STAGE
+    assert out[2]["active"] is True
+    assert out[3]["visible"] is False
+    out = retry_cover(None)  # no song on the card: nothing to repaint
+    assert started == ["t1"]
+    assert out[2]["active"] is False
+
+
+def test_the_result_card_offers_retry_cover_only_when_the_cover_failed() -> None:
+    painting = tab.GenerateView(status="", running=False, track_id="t1", cover=tab.CoverView("p", "x", False))
+    failed = tab.GenerateView(
+        status="", running=False, track_id="t1", cover=tab.CoverView("p", "x", True, failed=True)
+    )
+    assert tab.updates(painting)[tab.OUT_RETRY_COVER]["visible"] is False
+    assert tab.updates(failed)[tab.OUT_RETRY_COVER]["visible"] is True
+
+
+def _wait_for(check, seconds: float = 5.0) -> bool:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if check():
+            return True
+        time.sleep(0.02)
+    return False
+
+
+def test_the_default_cover_hook_saves_the_cover_into_the_tabs_own_library(
+    library: Library, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Felipe's review of #48: nothing ran render()'s default start_cover through to a cover on the card."""
+    monkeypatch.setattr(art, "_cover_jobs", JobStore())
+    monkeypatch.setattr(art, "_paint", lambda track, **_kw: ("a lake at dusk", b"\xff\xd8fake-jpeg"))
+    demo, _ = _demo(library, run=FakeRun(library, track_id="t-cover"))
+    list(_fn_for(demo, "gen-button", "click").fn("pop", "", "upbeat", 60, tab.VOCAL, ""))
+    assert _wait_for(lambda: bool(library.get("t-cover").cover_path))
+    view = tab.cover_view("t-cover", library=library)
+    assert Path(view.path) == tmp_path / "runtime" / "generated" / "t-cover.jpg"
+    assert view.done is True and view.failed is False
+
+
+def test_the_default_cover_hook_shows_a_failed_cover_on_the_card(
+    library: Library, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(art, "_cover_jobs", JobStore())
+
+    def unreachable(track, **_kw):
+        raise ServiceError("flux", "unavailable", "connection refused")
+
+    monkeypatch.setattr(art, "_paint", unreachable)
+    demo, _ = _demo(library, run=FakeRun(library, track_id="t-nocover"))
+    list(_fn_for(demo, "gen-button", "click").fn("pop", "", "upbeat", 60, tab.VOCAL, ""))
+    assert _wait_for(lambda: tab.cover_view("t-nocover", library=library).failed)
+    view = tab.cover_view("t-nocover", library=library)
+    assert "unreachable" in view.note
+    assert tab.cover_updates(view)[3]["visible"] is True
+
+
+def test_a_refused_requests_reason_is_shown_as_plain_text(library: Library) -> None:
+    """Felipe's nit on #48: the reason went into the Markdown status unescaped."""
+    error = ServiceError("acestep", "bad_request", reason="use *this* [link](http://x)")
+    last = views(library, FakeRun(library, fail=error))[-1]
+    assert "\\*this\\*" in last.status
+    assert "[link](http://x)" not in last.status
+    assert "change them" in last.status  # still recognised as "edit your inputs"
+
+
+def test_closing_the_page_mid_run_still_saves_the_song(library: Library) -> None:
+    """Mike's question on #48: the worker must keep going after the browser stops listening."""
+    release = threading.Event()
+
+    def slow(**kwargs) -> Iterator[Job]:
+        for job in FakeRun(library)(**kwargs):
+            yield job
+            if job.stage == songs.STAGE_MUSIC:
+                release.wait(5)
+
+    gen = tab.generate(
+        **FORM, library=library, run=slow, clock=counting_clock(), tick_s=0.01, start_cover=None
+    )
+    next(gen)  # the first update reaches the page, then the tab is closed
+    gen.close()
+    release.set()
+    assert _wait_for(lambda: library.get("t1") is not None)
 
 
 def test_cover_for_an_unknown_track_stops_quietly(library: Library) -> None:
