@@ -6,6 +6,11 @@ plays whatever that session returns. Play queue starts it. Skip and the audio
 end event so Skip cannot advance twice. Pause and resume are the native
 controls (``interactive=False`` still plays). This module calls the library,
 the cover lookup, and the queue. It does not call a model.
+
+Add to queue and Play now (A7) reach the same session player from the Generate
+card and the Library tab. ``render()`` returns a ``PlayerPanel`` that binds a
+button and a track-id state to this panel's outputs. Add to queue never touches
+the audio that is playing.
 """
 
 from __future__ import annotations
@@ -14,7 +19,7 @@ import re
 import shutil
 import uuid
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import gradio as gr
@@ -22,12 +27,13 @@ import gradio as gr
 from jukebox.config import ROOT
 from jukebox.library import Library, get_library
 from jukebox.services.art import cover_for
-from jukebox.services.player import DJ_UNAVAILABLE, FINISHED, Player, PlayItem
+from jukebox.services.player import DJ_UNAVAILABLE, FINISHED, Player, PlayerError, PlayItem
 
 SPEAKING = "DJ speaking…"
 NOW_PLAYING = "Now playing"
 PRESS_PLAY = "Press Play queue."
 NO_SAMPLES = "No sample tracks are loaded."
+UNKNOWN_TRACK = "That song is not in the library. Pick one from the list."
 _TOKEN_IN_NAME = re.compile(r"^t(\d+)-")
 _CLIPS: dict[str, str] = {}
 
@@ -53,7 +59,11 @@ class LibrarySongs(Mapping[str, str]):
 
 @dataclass(frozen=True)
 class PlayerView:
-    """What the panel shows after one Play, Skip, or end event."""
+    """What the panel shows after one Play, Skip, end event, Add to queue, or Play now.
+
+    ``keep_audio`` updates the text and Up next but leaves the audio, the cover, and the token alone,
+    so a song that is playing is not interrupted (Add to queue, or a song that is not in the library).
+    """
 
     audio: str | None
     label: str
@@ -63,6 +73,7 @@ class PlayerView:
     up_next: tuple[tuple[str, str], ...]
     token: int
     ignored: bool
+    keep_audio: bool = False
 
 
 def open_player(library: Library, dj_clips: Mapping[str, str] | None = None) -> Player:
@@ -127,14 +138,34 @@ def on_end(
     return _show(player, library, player.next_item(), token + 1, runtime)
 
 
+def on_add(player: Player, library: Library, token: int, track_id: str | None, runtime: Path) -> PlayerView:
+    """Add one song to the end of the queue, looked up by id. What is playing keeps playing."""
+    try:
+        player.enqueue(_known_id(library, track_id))
+    except PlayerError:
+        return _unknown(player, library, token)
+    return replace(_view(player, library, token, audio=None, ignored=False), keep_audio=True)
+
+
+def on_play_now(
+    player: Player, library: Library, token: int, track_id: str | None, runtime: Path
+) -> PlayerView:
+    """Drop what is playing and start this song (its DJ clip first, when one is ready)."""
+    try:
+        item = player.play_now(_known_id(library, track_id))
+    except PlayerError:
+        return _unknown(player, library, token)
+    return _show(player, library, item, token + 1, runtime)
+
+
 def panel_text(view: PlayerView) -> str:
     """The now-playing line, the title, a DJ notice, and the up-next titles."""
     lines = [f"**{view.label}**", ""]
     if view.title:
         lines.append(view.title)
         lines.append("")
-    if view.notice == DJ_UNAVAILABLE:
-        lines.append(DJ_UNAVAILABLE)
+    if view.notice and view.notice != view.label:
+        lines.append(view.notice)
         lines.append("")
     if view.up_next:
         lines.append("Up next:")
@@ -144,9 +175,50 @@ def panel_text(view: PlayerView) -> str:
     return "\n".join(lines)
 
 
-def render() -> None:
-    """Wire Play queue, Skip, and the end event to this session's player."""
-    library = get_library()
+@dataclass(frozen=True)
+class PlayerPanel:
+    """What the page needs to send a song to this panel's player from another button."""
+
+    session: gr.State
+    token: gr.State
+    outputs: list
+    library: Library
+    runtime: Path
+
+    def connect_add(self, button: gr.Button, track_id: gr.State) -> None:
+        """Add to queue: ``track_id`` holds the song's id (the Generate card's, or the Library's choice)."""
+
+        def clicked(chosen: str | None, current: int, session_id: str) -> tuple[object, ...]:
+            player, session_id = player_for(session_id, self.library)
+            view = _gradio(on_add(player, self.library, int(current), chosen, self.runtime))
+            return (*view, session_id)
+
+        button.click(
+            clicked,
+            inputs=[track_id, self.token, self.session],
+            outputs=self.outputs,
+            show_progress="hidden",
+        )
+
+    def connect_play_now(self, button: gr.Button, track_id: gr.State) -> None:
+        """Play now: the same inputs, starting that song at once."""
+
+        def clicked(chosen: str | None, current: int, session_id: str) -> tuple[object, ...]:
+            player, session_id = player_for(session_id, self.library)
+            view = _gradio(on_play_now(player, self.library, int(current), chosen, self.runtime))
+            return (*view, session_id)
+
+        button.click(
+            clicked,
+            inputs=[track_id, self.token, self.session],
+            outputs=self.outputs,
+            show_progress="hidden",
+        )
+
+
+def render(*, library: Library | None = None) -> PlayerPanel:
+    """Wire Play queue, Skip, and the end event to this session's player, and return the panel handle."""
+    library = get_library() if library is None else library
     runtime = ROOT / "runtime" / "player"
     status = gr.Markdown(_idle_text(), elem_id="player-panel")
     cover = gr.Image(
@@ -198,6 +270,7 @@ def render() -> None:
     play_btn.click(play_clicked, inputs=[token, session], outputs=outputs)
     skip_btn.click(skip_clicked, inputs=[token, session], outputs=outputs)
     audio.stop(end_fired, inputs=[audio, token, session], outputs=outputs)
+    return PlayerPanel(session, token, outputs, library, runtime)
 
 
 def token_from_audio(value: object) -> int | None:
@@ -320,4 +393,19 @@ def _gradio(view: PlayerView) -> tuple[object, ...]:
     if view.ignored:
         return (gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip())
     gallery = [(cover, title) for title, cover in view.up_next]
+    if view.keep_audio:
+        return (gr.skip(), panel_text(view), gr.skip(), gallery, gr.skip())
     return (view.audio, panel_text(view), view.cover, gallery, view.token)
+
+
+def _known_id(library: Library, track_id: str | None) -> str:
+    """The id, if it names a song in the library; otherwise PlayerError (blank, None, or gone)."""
+    if not isinstance(track_id, str) or not track_id.strip() or library.get(track_id) is None:
+        raise PlayerError(f"unknown track {track_id!r}")
+    return track_id
+
+
+def _unknown(player: Player, library: Library, token: int) -> PlayerView:
+    """Nothing changes: the text says the song is not there, and the audio keeps playing."""
+    view = _view(player, library, token, audio=None, ignored=False)
+    return replace(view, notice=UNKNOWN_TRACK, keep_audio=True)

@@ -209,3 +209,48 @@ def test_shell_imports_no_model_clients() -> None:
         text = path.read_text(encoding="utf-8")
         for snippet in banned:
             assert snippet not in text, f"{path.name} contains {snippet}"
+
+
+# ---- A7: the tabs are connected to the player -----------------------------------------------------
+
+
+def test_generate_and_library_buttons_are_connected_to_the_player() -> None:
+    demo = build_demo()
+    bindings = _event_bindings(demo)
+    assert bindings >= {
+        ("gen-play-now", "click"),
+        ("gen-add-to-queue", "click"),
+        ("lib-play-now", "click"),
+        ("lib-add-to-queue", "click"),
+    }
+
+
+def test_the_generate_tab_is_told_the_player_is_connected(monkeypatch: pytest.MonkeyPatch) -> None:
+    from jukebox.ui import generate_tab
+
+    seen: list[dict] = []
+    real = generate_tab.render
+
+    def spy(**kwargs):
+        seen.append(kwargs)
+        return real(**kwargs)
+
+    monkeypatch.setattr(generate_tab, "render", spy)
+    build_demo()
+    assert seen and seen[0].get("player_connected") is True
+
+
+def test_the_library_tab_is_a_real_list_not_the_placeholder() -> None:
+    demo = build_demo()
+    assert {"lib-list", "lib-play-now", "lib-add-to-queue"} <= _ids(demo)
+    texts = " ".join(str(getattr(block, "value", "")) for block in demo.blocks.values())
+    assert "No samples are loaded in this shell" not in texts
+    assert "The library will list the sample songs here" not in texts
+
+
+def test_how_to_no_longer_says_generate_is_not_connected() -> None:
+    text = str(getattr(_block(build_demo(), "how-to"), "value", ""))
+    assert "Generate and the DJ voice are not connected" not in text
+    assert "Play now" in text
+    assert "Add to queue" in text
+    assert "DJ voice" in text and "not connected" in text  # the voice upload (D4) is still to come
