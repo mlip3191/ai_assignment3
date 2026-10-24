@@ -57,7 +57,7 @@ Same steps, but choose **Vocal** in step 4. The first stage is **Writing lyrics�
 **What to expect**
 - **Wait:** we measured 5.5 to 7 seconds per song with a quiet class queue: the text model takes 0.4–1.5 s, then the music model (ACE-Step) about 5 s. The page says "usually about 10 s" to leave room for a busier queue. It can take longer when many people use the class servers, and the status line keeps counting so you can see it hasn't frozen.
 - **The cover** is painted after the song is saved, usually 2 to 3 s later. The card shows a placeholder and "Painting cover…" until it arrives. If the cover fails, the song is kept, and a **Retry cover** button appears.
-- **Real artist names are removed.** In **Style** and **Extra style tags**, phrases like "in the style of …", "featuring …" or "…'s voice" with an artist's name show a note under the box ("Removed …"), and the song is generated without them. **Song idea** only removes "in the style of …", "sounds like …" and "à la …", because a song idea is a subject and may name a person. The app asks the models for original songs; see [Known issues](#known-issues) for what it can't prevent.
+- **Real artist names are removed.** In **Extra style tags**, phrases like "in the style of …", "featuring …" or "…'s voice" with an artist's name show a note under the box ("Removed …"), and the song is generated without them. **Song idea** only removes "in the style of …", "sounds like …" and "à la …", because a song idea is a subject and may name a person. The app asks the models for original songs; see [Known issues](#known-issues) for what it can't prevent.
 - **If something fails,** the status line says what went wrong in plain words, your choices stay filled in, and **Retry** appears when trying again can help (a slow or unreachable class server). If your settings are wrong, it says to fix them and restart.
 - **Play now / Add to queue** on the result card send the new song to the player.
 
@@ -80,7 +80,7 @@ _TODO: other lanes' entries._
 
 **Song generation (B)**
 - **The default singing voice can sound like a famous singer.** In testing, one indie-pop song with no artist named anywhere sounded very like a well-known pop singer. That's ACE-Step's own default voice; a style tag can't reliably steer it away from one person. The app prevents the part it controls: artist names typed by the user (next item).
-- **The artist screen only catches explicit forms.** In Style and Extra style tags it removes "in the style of / sounds like / inspired by / à la *Name*", "featuring / feat. / ft. / sung by / vocals by / cover of *Name*", "*Name*-style", "*Name*'s voice" and "like *Name*". Song idea gets only the first group, so "featuring *Name*" or "*Name*'s voice" typed there stays. Not caught anywhere:
+- **The artist screen only catches explicit forms.** In Extra style tags it removes "in the style of / sounds like / à la *Name*", "inspired by / influenced by / similar to *Name*", "featuring / feat. / ft. / sung by / vocals by / cover of *Name*", "*Name*-style", "*Name*'s voice" and "like *Name*". Song idea removes only "in the style of / sounds like / à la *Name*", so "inspired by *Name*", "featuring *Name*" or "*Name*'s voice" typed there stays. Not caught anywhere:
   - a bare name ("Taylor Swift pop");
   - a lowercase name ("in the style of adele");
   - "*Name* vibe", "*Name* type beat", "*Name*-ish", "*Name*-like", "a song by *Name*";
@@ -105,7 +105,7 @@ _TODO (D, task D7): one limitation or failure we investigated and what we learne
 | 40–74 s | verse, chorus and a 2-line outro (10 lines) |
 | 75 s and up | verse, chorus, verse, chorus, outro (18 lines) |
 
-**Why.** Our first plan scaled lyrics with length, "about 2 sections per 30 s", so a 45–60 s song got 18 lines. ACE-Step doesn't speed up to fit more words: it sings about one verse and one chorus, then **skips whole sections from the middle**, so the song loses its story. In the B6 listening tests (and one check during the C3 review), each song was generated on the class servers and a teammate counted the lines actually sung against the lyrics sent:
+**Why.** Our first plan scaled lyrics with length, "roughly 2 sections per 30 s" (PROJECT.md §8.1), so a 45–60 s song got 18 lines. ACE-Step doesn't speed up to fit more words: it sings about one verse and one chorus, then **skips whole sections from the middle**, so the song loses its story. In the B6 listening tests (and one check during the C3 review), each song was generated on the class servers and a teammate counted the lines actually sung against the lyrics sent:
 
 | Song (test) | Length | Lines sent | Lines sung | What happened |
 |---|---|---|---|---|
