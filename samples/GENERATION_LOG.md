@@ -87,7 +87,7 @@ A cluttered desk bathed in dim blue twilight, featuring an open notebook with fa
 **Human checks** (fill in after listening and looking):
 
 - Listened by @felcervino on 2026-10-24: plays to the end, matches style and mood, no vocals: Yes
-- Cover looked at by @felcervino: matches mood and style; no text, letters, logos, or people: Yes (the open book shows small unreadable handwriting-like marks, accepted as decided on 10/21)
+- Cover looked at by @felcervino: matches mood and style; no readable text, letters, or logos, and no real or identifiable people: Yes (the open book shows small unreadable handwriting-like marks. FLUX tends to add these to books; @felcervino decided on 2026-10-21, after two live trial runs, to regenerate a cover only for readable text, a recognizable logo, or a visible face)
 
 ---
 
@@ -187,7 +187,7 @@ A vintage convertible speeds along a coastal highway, bathed in golden hour sunl
 **Human checks** (fill in after listening and looking):
 
 - Listened by @felcervino on 2026-10-24: plays to the end, matches style and mood, sings the lyrics: Yes
-- Cover looked at by @felcervino: matches mood and style; no text, letters, logos, or people: Yes (the driver is seen only from behind, no face)
+- Cover looked at by @felcervino: matches mood and style; no text, letters, or logos, and no real or identifiable people: Yes (one figure, seen only from behind, no face)
 
 **Originality spot check** (a limited check, not proof): an exact-phrase web search on two
 distinctive lines.
@@ -294,7 +294,7 @@ A lone silhouette stands before a weathered wooden gate in twilight, back turned
 **Human checks** (fill in after listening and looking):
 
 - Listened by @felcervino on 2026-10-24: plays to the end, matches style and mood, sings the lyrics: Yes
-- Cover looked at by @felcervino: matches mood and style; no text, letters, logos, or people: Yes (one figure seen only from behind, no face)
+- Cover looked at by @felcervino: matches mood and style; no text, letters, or logos, and no real or identifiable people: Yes (one figure, seen only from behind, no face)
 
 **Originality spot check** (a limited check, not proof): an exact-phrase web search on two
 distinctive lines.
