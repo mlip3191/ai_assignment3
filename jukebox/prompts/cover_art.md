@@ -14,8 +14,10 @@ Placeholders:
 Change this file only through a PR, and say why in the PR (prompts are reviewed content).
 
 People (10/24): a TC-04 dry run on `main` produced a cover with two front-facing, recognizable faces and a
-man with three arms. Scenes like a party or a concert need people, so they stay, but always small,
-backlit and soft: faces not defined and hands not prominent, which is where FLUX's anatomy mistakes show.
+man with three arms. Scenes like a party or a concert need people, so they stay, but only as many as the
+scene needs, backlit and soft, from behind or at a distance: faces not defined and hands not prominent,
+which is where FLUX's anatomy mistakes show. ("Small in the frame" was tried and turned two friends into a
+crowd.)
 `art.py` adds a fixed style line (`SOFT_PEOPLE`) to every prompt that mentions people. Nothing can check
 anatomy automatically (only the four class models are allowed, and none of them looks at images), so
 covers that are kept (samples, screenshots) are checked by eye, and Retry cover replaces a bad one.

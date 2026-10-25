@@ -58,12 +58,19 @@ _THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
 _EDGE_PUNCT = " \t\n.,;:"
 _QUOTE_PAIRS = {'"': '"', "'": "'", "“": "”", "‘": "’"}
 _TAG_LINE = re.compile(r"^\s*\[[^\]]*\]\s*$")
-# People and body parts in an image prompt ("the hands of a clock" is not a person).
+# People and body parts in an image prompt. Body-part words don't count when they name part of a thing
+# ("the face of the cliff", "the arms of a chair", "a hand-painted sign"); nor do "the man in the moon"
+# and "a figure-eight road".
 _PEOPLE = re.compile(
-    r"\b(?:people|persons?|man|men|woman|women|boys?|girls?|child(?:ren)?|kids?|teens?|friends?|couples?"
-    r"|crowds?|figures?|silhouettes?|someone|family|lovers|dancers?|singers?|musicians?|drivers?"
-    r"|passengers?|travell?ers?|hikers?|faces?|arms?|legs?|bodies|body"
-    r"|hands?(?!\s+of\s+(?:a|the)\s+clock))\b",
+    r"\b(?:"
+    r"people|persons?|men|woman|women|boys?|girls?|child(?:ren)?|kids?|teens?|ladies|lady|guys?"
+    r"|friends?|couples?|crowds?|audiences?|someone|famil(?:y|ies)|lovers|strangers?|silhouettes?"
+    r"|mothers?|fathers?|daughters?|sons?|sisters?|brothers?|grand(?:mother|father)s?"
+    r"|travell?ers?|wanderers?|hikers?|sailors?|cyclists?|skaters?|runners?|surfers?|drivers?|passengers?"
+    r"|dancers?|singers?|musicians?|guitarists?|drummers?|bassists?|pianists?|violinists?|djs?"
+    r"|man(?!\s+in\s+the\s+moon)(?!-)|figures?(?!-)"
+    r"|(?:faces?|bod(?:y|ies)|arms?|hands?|legs?|feet|foot|eyes|fingers?)(?!-|\s+of\b)"
+    r")\b",
     re.IGNORECASE,
 )
 # Added to any prompt with people in it. FLUX follows positive descriptions better than "no ...": small,
@@ -151,7 +158,8 @@ def write_cover_prompt(
         raise ServiceError("qwen", "bad_response", "the cover prompt reply was empty")
     if mentions_people(body):
         # People stay in the scene, drawn so faces aren't defined and hands aren't prominent.
-        body = body.replace(SOFT_PEOPLE, "").strip(_EDGE_PUNCT)
+        body = re.sub(re.escape(SOFT_PEOPLE), "", body, flags=re.IGNORECASE)  # in case Qwen echoed it
+        body = re.sub(r"\s*,(?:\s*,)+\s*", ", ", body).strip(_EDGE_PUNCT)
         body = f"{body}, {SOFT_PEOPLE}"
     return f"{body}, {t.suffix}"
 

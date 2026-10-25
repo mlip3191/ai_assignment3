@@ -290,6 +290,15 @@ def test_the_soft_figure_style_is_added_once_and_before_the_suffix() -> None:
     assert prompt.endswith(f"{art.SOFT_PEOPLE}, {SUFFIX}")
 
 
+def test_an_echoed_style_line_in_the_middle_or_capitalised_is_not_doubled() -> None:
+    style = art.SOFT_PEOPLE
+    reply = f"A crowd at a summer concert, {style[0].upper()}{style[1:]}, warm amber light"
+    prompt = art.write_cover_prompt(**POP, chat=ScriptedQwen(reply))
+    assert prompt.lower().count(style.lower()) == 1
+    assert ", ," not in prompt
+    assert prompt == f"A crowd at a summer concert, warm amber light, {style}, {SUFFIX}"
+
+
 def test_the_soft_figure_style_asks_for_undefined_faces_and_hands_out_of_focus() -> None:
     style = art.SOFT_PEOPLE.lower()
     for phrase in ("only as many people as described", "backlit", "faces in shadow", "not detailed", "hands"):
@@ -320,6 +329,19 @@ def test_the_template_keeps_people_soft_and_never_a_portrait() -> None:
         "people on the street",
         "a girl with a kite",
         "the driver waves",
+        "the audience in the dark",
+        "a guitarist on stage",
+        "a drummer behind the kit",
+        "a DJ at the decks",
+        "a stranger at the station",
+        "a lone wanderer",
+        "a sailor at the rail",
+        "a cyclist on the bridge",
+        "skaters in the park",
+        "a mother and daughter",
+        "eyes closed in the rain",
+        "fingers on the keys",
+        "bare feet in the sand",
     ],
 )
 def test_people_are_noticed(text: str) -> None:
@@ -335,6 +357,15 @@ def test_people_are_noticed(text: str) -> None:
         "a humming neon sign, no letters",
         "a figurehead-free wooden boat",
         "the hands of a clock tower",
+        "the arms of an old chair",
+        "the body of the guitar",
+        "a still body of water",
+        "the face of the cliff",
+        "the face of a clock",
+        "a hand-painted sign",
+        "a figure-eight road",
+        "the man in the moon",
+        "the foot of the hill",
     ],
 )
 def test_scenes_without_people_are_left_alone(text: str) -> None:

@@ -399,8 +399,10 @@ def test_a_quoted_reply_that_also_has_the_suffix_loses_its_quotes(library: Libra
 
 
 def test_a_trailing_apostrophe_is_kept(library: Library, root: Path) -> None:
-    updated = cover("t1", library, root, chat=lambda m, *, max_tokens, temperature: "Neon signs' glow.")
-    assert updated.cover_prompt == f"Neon signs' glow, {SUFFIX}"
+    updated = cover(
+        "t1", library, root, chat=lambda m, *, max_tokens, temperature: "Lights of the bus stops'."
+    )
+    assert updated.cover_prompt == f"Lights of the bus stops', {SUFFIX}"
 
 
 @pytest.mark.parametrize("given", [{}, {"jobs": None}], ids=["no jobs argument", "jobs=None"])
