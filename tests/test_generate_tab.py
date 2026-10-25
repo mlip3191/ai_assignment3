@@ -851,5 +851,18 @@ def test_the_surprise_button_fills_exactly_the_six_form_fields(library: Library)
     fn = _fn_for(demo, "gen-surprise", "click")
     assert [o.elem_id for o in fn.outputs] == [
         "gen-genre", "gen-extra", "gen-mood", "gen-duration", "gen-type", "gen-theme",
+        "gen-status", "gen-retry",
     ]  # fmt: skip
     assert fn.inputs == []  # it never reads or sends the user's text anywhere
+
+
+def test_surprise_clears_an_old_failure_so_retry_cannot_use_the_new_choices() -> None:
+    # After a failure the status says "your choices are kept: press Retry". Once Surprise me
+    # replaces those choices, that line and the Retry button would be wrong, so both go.
+    import random
+
+    values = tab.on_surprise(random.Random(7))
+    assert values[:6] == tab.surprise(random.Random(7))
+    assert values[6] == ""
+    assert values[7]["visible"] is False
+    assert len(values) == 8

@@ -3,6 +3,7 @@
 The handler runs songs.generate_song on a worker thread and yields a view about once a second, so the
 status line keeps counting while ACE-Step works (R5). It never raises: success and failure both end
 with the Generate button enabled, and no handler writes to the form, so the user's choices stay (R6).
+The one exception is Surprise me, which fills the form with random choices only when clicked.
 This module calls the song pipeline and the cover service only. It does not import a model client.
 
 Play now and Add to queue are returned from render() with the new track's id, for the integration (A7)
@@ -92,6 +93,8 @@ HELP = "\n".join(
         f"- **Generate:** a song usually takes about {USUAL_WAIT_S} seconds, longer when the class servers "
         "are busy. The status line counts the seconds. The cover is painted afterwards, and the song can "
         "play before it is ready.",
+        "- **Surprise me:** fills the form with a random style, mood, length and song idea. "
+        "Change anything you like, then press **Generate**.",
     ]
 )
 
@@ -162,6 +165,12 @@ def surprise(rng: random.Random | None = None) -> tuple[str, str, str, int, str,
         song_type,
         rng.choice(SURPRISE_IDEAS),
     )
+
+
+def on_surprise(rng: random.Random | None = None) -> tuple:
+    """The Surprise me click: new form values, and the status line and Retry cleared, because after a
+    failure they say the old choices are kept and Retry would now send the new ones."""
+    return (*surprise(rng), "", gr.update(visible=False))
 
 
 def compose_style(genre: str | None, extra: str | None) -> str:
@@ -398,7 +407,7 @@ def render(
 
     inputs = [genre, extra, mood, duration, song_type, theme]
     # Fills the form only (reads nothing, calls no service); the user still presses Generate.
-    surprise_me.click(lambda: surprise(), inputs=None, outputs=inputs, show_progress="hidden")
+    surprise_me.click(on_surprise, inputs=None, outputs=[*inputs, status, retry], show_progress="hidden")
     outputs = [
         status,
         button,
