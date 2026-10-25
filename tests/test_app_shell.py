@@ -267,3 +267,19 @@ def test_how_to_no_longer_says_generate_is_not_connected() -> None:
     assert "Play now" in text
     assert "Add to queue" in text
     assert "DJ voice" in text and "not connected" in text  # the voice upload (D4) is still to come
+
+
+def test_more_like_this_reads_the_library_list_and_fills_the_generate_form() -> None:
+    from jukebox.ui import generate_tab
+
+    demo = build_demo()
+    by_elem = {block.elem_id: block for block in demo.blocks.values() if getattr(block, "elem_id", None)}
+    block_id = by_elem["lib-more-like-this"]._id
+    wired = [fn for fn in demo.fns.values() if any(target == (block_id, "click") for target in fn.targets)]
+    assert len(wired) == 1
+    assert wired[0].inputs[0] is by_elem["lib-list"]
+    assert wired[0].outputs[0] is by_elem["gen-genre"]
+    tabs = wired[0].outputs[-1]
+    assert isinstance(tabs, gr.Tabs)
+    tab_ids = [child.id for child in tabs.children]
+    assert generate_tab.TAB_ID in tab_ids  # the tab it opens exists

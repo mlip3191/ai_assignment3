@@ -875,3 +875,145 @@ def test_surprise_clears_an_old_failure_so_retry_cannot_use_the_new_choices() ->
     assert values[6] == ""
     assert values[7]["visible"] is False
     assert len(values) == 8
+
+
+# ---- More like this: a Library song fills the form (proposal on #3) ---------------------------------
+
+
+def _like(make_track, **fields) -> tuple:
+    return tab.like(make_track(**fields))
+
+
+def _song(library: Library, make_track, track_id: str = "m1", **fields) -> None:
+    """A song in the library, with a stand-in audio file (the library checks that it exists)."""
+    audio = f"runtime/generated/{track_id}.mp3"
+    path = library.resolve(audio)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\x00")
+    library.add(make_track(id=track_id, audio_path=audio, **fields))
+
+
+def test_like_keeps_a_listed_style_and_moves_the_other_tags_to_extra(make_track) -> None:
+    got = _like(
+        make_track,
+        style="lo-fi hip hop, jazzy keys, vinyl crackle",
+        mood="mellow",
+        theme="late-night study session",
+        duration_s=60,
+        vocal=False,
+        lyrics=None,
+    )
+    assert got == (
+        "lo-fi hip hop",
+        "jazzy keys, vinyl crackle",
+        "mellow",
+        60,
+        tab.INSTRUMENTAL,
+        "late-night study session",
+    )
+
+
+@pytest.mark.parametrize(
+    ("style", "genre", "extra"),
+    [
+        ("upbeat pop, summery, bright synths", "pop", "upbeat pop, summery, bright synths"),
+        ("cinematic folk, acoustic guitar", "folk", "cinematic folk, acoustic guitar"),
+        ("dreamy lo-fi hip hop beat, rain", "lo-fi hip hop", "dreamy lo-fi hip hop beat, rain"),
+        ("Jazz, brushed drums", "jazz", "brushed drums"),
+        ("smooth r&b, late night", "R&B", "smooth r&b, late night"),
+        ("strings, warm country guitar", "country", "strings, warm country guitar"),
+        ("cinematic score, strings", None, "cinematic score, strings"),
+        ("popcorn synth, bubbly", None, "popcorn synth, bubbly"),  # "pop" inside a word is not the style
+    ],
+)
+def test_like_finds_the_listed_style_in_a_songs_tags(
+    make_track, style: str, genre: str | None, extra: str
+) -> None:
+    got = _like(make_track, style=style)
+    assert (got[0], got[1]) == (genre, extra)
+
+
+def test_like_leaves_a_mood_that_is_not_in_the_list_unset(make_track) -> None:
+    assert _like(make_track, mood="joyful")[2] is None
+    assert _like(make_track, mood="Dreamy")[2] == "dreamy"
+
+
+@pytest.mark.parametrize(("seconds", "expected"), [(3, 10), (62, 60), (63, 65), (300, 120)])
+def test_like_fits_the_length_to_the_slider(make_track, seconds: int, expected: int) -> None:
+    assert _like(make_track, duration_s=seconds)[3] == expected
+
+
+def test_like_trims_long_tags_and_ideas_to_what_the_boxes_accept(make_track) -> None:
+    tags = ", ".join(f"tag{n:03d}" for n in range(40))
+    got = _like(make_track, style=f"pop, {tags}", theme="x" * 300)
+    assert len(got[1]) <= tab.MAX_EXTRA_CHARS
+    assert all(len(t.strip()) == 6 for t in got[1].split(","))  # whole tags only, never cut mid-tag
+    assert len(got[5]) == tab.MAX_THEME_CHARS
+    assert _like(make_track, theme=None)[5] == ""
+
+
+def test_more_like_this_fills_the_form_says_so_and_opens_the_generate_tab(
+    library: Library, make_track
+) -> None:
+    _song(
+        library,
+        make_track,
+        title="Night *Drive*",
+        style="jazz, brushes",
+        mood="dreamy",
+        theme="a city",
+        duration_s=45,
+    )
+    out = tab.more_like_this(library, "m1", running=False)
+    assert out[:6] == ("jazz", "brushes", "dreamy", 45, tab.VOCAL, "a city")
+    assert r"Night \*Drive\*" in out[6]  # the title is shown as plain text
+    assert "Generate" in out[6]
+    assert out[7]["visible"] is False  # an old Retry would send these new choices
+    assert out[8]["selected"] == tab.TAB_ID
+    assert len(out) == 9
+
+
+def test_more_like_this_keeps_the_mood_when_the_songs_mood_is_not_listed(
+    library: Library, make_track
+) -> None:
+    _song(library, make_track, mood="joyful")
+    out = tab.more_like_this(library, "m1", running=False)
+    assert out[2] == gr.skip()
+    assert "joyful" in out[6]
+
+
+@pytest.mark.parametrize(("track_id", "running"), [("m1", True), (None, False), ("", False), ("gone", False)])
+def test_more_like_this_changes_nothing_while_running_or_without_a_song(
+    library: Library, make_track, monkeypatch: pytest.MonkeyPatch, track_id: str | None, running: bool
+) -> None:
+    _song(library, make_track)
+    shown: list[str] = []
+    monkeypatch.setattr(tab.gr, "Warning", lambda message, *a, **k: shown.append(message))
+    out = tab.more_like_this(library, track_id, running=running)
+    assert out == (gr.skip(),) * 9
+    assert shown == [tab.LIKE_BUSY if running else tab.LIKE_PICK]
+
+
+def test_generate_keeps_a_running_flag_for_more_like_this(library: Library) -> None:
+    demo, handles = _demo(library)
+    outputs = _fn_for(demo, "gen-button", "click").outputs
+    assert outputs[tab.OUT_RUNNING] is handles.running
+    assert tab.updates(tab.GenerateView(status="", running=True))[tab.OUT_RUNNING] is True
+    assert tab.updates(tab.GenerateView(status="", running=False))[tab.OUT_RUNNING] is False
+
+
+def test_more_like_this_is_wired_to_the_form_status_retry_and_tabs(library: Library) -> None:
+    with gr.Blocks() as demo:
+        with gr.Tabs() as tabs:
+            with gr.Tab("Generate", id=tab.TAB_ID):
+                handles = tab.render(library=library)
+        pick = gr.Radio(["a"], elem_id="x-list")
+        more = gr.Button("More", elem_id="x-more")
+        handles.connect_more_like_this(more, pick, tabs)
+    fn = _fn_for(demo, "x-more", "click")
+    assert [getattr(o, "elem_id", None) for o in fn.outputs[:8]] == [
+        "gen-genre", "gen-extra", "gen-mood", "gen-duration", "gen-type", "gen-theme", "gen-status", "gen-retry",
+    ]  # fmt: skip
+    assert fn.outputs[8] is tabs
+    assert fn.inputs[0] is pick  # the id the user can see, read at the click
+    assert fn.inputs[1] is handles.running
