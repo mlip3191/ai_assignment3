@@ -551,6 +551,34 @@ def test_two_songs_with_the_same_title_get_separate_downloads(tmp_path: Path, ma
     assert first.download != second.download
 
 
+def test_replaying_a_song_reuses_its_one_download_copy(tmp_path: Path, make_track) -> None:
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    _with_generated(library, make_track, tmp_path)
+    player = open_player(library, {})
+    first = on_play_now(player, library, 0, "gen1", tmp_path / "served")
+    second = on_play_now(player, library, first.token, "gen1", tmp_path / "served")
+    assert first.download == second.download
+    assert len(list((tmp_path / "served" / "download").rglob("*.wav"))) == 1
+
+
+def test_a_song_whose_file_cannot_be_served_keeps_its_lyrics(
+    tmp_path: Path, make_track, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import jukebox.ui.player_panel as panel
+
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    _with_generated(library, make_track, tmp_path)
+
+    def broken(*args: object) -> Path:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(panel, "_serve", broken)
+    view = on_play_now(open_player(library, {}), library, 0, "gen1", tmp_path / "served")
+    assert view.audio is None
+    assert view.lyrics == "[verse]\nLights ahead"
+    assert view.download is None
+
+
 def test_a_dj_intro_already_offers_the_songs_download(tmp_path: Path, make_track) -> None:
     library, clips = _library(tmp_path, make_track)
     view = on_play(open_player(library, clips), library, 0, tmp_path / "served")
@@ -567,6 +595,9 @@ def test_a_dj_intro_already_offers_the_songs_download(tmp_path: Path, make_track
         ("  Dots and spaces. . ", "Dots and spaces"),
         ("Café Noir", "Café Noir"),
         ("CON", "song CON"),  # a reserved name on Windows
+        ("Nul.Remix", "song Nul.Remix"),  # Windows reserves the part before the first dot too
+        ("com0", "song com0"),
+        ("LPT¹", "song LPT¹"),
         ("***", "song"),
         ("x" * 200, "x" * 80),
     ],

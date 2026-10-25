@@ -47,8 +47,7 @@ _RESERVED_NAMES = {
     "PRN",
     "AUX",
     "NUL",
-    *(f"COM{n}" for n in range(1, 10)),
-    *(f"LPT{n}" for n in range(1, 10)),
+    *(f"{port}{n}" for port in ("COM", "LPT") for n in (*"0123456789", "¹", "²", "³")),
 }
 _TOKEN_IN_NAME = re.compile(r"^t(\d+)-")
 _CLIPS: dict[str, str] = {}
@@ -252,7 +251,7 @@ def render(*, library: Library | None = None) -> PlayerPanel:
         type="filepath",
         autoplay=True,
         interactive=False,
-        buttons=["download"],
+        buttons=[],  # Download song below saves it under the song's name; this one would save the served name
         elem_id="now-playing",
     )
     download = gr.DownloadButton("Download song", visible=False, size="sm", elem_id="now-download")
@@ -327,6 +326,7 @@ def _show(
             failed.up_next,
             token,
             False,
+            lyrics=failed.lyrics,
         )
     try:
         download = _download(library, item.track_id, runtime)
@@ -381,19 +381,24 @@ def download_name(title: str) -> str:
     name = name[:MAX_NAME_CHARS].strip(" .")
     if not name:
         return "song"
-    return f"song {name}" if name.upper() in _RESERVED_NAMES else name
+    reserved = name.split(".")[0].strip().upper() in _RESERVED_NAMES  # Windows checks the part before a dot
+    return f"song {name}" if reserved else name
 
 
 def _download(library: Library, track_id: str, runtime: Path) -> str | None:
-    """A copy of the song named after its title, in its own folder so equal titles never clash."""
+    """A copy of the song named after its title, made once per song in a folder named by its id, so equal
+    titles never clash and replays reuse it. It is written under a temporary name, then renamed."""
     track = library.get(track_id)
     if track is None:
         return None
     src = _source_file(str(library.resolve(track.audio_path)))
-    folder = runtime / "download" / uuid.uuid4().hex
-    folder.mkdir(parents=True, exist_ok=True)
+    folder = runtime / "download" / track.id
     dest = folder / f"{download_name(track.title)}{src.suffix}"
-    shutil.copyfile(src, dest)
+    if not dest.is_file():
+        folder.mkdir(parents=True, exist_ok=True)
+        partial = folder / f".{uuid.uuid4().hex}.part"
+        shutil.copyfile(src, partial)
+        partial.replace(dest)
     return str(dest)
 
 

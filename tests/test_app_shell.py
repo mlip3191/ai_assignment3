@@ -107,6 +107,9 @@ def test_player_wires_one_audio() -> None:
     cover = _block(demo, "now-cover")
     assert cover in images
     assert list(cover.buttons) == ["download"]
+    # One way to save the song: Download song names the file after it; the audio's own button would not.
+    assert list(audio.buttons or []) == []
+    assert _block(demo, "now-download").label == "Download song"
     for block in images + audios:
         assert "share" not in list(getattr(block, "buttons", []) or [])
     play = _block(demo, "play-queue")
