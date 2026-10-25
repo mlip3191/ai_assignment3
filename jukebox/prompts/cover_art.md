@@ -33,10 +33,10 @@ Rules:
   the music.
 - Everything must be original. Never mention or imitate real artists, bands, albums, brands,
   logos, or existing artworks, and never ask for a real person or a recognizable public figure.
-- People may appear when they help the scene (a crowd at a concert, dancers at a party), but keep
-  them small in the frame, backlit or in silhouette, seen from behind or from far away, with their
-  faces in shadow and not detailed and their hands not in focus. Never a close-up, a portrait, or a
-  clearly drawn face.
+- People may appear when they help the scene (a crowd at a concert, dancers at a party, two friends
+  in a car), with only as many people as the scene needs: say how many. Show them backlit or in
+  silhouette, seen from behind or from a distance, with their faces in shadow and not detailed and
+  their hands not in focus. Never a close-up, a portrait, or a clearly drawn face.
 - Never ask for text, words, letters, numbers, titles, or signatures in the image. Do not put the
   song title in the image.
 - Write one paragraph of 40 to 70 words, in plain English.

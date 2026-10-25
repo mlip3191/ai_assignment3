@@ -292,13 +292,14 @@ def test_the_soft_figure_style_is_added_once_and_before_the_suffix() -> None:
 
 def test_the_soft_figure_style_asks_for_undefined_faces_and_hands_out_of_focus() -> None:
     style = art.SOFT_PEOPLE.lower()
-    for phrase in ("small in the frame", "backlit", "faces in shadow", "not detailed", "hands"):
+    for phrase in ("only as many people as described", "backlit", "faces in shadow", "not detailed", "hands"):
         assert phrase in style
+    assert "small in the frame" not in style  # it made FLUX fill a road trip with a crowd (10/24)
 
 
 def test_the_template_keeps_people_soft_and_never_a_portrait() -> None:
     system = art.load_template().system.lower()
-    for phrase in ("small in the frame", "faces", "never a close-up"):
+    for phrase in ("only as many people as the scene needs", "faces", "never a close-up"):
         assert phrase in system
 
 

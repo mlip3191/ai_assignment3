@@ -69,8 +69,8 @@ _PEOPLE = re.compile(
 # Added to any prompt with people in it. FLUX follows positive descriptions better than "no ...": small,
 # backlit figures with faces in shadow have no identifiable face, and soft hands hide its anatomy mistakes.
 SOFT_PEOPLE = (
-    "people shown small in the frame as soft-focus backlit silhouettes, faces in shadow and not detailed, "
-    "hands not in focus"
+    "only as many people as described, seen from behind or at a distance as soft-focus backlit silhouettes, "
+    "faces in shadow and not detailed, hands not in focus"
 )
 # A chatty opener such as "Here is your prompt:" or "Sure! Here's the image prompt:" (only these forms,
 # so a real prompt with a colon in it, like "A quiet room: soft light", is left alone).
