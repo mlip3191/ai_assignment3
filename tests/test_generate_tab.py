@@ -180,6 +180,7 @@ def test_artist_hints_name_the_phrases_not_every_artist(library: Library) -> Non
         assert "in the style of" in text
         assert "artist names are removed" not in text.lower()
         assert "names of real artists are removed" not in text.lower()
+        assert "capital letter" in text  # #56 review: lowercase names aren't caught (README Known issues)
 
 
 def test_help_text_explains_every_control(library: Library) -> None:
