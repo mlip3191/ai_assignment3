@@ -64,7 +64,7 @@ Same steps, but choose **Vocal** in step 4. The first stage after **Queued** is 
   > **TODO (B9, after A7, #55):** replace this with the steps once the player is connected, and add a screenshot.
 - Generated songs stay in the library until you stop the app.
 
-> **TODO (B9, on rc1):** link the measured runs in [Test results](#test-results) (TC-01 instrumental, TC-02 vocal, TC-03 failure).
+> **TODO (B9, on rc1):** link the measured runs in [Test results](#test-results) (TC-01 instrumental, TC-02 vocal, TC-03 songs kept across tabs, TC-F2 a class server not answering).
 
 ## Sample songs
 _TODO (C): what's included and how they were generated; link samples/GENERATION_LOG.md._
