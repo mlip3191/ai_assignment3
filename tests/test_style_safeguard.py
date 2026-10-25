@@ -676,20 +676,22 @@ def test_more_voice_words_count_as_a_named_voice(voice_style: str) -> None:
 
 def test_warning_names_what_was_removed_and_says_why() -> None:
     one = songs.check_style("pop in the style of Taylor Swift").warning
-    assert one == "Removed “in the style of Taylor Swift”. Artist names aren't sent to the song models."
+    assert one == "Removed “in the style of Taylor Swift”; that text isn't sent to the models."
     two = songs.check_style("in the style of Adele, sounds like Drake, soul").warning
     assert two == (
-        "Removed “in the style of Adele” and “sounds like Drake”. "
-        "Artist names aren't sent to the song models."
+        "Removed “in the style of Adele” and “sounds like Drake”; that text isn't sent to the models."
     )
 
 
 def test_the_warning_promises_only_what_the_app_does() -> None:
     """B9 review: the default voice can still resemble a famous singer, so the app can't promise that songs
-    "never imitate" anyone. It can promise that the names it removed never reach the models."""
+    "never imitate" anyone. The screen is pattern-based, so it can't promise that every artist name is
+    caught either. It can promise only that the text it removed never reaches the models."""
     warning = songs.check_style("pop in the style of Taylor Swift").warning
     assert "imitat" not in warning.lower()
     assert "never" not in warning.lower()
+    assert "artist names" not in warning.lower()
+    assert "that text isn't sent" in warning
 
 
 def test_no_warning_when_nothing_was_removed() -> None:

@@ -260,7 +260,7 @@ class StyleCheck:
             return None
         quoted = [f"“{phrase}”" for phrase in self.removed]
         listed = quoted[0] if len(quoted) == 1 else ", ".join(quoted[:-1]) + " and " + quoted[-1]
-        return f"Removed {listed}. Artist names aren't sent to the song models."
+        return f"Removed {listed}; that text isn't sent to the models."
 
 
 def check_style(text: str) -> StyleCheck:

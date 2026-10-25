@@ -62,7 +62,7 @@ HELP = "\n".join(
         "**Make a new song.** Pick a style and a mood, choose the length, and press **Generate**.",
         "",
         "- **Style:** the kind of music. Add your own words under *Extra style tags*, like instruments or "
-        "an era. Names of real artists are removed before anything is sent to the models.",
+        "an era. Phrases like “in the style of *an artist*” are removed before your style is sent to the models.",
         "- **Mood:** how the song should feel.",
         f"- **Length:** {MIN_DURATION_S} to {MAX_DURATION_S} seconds. Vocal songs sound best at 30 seconds "
         "or more.",
@@ -306,7 +306,7 @@ def render(
     extra = gr.Textbox(
         label="Extra style tags (optional)",
         placeholder="e.g. synth, warm pads, 80s",
-        info="Your own words, separated by commas. Artist names are removed.",
+        info="Your own words, separated by commas. Phrases that point at an artist, like “in the style of …”, are removed.",
         max_length=MAX_EXTRA_CHARS,
         elem_id="gen-extra",
     )
