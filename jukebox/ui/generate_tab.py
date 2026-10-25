@@ -3,8 +3,9 @@
 The handler runs songs.generate_song on a worker thread and yields a view about once a second, so the
 status line keeps counting while ACE-Step works (R5). It never raises: success and failure both end
 with the Generate button enabled, and no handler writes to the form, so the user's choices stay (R6).
-The exceptions are Surprise me, which fills the form with random choices, and More like this (a Library
-button, connected with GenerateTab.connect_more_like_this), which fills it from a song; both only when clicked.
+The exceptions are Surprise me, which fills the form with random choices, and More like this (a
+Library button, connected with GenerateTab.connect_more_like_this), which fills it from a song. Both act
+only when clicked, and neither while a song is being made.
 This module calls the song pipeline and the cover service only. It does not import a model client.
 
 Play now and Add to queue are returned from render() with the new track's id, for the integration (A7)
@@ -96,6 +97,7 @@ HELP = "\n".join(
         "play before it is ready.",
         "- **Surprise me:** fills the form with a random style, mood, length, vocal or instrumental, "
         "and song idea, and clears the extra style tags. Change anything you like, then press **Generate**.",
+        "- **More like this** (in the **Library** tab): fills this form from the song you picked there.",
     ]
 )
 
@@ -212,8 +214,8 @@ def like(track: Track) -> tuple[str | None, str, str | None, int, str, str]:
         if found:
             genre = max(found, key=len)
             break
-    if tags and genre is not None and tags[0].lower() == genre.lower():
-        tags = tags[1:]
+    if genre is not None:
+        tags = [t for t in tags if t.lower() != genre.lower()]  # the style is sent once, from Style
     extra = ""
     for tag in tags:  # whole tags only, as many as the box takes
         joined = f"{extra}, {tag}" if extra else tag
@@ -242,13 +244,17 @@ def more_like_this(library: Library, track_id: str | None, *, running: bool) -> 
     values = like(track)
     lines = [f"Filled in from **{_escape(track.title)}**. Change anything you like, then press **Generate**."]
     if values[0] is None:
-        lines.append(
-            "Its style is not in the list, so Style stays as it was; its tags are in Extra style tags."
-        )
+        kept = "; its tags are in Extra style tags" if values[1] else ""
+        lines.append(f"Its style is not in the list, so Style stays as it was{kept}.")
     if values[2] is None:
         lines.append(f"Its mood ({_escape(track.mood)}) is not in the list, so Mood stays as it was.")
     form = tuple(gr.skip() if v is None else v for v in values)
     return (*form, "\n\n".join(lines), gr.update(visible=False), gr.update(selected=TAB_ID))
+
+
+def mark_running() -> tuple[bool, object]:
+    """At the Generate or Retry click: the run counts as running, and Surprise me is off."""
+    return True, gr.update(interactive=False)
 
 
 def compose_style(genre: str | None, extra: str | None) -> str:
@@ -528,6 +534,9 @@ def render(
 
     for trigger in (button, retry):
         trigger.click(on_generate, inputs=inputs, outputs=outputs, show_progress="hidden")
+        # The run's first update can wait in the queue; mark it running at the click, so Surprise me
+        # and More like this cannot change the form under it.
+        trigger.click(mark_running, outputs=[running, surprise_me], queue=False, show_progress="hidden")
     timer.tick(on_cover_tick, inputs=[track_id], outputs=cover_outputs, show_progress="hidden")
     retry_cover.click(on_retry_cover, inputs=[track_id], outputs=cover_outputs, show_progress="hidden")
     for box in (genre, extra):

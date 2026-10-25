@@ -920,6 +920,7 @@ def test_like_keeps_a_listed_style_and_moves_the_other_tags_to_extra(make_track)
         ("cinematic folk, acoustic guitar", "folk", "cinematic folk, acoustic guitar"),
         ("dreamy lo-fi hip hop beat, rain", "lo-fi hip hop", "dreamy lo-fi hip hop beat, rain"),
         ("Jazz, brushed drums", "jazz", "brushed drums"),
+        ("synth, pop, bright", "pop", "synth, bright"),  # a tag that is the style itself is not repeated
         ("smooth r&b, late night", "R&B", "smooth r&b, late night"),
         ("strings, warm country guitar", "country", "strings, warm country guitar"),
         ("cinematic score, strings", None, "cinematic score, strings"),
@@ -1017,3 +1018,30 @@ def test_more_like_this_is_wired_to_the_form_status_retry_and_tabs(library: Libr
     assert fn.outputs[8] is tabs
     assert fn.inputs[0] is pick  # the id the user can see, read at the click
     assert fn.inputs[1] is handles.running
+
+
+def test_more_like_this_with_no_tags_does_not_claim_they_were_kept(library: Library, make_track) -> None:
+    _song(library, make_track, style=" ")
+    out = tab.more_like_this(library, "m1", running=False)
+    assert out[0] == gr.skip()
+    assert "Extra style tags" not in out[6]
+
+
+def test_a_generate_click_marks_the_run_at_once_even_while_it_waits_in_the_queue(library: Library) -> None:
+    # The run's first update can wait behind other users' songs; More like this and Surprise me must
+    # already see it as running, or a failed run would offer Retry with choices it did not use.
+    demo, handles = _demo(library)
+    for elem_id in ("gen-button", "gen-retry"):
+        target = _by_id(demo, elem_id)._id
+        raw = demo.fns.values() if isinstance(demo.fns, dict) else demo.fns
+        quick = [fn for fn in raw if (target, "click") in [tuple(t) for t in fn.targets] and not fn.queue]
+        assert len(quick) == 1, elem_id
+        assert quick[0].outputs[0] is handles.running
+        assert quick[0].outputs[1] is _by_id(demo, "gen-surprise")
+    running, surprise_button = tab.mark_running()
+    assert running is True
+    assert surprise_button["interactive"] is False
+
+
+def test_the_help_mentions_more_like_this() -> None:
+    assert "More like this" in tab.HELP

@@ -4,8 +4,8 @@ The list is a Radio whose values are track ids, so a choice always means the sam
 joins the library afterwards. Songs and covers that arrive later show up on the next refresh, with no
 page reload. Play now and Add to queue are returned from render() with the chosen id, and the page
 connects them to the player (see ``PlayerPanel``). More like this is returned the same way, and the
-page connects it to the Generate form (see ``GenerateTab.connect_more_like_this``). This module calls the library and the cover lookup
-only. It does not call a model.
+page connects it to the Generate form (see ``GenerateTab.connect_more_like_this``). This module calls
+the library and the cover lookup only. It does not call a model.
 """
 
 from __future__ import annotations
