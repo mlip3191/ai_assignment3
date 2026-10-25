@@ -5,7 +5,7 @@ Used by `write_song_text()` in `jukebox/services/songs.py` for instrumentals (ta
 `$duration_s`.
 
 Why it looks like this:
-- Rules follow PROJECT.md 8.1 and H10: an original title only, no existing songs, no real artists and no imitating their style (B8), JSON only. Phrases that point at an artist ("in the style of X", "featuring X", ...) are also removed from the style (`check_style`) and theme (`check_theme`) before they reach this prompt; a bare name is not (B8).
+- Rules follow PROJECT.md 8.1 and H10: an original title only, no existing songs, no real artists and no imitating their style (B8), JSON only. Phrases that point at an artist ("in the style of X", "featuring X", ...) are also removed from the style (`check_style`) before it reaches this prompt; the theme (`check_theme`) loses only "in the style of X", "sounds like X" and "à la X". A bare name is not removed (B8).
 - Instrumentals get no lyrics, so this prompt asks for the title alone.
 
 ## System

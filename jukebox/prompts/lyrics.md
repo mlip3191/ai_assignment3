@@ -5,7 +5,7 @@ Used by `write_song_text()` in `jukebox/services/songs.py` for vocal songs (task
 `$duration_s`, `$structure` (from `plan_sections()`).
 
 Why it looks like this:
-- Rules follow PROJECT.md 8.1 and H10: original lyrics only, no existing songs, no real artists and no imitating their style (B8), JSON only. Phrases that point at an artist ("in the style of X", "featuring X", ...) are also removed from the style (`check_style`) and theme (`check_theme`) before they reach this prompt; a bare name is not (B8).
+- Rules follow PROJECT.md 8.1 and H10: original lyrics only, no existing songs, no real artists and no imitating their style (B8), JSON only. Phrases that point at an artist ("in the style of X", "featuring X", ...) are also removed from the style (`check_style`) before it reaches this prompt; the theme (`check_theme`) loses only "in the style of X", "sounds like X" and "à la X". A bare name is not removed (B8).
 - The structure and line counts come from the duration. Lyrics that don't fit the length sing badly: too
   many lines for 10 s came out as gibberish (B4), and from 30 to 60 s ACE-Step sings only about one verse
   and chorus, skipping whole sections when given more (B6). So the structure asks only for what gets sung.
