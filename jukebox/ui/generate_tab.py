@@ -14,6 +14,7 @@ from __future__ import annotations
 import functools
 import logging
 import queue
+import random
 import re
 import threading
 import time
@@ -50,6 +51,24 @@ MIN_DURATION_S = 10  # ACE-Step's documented minimum (B2)
 MAX_DURATION_S = 120  # longer songs are untested and make large files (B2, the brief)
 DEFAULT_DURATION_S = 60
 DURATION_STEP_S = 5
+# "Surprise me" fills the form with random values; you still press Generate. Lengths stay where vocal
+# songs sound good (30 s and up), and the ideas are original, with no artists (B8 removes nothing).
+SURPRISE_MIN_S = 30
+SURPRISE_MAX_S = 90
+SURPRISE_IDEAS = (
+    "a rainy evening in the city",
+    "a road trip with friends",
+    "leaving home for the first time",
+    "the last day of summer",
+    "dancing in the kitchen at midnight",
+    "a train ride through the mountains",
+    "waiting for the sunrise",
+    "an old photograph found in a drawer",
+    "a lighthouse in a storm",
+    "the first snow of the year",
+    "a quiet morning by the sea",
+    "a night market full of lights",
+)
 # B1: Qwen's title and lyrics take about 1 s; B2: ACE-Step takes 5 to 7 s from submit to saved file.
 # Both were measured with an empty class queue.
 USUAL_WAIT_S = 10
@@ -127,6 +146,22 @@ class GenerateTab:
     play_now: gr.Button
     add_to_queue: gr.Button
     track_id: gr.State
+
+
+def surprise(rng: random.Random | None = None) -> tuple[str, str, str, int, str, str]:
+    """Random form values for "Surprise me": style, extra tags (cleared), mood, length, vocal or
+    instrumental, and a song idea, in the order of render()'s six form inputs."""
+    rng = rng or random.Random()
+    steps = range(SURPRISE_MIN_S, SURPRISE_MAX_S + 1, DURATION_STEP_S)
+    song_type = VOCAL if rng.random() < 2 / 3 else INSTRUMENTAL  # mostly vocal: they show off lyrics
+    return (
+        rng.choice(GENRES),
+        "",
+        rng.choice(MOODS),
+        rng.choice(steps),
+        song_type,
+        rng.choice(SURPRISE_IDEAS),
+    )
 
 
 def compose_style(genre: str | None, extra: str | None) -> str:
@@ -338,6 +373,7 @@ def render(
     theme_warning = gr.Markdown("", elem_id="gen-theme-note")
     with gr.Row():
         button = gr.Button("Generate", variant="primary", elem_id="gen-button")
+        surprise_me = gr.Button("Surprise me", elem_id="gen-surprise")
         retry = gr.Button("Retry", visible=False, elem_id="gen-retry")
     status = gr.Markdown("", elem_id="gen-status")
     with gr.Group(visible=False, elem_id="gen-result") as result:
@@ -361,6 +397,8 @@ def render(
     timer = gr.Timer(TICK_S, active=False)
 
     inputs = [genre, extra, mood, duration, song_type, theme]
+    # Fills the form only (reads nothing, calls no service); the user still presses Generate.
+    surprise_me.click(lambda: surprise(), inputs=None, outputs=inputs, show_progress="hidden")
     outputs = [
         status,
         button,
