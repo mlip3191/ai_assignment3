@@ -18,8 +18,11 @@ One file per module, named `test_<module>.py`:
 | `test_check_models.py` | Only-the-four-class-models check |
 | `test_lanes.py` | Lane issue generation |
 | `test_playback_spike.py` | E1 Option A queue: clip order, skip, stale end event, one autoplay Audio |
+| `test_library_tab.py` | A7 Library tab: list, preview by track id, escaped fields, pick and timer tick, no model client |
+| `test_markdown.py` | A7 shared escape: generated text stays plain text (characters, line breaks, list markers) |
+| `test_integration.py` | A7 integration with mocked services: generate, library, queue, cover later, DJ clip, failures |
 | `test_app_shell.py` | E2 shell: placeholder panels, loopback launch, no model clients |
-| `test_player_panel.py` | E4 player: one autoplay Audio, Play queue, Skip, end event, cover and title |
+| `test_player_panel.py` | E4 player: one autoplay Audio, Play queue, Skip, end event, cover and title; A7 Add to queue, Play now, DJ clip plug point |
 | `test_generate_tab.py` | B7 Generate tab: the 8.1 controls and help text, Generate disabled while running and re-enabled after success or failure, each stage with elapsed time and the usual wait, 7.3 errors with Retry and inputs kept, the result card, the cover by `track_id`, B8 warnings before Generate, one run end to end with Qwen and ACE-Step mocked |
 | `test_config.py` | `jukebox/config.py`: required variables, one port per service, no port 9000, no secrets in output |
 | `test_check_config.py` | `scripts/check_config.py`: OK/missing table that never prints values |
