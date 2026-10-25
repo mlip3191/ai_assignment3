@@ -59,18 +59,37 @@ _EDGE_PUNCT = " \t\n.,;:"
 _QUOTE_PAIRS = {'"': '"', "'": "'", "“": "”", "‘": "’"}
 _TAG_LINE = re.compile(r"^\s*\[[^\]]*\]\s*$")
 # People and body parts in an image prompt. Body-part words don't count when they name part of a thing
-# ("the face of the cliff", "the arms of a chair", "a hand-painted sign"); nor do "the man in the moon"
-# and "a figure-eight road".
+# ("the face of the cliff", "the arms of a chair", "clock hands", "a hand-painted sign"); nor do "the man in
+# the moon", "a figure of speech", "guy ropes" or "a table runner". Any word ending in "man" or "men"
+# counts (fisherman, policewoman, human) except the few listed that aren't people (German, ottoman, omen,
+# ramen). "A lone silhouette" counts (sample 3), but "palm trees in silhouette" and "the silhouette of a
+# mountain range" don't; a silhouette of a person names the person.
 _PEOPLE = re.compile(
     r"\b(?:"
-    r"people|persons?|men|woman|women|boys?|girls?|child(?:ren)?|kids?|teens?|ladies|lady|guys?"
-    r"|friends?|couples?|crowds?|audiences?|someone|famil(?:y|ies)|lovers|strangers?|silhouettes?"
-    r"|mothers?|fathers?|daughters?|sons?|sisters?|brothers?|grand(?:mother|father)s?"
-    r"|travell?ers?|wanderers?|hikers?|sailors?|cyclists?|skaters?|runners?|surfers?|drivers?|passengers?"
+    r"people|persons?|humans?|men|woman|women|boys?|girls?|child(?:ren)?|kids?|teens?|toddlers?"
+    r"|bab(?:y|ies)(?!-|'s\s+breath|\s+(?:blue|pink|grand|breath)\b)|ladies|lady|guys?(?!-|\s+(?:ropes?|lines?|wires?)\b)"
+    r"|(?:boy|girl)?friends?|couples?|crowds?|audiences?|spectators?|tourists?|famil(?:y|ies)|lovers|strangers?"
+    r"|someone|somebody|everyone|everybody|(?<!\bin\s)(?<!\bas\s)silhouettes?(?!-|\s+of\b)"
+    r"|mothers?|fathers?|daughters?|sons?|sisters?|brothers?|grand(?:mother|father)s?|brides?"
+    r"|travell?ers?|wanderers?|hikers?|sailors?|cyclists?|bikers?|riders?|skaters?|surfers?|drivers?|passengers?"
+    r"|(?<!\btable\s)(?<!\bcarpet\s)runners?(?!\s+(?:of|beans?)\b)"
+    r"|pedestrians|pedestrian(?!\s+(?:bridges?|crossings?|paths?|streets?|zones?|walkways?|tunnels?)\b)"
+    r"|astronauts?|cowboys?(?!-|\s+(?:hats?|boots?)\b)|cowgirls?|soldiers?|pilots?(?!\s+lights?\b)"
+    r"|farmers?|workers?|baristas?"
     r"|dancers?|singers?|musicians?|guitarists?|drummers?|bassists?|pianists?|violinists?|djs?"
-    r"|man(?!\s+in\s+the\s+moon)(?!-)|figures?(?!-)"
-    r"|(?:faces?|bod(?:y|ies)|arms?|hands?|legs?|feet|foot|eyes|fingers?)(?!-|\s+of\b)"
+    r"|man(?!\s+in\s+the\s+moon)(?!-)|figures?(?!-|\s+of\b)"
+    r"|(?!(?:ger|otto|talis|cai|cay|snow|walk|dober|ro|pac|speci|abdo|acu|regi|o|sta|ra|a|lu|ye|hy|se"
+    r"|cycla|dol|bitu|albu|ceru|ru|fora)m[ae]n\b)\w+m[ae]n(?!-)"
+    r"|(?:faces?|bod(?:y|ies)|arms?|(?<!\bclock\s)(?<!\bwatch\s)(?<!\bhour\s)(?<!\bminute\s)hands?|legs?|feet"
+    r"|foot|eyes|fingers?|shoulders?|heads?(?!\s+(?:west|east|north|south|toward|towards|into|home)\b))"
+    r"(?!-|\s+of\b)"
     r")\b",
+    re.IGNORECASE,
+)
+# "No people", "without any people" and the like: an empty scene, so these words don't count.
+_NO_PEOPLE = re.compile(
+    r"\b(?:no|without(?:\s+any)?|devoid\s+of|empty\s+of|free\s+of)\s+(?:(?:visible|real|other)\s+)?"
+    r"(?:people|persons?|humans?|figures?|crowds?|faces?)\b",
     re.IGNORECASE,
 )
 # Added to any prompt with people in it. FLUX follows positive descriptions better than "no ...": small,
@@ -167,7 +186,7 @@ def write_cover_prompt(
 def mentions_people(text: str) -> bool:
     """True if an image prompt describes people or body parts. FLUX draws them from the front with
     detailed faces, and sometimes wrong hands or an extra arm (TC-04 dry run, 10/24)."""
-    return bool(_PEOPLE.search(text))
+    return bool(_PEOPLE.search(_NO_PEOPLE.sub(" ", text)))
 
 
 def _lyrics_block(vocal: bool, lyrics: str | None) -> str:

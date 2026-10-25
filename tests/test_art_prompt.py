@@ -76,9 +76,10 @@ def test_template_has_system_user_and_suffix_sections() -> None:
     assert t.suffix == SUFFIX
 
 
-def test_template_system_rules_forbid_text_real_people_and_real_artists() -> None:
+def test_template_system_rules_forbid_text_real_people_clear_faces_and_real_artists() -> None:
     system = art.load_template().system.lower()
-    for phrase in ("text", "real artists", "real person", "original"):
+    rules = ("text", "real artists", "real person", "original", "faces in shadow", "clearly drawn face")
+    for phrase in rules:
         assert phrase in system
 
 
@@ -342,6 +343,36 @@ def test_the_template_keeps_people_soft_and_never_a_portrait() -> None:
         "eyes closed in the rain",
         "fingers on the keys",
         "bare feet in the sand",
+        # missed before Mike's review of #58 (10/25)
+        "a fisherman at dawn",
+        "an astronaut floating above the earth",
+        "a cowboy on a ridge",
+        "soldiers marching home",
+        "a pilot in the cockpit",
+        "a bride in the doorway",
+        "a farmer in the field",
+        "a baby asleep in a crib",
+        "a gentleman in a long coat",
+        "a policeman under a streetlight",
+        "pedestrians crossing in the rain",
+        "a biker on a desert highway",
+        "workers on a night shift",
+        "a barista behind the counter",
+        "a rider on a white horse",
+        "shoulders wet with rain",
+        "heads bowed in the rain",
+        "everyone dancing on the roof",
+        "a horseman on the plain",
+        "a policewoman at the corner",
+        "the silhouette of a man on the hill",
+        "a lone human under the stars",
+        "humans on a distant shore",
+        "spectators in the stands",
+        "tourists at the pier",
+        "her girlfriend laughing",
+        "a sleepy toddler",
+        "the hands of a pianist on the keys",
+        "an empty street, no people but a lone fisherman",
     ],
 )
 def test_people_are_noticed(text: str) -> None:
@@ -366,7 +397,66 @@ def test_people_are_noticed(text: str) -> None:
         "a figure-eight road",
         "the man in the moon",
         "the foot of the hill",
+        # flagged before Mike's review of #58 (10/25)
+        "the silhouette of a mountain range",
+        "palm trees in silhouette against the sunset",
+        "clock hands pointing to midnight",
+        "the minute hand of a station clock",
+        "a runner of red carpet",
+        "a table runner with candles",
+        "a figure of speech painted on a wall",
+        "guy ropes on a tent",
+        # words that end in "man" or "men" but are not people
+        "a German shepherd on the porch",
+        "a velvet ottoman by the fire",
+        "a snowman in the yard",
+        "a silver talisman on a chain",
+        "Roman columns at dusk",
+        "a bowl of ramen",
+        "a dark omen in the sky",
+        "a stone dolmen on the moor",
+        "a museum specimen jar",
+        "pink cyclamen on a sill",
+        # other things that only sound like people
+        "a baby blue sky",
+        "a pedestrian bridge at night",
+        "a pilot light glowing blue",
+        "a cowboy hat on a fence post",
+        "the head of the river",
+        "the road heads west",
+        "an empty street with no people",
+        "a beach without any people",
+        "a desert devoid of people",
+        "a quiet room, no figures, no faces",
     ],
 )
 def test_scenes_without_people_are_left_alone(text: str) -> None:
     assert not art.mentions_people(text)
+
+
+# The three committed sample cover prompts (samples/manifest.json, written by Qwen on 10/24), shortened.
+SAMPLE_PROMPTS = {
+    "A cluttered desk bathed in dim blue twilight, featuring an open notebook with fading ink and a steaming "
+    "mug. Soft rain streaks the window behind, square album cover, no text, no letters, no logos, "
+    "no real people": False,
+    "A vintage convertible speeds along a coastal highway, bathed in golden hour sunlight. Two distant "
+    "silhouettes sit inside with windows down, arms raised joyfully toward the sky": True,
+    "A lone silhouette stands before a weathered wooden gate in twilight, back turned to the viewer": True,
+}
+
+
+@pytest.mark.parametrize(("text", "has_people"), SAMPLE_PROMPTS.items())
+def test_the_sample_cover_prompts_are_read_correctly(text: str, has_people: bool) -> None:
+    assert art.mentions_people(text) is has_people
+
+
+def test_an_empty_landscape_reply_gets_no_soft_figure_style() -> None:
+    reply = "A desert at night under a sky full of stars, no people, dunes in silhouette, film photograph"
+    prompt = art.write_cover_prompt(**LOFI, chat=FakeQwen(reply=reply))
+    assert art.SOFT_PEOPLE not in prompt
+    assert prompt == f"{reply}, {SUFFIX}"
+
+
+def test_a_fisherman_reply_gets_the_soft_figure_style() -> None:
+    prompt = art.write_cover_prompt(**LOFI, chat=FakeQwen(reply="A fisherman at dawn on a misty lake"))
+    assert prompt == f"A fisherman at dawn on a misty lake, {art.SOFT_PEOPLE}, {SUFFIX}"
