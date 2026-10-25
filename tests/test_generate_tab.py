@@ -196,6 +196,14 @@ def test_generate_disables_the_button_and_reenables_it_on_success(library: Libra
     assert tab.updates(result[-1])[tab.OUT_BUTTON]["interactive"] is True
 
 
+def test_surprise_me_is_off_while_a_song_is_made_and_back_on_after(library: Library) -> None:
+    # Clicking it mid-run would change the form under a run that may fail and offer Retry.
+    for run in (FakeRun(library), FakeRun(library, fail=ServiceError("acestep", "timeout", "slow"))):
+        result = views(library, run)
+        assert tab.updates(result[0])[tab.OUT_SURPRISE]["interactive"] is False
+        assert tab.updates(result[-1])[tab.OUT_SURPRISE]["interactive"] is True
+
+
 def test_status_names_each_stage_in_order(library: Library) -> None:
     result = views(library, FakeRun(library))
     stages = []
@@ -365,6 +373,7 @@ EXPECTED_OUTPUTS = {
     tab.OUT_ADD: "gen-add-to-queue",
     tab.OUT_PLAY_NOTE: "gen-play-note",
     tab.OUT_RETRY_COVER: "gen-retry-cover",
+    tab.OUT_SURPRISE: "gen-surprise",
 }
 
 

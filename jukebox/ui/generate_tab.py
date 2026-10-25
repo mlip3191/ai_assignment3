@@ -93,15 +93,15 @@ HELP = "\n".join(
         f"- **Generate:** a song usually takes about {USUAL_WAIT_S} seconds, longer when the class servers "
         "are busy. The status line counts the seconds. The cover is painted afterwards, and the song can "
         "play before it is ready.",
-        "- **Surprise me:** fills the form with a random style, mood, length and song idea. "
-        "Change anything you like, then press **Generate**.",
+        "- **Surprise me:** fills the form with a random style, mood, length, vocal or instrumental, "
+        "and song idea, and clears the extra style tags. Change anything you like, then press **Generate**.",
     ]
 )
 
 # Positions in the tuple updates() returns, matching the outputs list in render().
 OUT_STATUS, OUT_BUTTON, OUT_RETRY, OUT_RESULT, OUT_TITLE, OUT_LYRICS = range(6)
 OUT_COVER, OUT_COVER_NOTE, OUT_PLAY_NOW, OUT_ADD, OUT_TRACK, OUT_TIMER, OUT_PLAY_NOTE = range(6, 13)
-OUT_RETRY_COVER = 13
+OUT_RETRY_COVER, OUT_SURPRISE = 13, 14
 COVER_WAIT_S = 60  # no cover job this long after the song means the cover never started (C1: ~2.3 s)
 
 PLAYER_NOT_CONNECTED = "Play now and Add to queue work once the player is connected."
@@ -297,6 +297,7 @@ def updates(view: GenerateView, *, player_connected: bool = False) -> tuple[obje
         gr.update(active=bool(cover and not cover.done)),
         gr.update(value=PLAYER_NOT_CONNECTED, visible=done and not player_connected),
         gr.update(visible=bool(cover and cover.failed)),
+        gr.update(interactive=not view.running),  # Surprise me must not change the form mid-run
     )
 
 
@@ -423,6 +424,7 @@ def render(
         timer,
         play_note,
         retry_cover,
+        surprise_me,
     ]
     cover_outputs = [cover, cover_note, timer, retry_cover]
 
