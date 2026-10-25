@@ -6,22 +6,34 @@ import sys
 import wave
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+import gradio as gr  # noqa: E402
 
 from jukebox.library import Library  # noqa: E402
 from jukebox.services.art import cover_for  # noqa: E402
 from jukebox.services.player import DJ_UNAVAILABLE, FINISHED  # noqa: E402
 from jukebox.ui.player_panel import (  # noqa: E402
+    _CLIPS,
     _SESSIONS,
     NOW_PLAYING,
     SPEAKING,
+    UNKNOWN_TRACK,
+    PlayerPanel,
+    PlayerView,
+    _gradio,
+    on_add,
     on_end,
     on_play,
+    on_play_now,
     on_skip,
     open_player,
     panel_text,
     player_for,
+    render,
 )
 
 PANEL = ROOT / "jukebox" / "ui" / "player_panel.py"
@@ -256,3 +268,221 @@ def test_skip_with_nothing_playing_leaves_the_queue(tmp_path: Path, make_track) 
     assert view.ignored is True
     assert player.current is None
     assert player.queue == ["sample_01"]
+
+
+# ---- A7: Add to queue and Play now, from the Generate card and the Library tab --------------------
+
+
+def _with_generated(
+    library: Library, make_track, tmp_path: Path, track_id: str = "gen1", title: str = "Fresh Song"
+):
+    """A song generated this session: it has audio and no cover yet, like the moment after Generate."""
+    audio_rel = f"runtime/generated/{track_id}.wav"
+    _wav(tmp_path / audio_rel)
+    library.add(
+        make_track(id=track_id, title=title, audio_path=audio_rel, cover_path=None, source="generated")
+    )
+
+
+def test_add_puts_a_generated_song_in_up_next_without_starting_it(tmp_path: Path, make_track) -> None:
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    _with_generated(library, make_track, tmp_path)
+    player = open_player(library, {})
+    view = on_add(player, library, 0, "gen1", tmp_path / "served")
+    assert view.keep_audio is True
+    assert view.audio is None
+    assert view.token == 0
+    assert player.current is None
+    assert player.queue == ["gen1"]
+    assert [title for title, _cover in view.up_next] == ["Fresh Song"]
+    assert view.up_next[0][1] == _cover(library, "gen1")  # the placeholder until the cover arrives
+    assert "Fresh Song" in panel_text(view)
+
+
+def test_add_while_a_song_plays_leaves_it_playing(tmp_path: Path, make_track) -> None:
+    library, clips = _library(tmp_path, make_track)
+    _with_generated(library, make_track, tmp_path)
+    player = open_player(library, clips)
+    runtime = tmp_path / "served"
+    started = on_play(player, library, 0, runtime)
+    before = player.current
+    view = on_add(player, library, started.token, "gen1", runtime)
+    assert player.current == before
+    assert view.keep_audio is True
+    assert view.token == started.token
+    assert [title for title, _cover in view.up_next] == ["Two", "Three", "Fresh Song"]
+
+
+@pytest.mark.parametrize("bad_id", [None, "", "   ", "nope"])
+def test_add_with_no_such_song_says_so_and_changes_nothing(tmp_path: Path, make_track, bad_id) -> None:
+    library, clips = _library(tmp_path, make_track)
+    player = open_player(library, clips)
+    view = on_add(player, library, 3, bad_id, tmp_path / "served")
+    assert view.notice == UNKNOWN_TRACK
+    assert UNKNOWN_TRACK in panel_text(view)
+    assert view.keep_audio is True
+    assert view.token == 3
+    assert player.queue == []
+    assert player.current is None
+
+
+def test_play_now_starts_that_song_and_moves_the_token_on(tmp_path: Path, make_track) -> None:
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    _with_generated(library, make_track, tmp_path)
+    player = open_player(library, {})
+    view = on_play_now(player, library, 4, "gen1", tmp_path / "served")
+    assert view.keep_audio is False
+    assert view.label == NOW_PLAYING
+    assert view.title == "Fresh Song"
+    assert view.token == 5
+    assert view.notice == DJ_UNAVAILABLE  # no DJ clip yet: the song plays and says so
+    assert Path(view.audio).name.startswith("t5-")
+    assert Path(view.audio).name.endswith("-gen1.wav")
+    assert view.cover == _cover(library, "gen1")
+
+
+def test_play_now_with_a_dj_clip_plays_the_dj_first(tmp_path: Path, make_track) -> None:
+    library, clips = _library(tmp_path, make_track, clips_for=set())
+    _with_generated(library, make_track, tmp_path)
+    clip = tmp_path / "dj" / "gen1.wav"
+    _wav(clip)
+    player = open_player(library, {"gen1": str(clip)})
+    runtime = tmp_path / "served"
+    view = on_play_now(player, library, 0, "gen1", runtime)
+    assert view.label == SPEAKING
+    assert Path(view.audio).name.endswith("-gen1.wav")
+    after_dj = on_end(player, library, view.token, view.audio, runtime)
+    assert after_dj.label == NOW_PLAYING
+    assert after_dj.title == "Fresh Song"
+
+
+def test_play_now_replaces_what_is_playing_and_the_queue_carries_on(tmp_path: Path, make_track) -> None:
+    library, clips = _library(tmp_path, make_track)
+    _with_generated(library, make_track, tmp_path)
+    player = open_player(library, clips)
+    runtime = tmp_path / "served"
+    started = on_play(player, library, 0, runtime)
+    jumped = on_play_now(player, library, started.token, "gen1", runtime)
+    assert jumped.title == "Fresh Song"
+    assert player.queue == ["sample_02", "sample_03"]
+    after = on_end(player, library, jumped.token, jumped.audio, runtime)  # the generated song ends
+    assert after.label == SPEAKING
+    assert after.title == "Two"
+
+
+def test_play_now_takes_a_queued_copy_out_of_the_queue(tmp_path: Path, make_track) -> None:
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    _with_generated(library, make_track, tmp_path)
+    player = open_player(library, {})
+    runtime = tmp_path / "served"
+    on_add(player, library, 0, "gen1", runtime)
+    on_play_now(player, library, 0, "gen1", runtime)
+    assert player.queue == []
+
+
+def test_a_late_end_event_cannot_advance_past_play_now(tmp_path: Path, make_track) -> None:
+    library, clips = _library(tmp_path, make_track)
+    _with_generated(library, make_track, tmp_path)
+    player = open_player(library, clips)
+    runtime = tmp_path / "served"
+    started = on_play(player, library, 0, runtime)
+    jumped = on_play_now(player, library, started.token, "gen1", runtime)
+    late = on_end(player, library, jumped.token, started.audio, runtime)
+    assert late.ignored is True
+    assert player.current is not None
+    assert player.current.track_id == "gen1"
+
+
+def test_play_now_with_no_such_song_keeps_the_current_one_playing(tmp_path: Path, make_track) -> None:
+    library, clips = _library(tmp_path, make_track)
+    player = open_player(library, clips)
+    runtime = tmp_path / "served"
+    started = on_play(player, library, 0, runtime)
+    before = player.current
+    view = on_play_now(player, library, started.token, "nope", runtime)
+    assert view.notice == UNKNOWN_TRACK
+    assert view.keep_audio is True
+    assert view.token == started.token
+    assert player.current == before
+
+
+def test_play_now_with_a_missing_song_file_shows_unavailable_instead_of_failing(
+    tmp_path: Path, make_track
+) -> None:
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    _with_generated(library, make_track, tmp_path)
+    (tmp_path / "runtime" / "generated" / "gen1.wav").unlink()
+    player = open_player(library, {})
+    view = on_play_now(player, library, 0, "gen1", tmp_path / "served")
+    assert view.audio is None
+    assert view.notice == DJ_UNAVAILABLE
+    assert DJ_UNAVAILABLE in panel_text(view)
+
+
+def test_a_view_that_keeps_the_audio_updates_only_the_text_and_up_next() -> None:
+    from jukebox.ui.player_panel import PlayerView
+
+    view = PlayerView(None, "Now playing", "One", "cover.png", None, (("Two", "two.png"),), 7, False, True)
+    out = _gradio(view)
+    assert len(out) == 5
+    assert out[0] == gr.skip()  # the audio keeps playing
+    assert out[2] == gr.skip()  # and so does the cover
+    assert out[4] == gr.skip()  # and the token stays
+    assert "Two" in out[1]
+    assert out[3] == [("two.png", "Two")]
+
+
+def test_a_dj_clip_filled_in_after_the_song_was_queued_is_used(
+    tmp_path: Path, make_track, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The plug point for D5: whatever fills the shared clip map is picked up by every session's player."""
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    _SESSIONS.clear()
+    player, _session = player_for("", library)
+    runtime = tmp_path / "served"
+    on_add(player, library, 0, "sample_01", runtime)
+    clip = tmp_path / "dj" / "later.wav"
+    _wav(clip)
+    monkeypatch.setitem(_CLIPS, "sample_01", str(clip))  # the prefetch finishes after the click
+    view = on_play(player, library, 0, runtime)
+    assert view.label == SPEAKING
+    assert Path(view.audio).name.endswith("-later.wav")
+    _SESSIONS.clear()
+
+
+def test_render_returns_a_panel_that_binds_buttons_to_this_players_outputs() -> None:
+    with gr.Blocks() as demo:
+        panel = render()
+        selected = gr.State("sample_01")
+        add = gr.Button("Add", elem_id="x-add")
+        now = gr.Button("Now", elem_id="x-now")
+        panel.connect_add(add, selected)
+        panel.connect_play_now(now, selected)
+    assert isinstance(panel, PlayerPanel)
+    assert len(panel.outputs) == 6  # audio, status, cover, up next, token, session
+    clicks = {
+        target[0]
+        for dep in demo.get_config_file()["dependencies"]
+        for target in dep["targets"]
+        if target[1] == "click"
+    }
+    assert {add._id, now._id} <= clicks
+
+
+def test_panel_text_escapes_generated_titles_so_they_stay_plain_text() -> None:
+    view = PlayerView(
+        None,
+        NOW_PLAYING,
+        "# Hello *world*\nMix <b>1</b>",
+        None,
+        None,
+        (("1. Intro", "cover.jpg"), ("- Sneaky\n> quote", "cover.jpg")),
+        1,
+        False,
+    )
+    lines = panel_text(view).split("\n")
+    assert "\\# Hello \\*world\\* Mix \\<b\\>1\\</b\\>" in lines  # one plain line, nothing formatted
+    assert "- 1\\. Intro" in lines  # the list item is ours, the song's own number is text
+    assert "- \\- Sneaky \\> quote" in lines
+    assert not any(line.startswith(("#", ">")) for line in lines)
+    assert "<b>" not in panel_text(view)

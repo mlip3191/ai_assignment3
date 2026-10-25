@@ -10,8 +10,7 @@ HOW_TO = "\n".join(
     [
         "# How to use",
         "",
-        "Generate and the DJ voice are not connected yet. "
-        "The player plays the sample tracks after one click.",
+        "The DJ voice is not connected yet, so songs play without a DJ intro for now.",
         "",
         "- **Play the samples.** Press **Play queue** once. "
         "The browser plays nothing until that click. The queue then advances on its own.",
@@ -19,7 +18,9 @@ HOW_TO = "\n".join(
         "The button stays disabled while it runs, and a status line names the stage. "
         "With an empty class queue, a short Qwen reply is about 1.5 seconds, "
         "an ACE-Step song is about 5 to 7 seconds, and a FLUX cover is about 2.3 seconds. "
-        "A busy queue can take longer.",
+        "A busy queue can take longer. "
+        "When it finishes, **Play now** plays the new song at once and **Add to queue** puts it "
+        "at the end of the queue. Every song is also listed in the **Library** tab.",
         "- **Change the DJ voice.** Keep the default voice, or upload an MP3 or WAV. "
         "A failed DJ intro still leaves the song. The DJ wait has not been measured.",
         "",
@@ -35,10 +36,15 @@ def build_demo() -> gr.Blocks:
             with gr.Column():
                 with gr.Tabs():
                     with gr.Tab("Generate", elem_id="generate-tab"):
-                        generate_tab.render()
+                        generate = generate_tab.render(player_connected=True)
                     with gr.Tab("Library", elem_id="library-tab"):
-                        library_tab.render()
+                        library = library_tab.render()
             with gr.Column():
-                player_panel.render()
+                panel = player_panel.render()
                 dj_settings.render()
+        # Both tabs send a song to the player by its track id, so a song is never found by list position.
+        panel.connect_add(generate.add_to_queue, generate.track_id)
+        panel.connect_play_now(generate.play_now, generate.track_id)
+        panel.connect_add(library.add_to_queue, library.selected)
+        panel.connect_play_now(library.play_now, library.selected)
     return demo

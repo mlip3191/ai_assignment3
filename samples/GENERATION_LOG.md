@@ -84,7 +84,7 @@ A cluttered desk bathed in dim blue twilight, featuring an open notebook with fa
 
 **Files:** `samples/audio/sample_01.mp3`, `samples/covers/sample_01.jpg`
 
-**Human checks** (fill in after listening and looking):
+**Human checks** (done after listening and looking, 2026-10-24):
 
 - Listened by @felcervino on 2026-10-24: plays to the end, matches style and mood, no vocals: Yes
 - Cover looked at by @felcervino: matches mood and style; no readable text, letters, or logos, and no real or identifiable people: Yes (the open book shows small unreadable handwriting-like marks. FLUX tends to add these to books; @felcervino decided on 2026-10-21, after two live trial runs, to regenerate a cover only for readable text, a recognizable logo, or a visible face)
@@ -184,7 +184,7 @@ A vintage convertible speeds along a coastal highway, bathed in golden hour sunl
 
 **Files:** `samples/audio/sample_02.mp3`, `samples/covers/sample_02.jpg`
 
-**Human checks** (fill in after listening and looking):
+**Human checks** (done after listening and looking, 2026-10-24):
 
 - Listened by @felcervino on 2026-10-24: plays to the end, matches style and mood, sings the lyrics: Yes
 - Cover looked at by @felcervino: matches mood and style; no text, letters, or logos, and no real or identifiable people: Yes (one figure, seen only from behind, no face)
@@ -291,7 +291,7 @@ A lone silhouette stands before a weathered wooden gate in twilight, back turned
 
 **Files:** `samples/audio/sample_03.mp3`, `samples/covers/sample_03.jpg`
 
-**Human checks** (fill in after listening and looking):
+**Human checks** (done after listening and looking, 2026-10-24):
 
 - Listened by @felcervino on 2026-10-24: plays to the end, matches style and mood, sings the lyrics: Yes
 - Cover looked at by @felcervino: matches mood and style; no text, letters, or logos, and no real or identifiable people: Yes (one figure, seen only from behind, no face)
