@@ -19,12 +19,15 @@ from jukebox.services.player import DJ_UNAVAILABLE, FINISHED  # noqa: E402
 from jukebox.ui.player_panel import (  # noqa: E402
     _CLIPS,
     _SESSIONS,
+    NO_LYRICS,
     NOW_PLAYING,
+    PRESS_PLAY,
     SPEAKING,
     UNKNOWN_TRACK,
     PlayerPanel,
     PlayerView,
     _gradio,
+    download_name,
     on_add,
     on_end,
     on_play,
@@ -424,7 +427,7 @@ def test_a_view_that_keeps_the_audio_updates_only_the_text_and_up_next() -> None
 
     view = PlayerView(None, "Now playing", "One", "cover.png", None, (("Two", "two.png"),), 7, False, True)
     out = _gradio(view)
-    assert len(out) == 5
+    assert len(out) == 7
     assert out[0] == gr.skip()  # the audio keeps playing
     assert out[2] == gr.skip()  # and so does the cover
     assert out[4] == gr.skip()  # and the token stays
@@ -459,7 +462,7 @@ def test_render_returns_a_panel_that_binds_buttons_to_this_players_outputs() -> 
         panel.connect_add(add, selected)
         panel.connect_play_now(now, selected)
     assert isinstance(panel, PlayerPanel)
-    assert len(panel.outputs) == 6  # audio, status, cover, up next, token, session
+    assert len(panel.outputs) == 8  # audio, status, cover, up next, token, lyrics, download, session
     clicks = {
         target[0]
         for dep in demo.get_config_file()["dependencies"]
@@ -486,3 +489,116 @@ def test_panel_text_escapes_generated_titles_so_they_stay_plain_text() -> None:
     assert "- \\- Sneaky \\> quote" in lines
     assert not any(line.startswith(("#", ">")) for line in lines)
     assert "<b>" not in panel_text(view)
+
+
+# ---- Lyrics while playing, and Download song with the song's name (proposal on #3) -----------------
+
+
+def test_a_vocal_song_shows_its_lyrics_while_it_plays(tmp_path: Path, make_track) -> None:
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    _with_generated(library, make_track, tmp_path)
+    view = on_play_now(open_player(library, {}), library, 0, "gen1", tmp_path / "served")
+    assert view.lyrics == "[verse]\nLights ahead"
+
+
+def test_an_instrumental_says_it_has_no_lyrics(tmp_path: Path, make_track) -> None:
+    library = Library(root=tmp_path)
+    _wav(tmp_path / "runtime/generated/inst.wav")
+    library.add(
+        make_track(id="inst", title="Calm", vocal=False, lyrics=None, audio_path="runtime/generated/inst.wav")
+    )
+    view = on_play_now(open_player(library, {}), library, 0, "inst", tmp_path / "served")
+    assert view.lyrics == NO_LYRICS
+
+
+def test_the_lyrics_follow_the_song_on_skip_and_clear_when_the_queue_ends(tmp_path: Path, make_track) -> None:
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    _with_generated(library, make_track, tmp_path)
+    library.add(
+        make_track(id="inst", title="Calm", vocal=False, lyrics=None, audio_path="runtime/generated/gen1.wav")
+    )
+    player = open_player(library, {})
+    runtime = tmp_path / "served"
+    on_add(player, library, 0, "gen1", runtime)
+    on_add(player, library, 0, "inst", runtime)
+    first = on_play(player, library, 0, runtime)
+    assert first.lyrics == "[verse]\nLights ahead"
+    second = on_skip(player, library, first.token, runtime)
+    assert second.lyrics == NO_LYRICS
+    done = on_skip(player, library, second.token, runtime)
+    assert done.lyrics == ""
+    assert done.download is None
+
+
+def test_download_is_a_copy_named_after_the_song(tmp_path: Path, make_track) -> None:
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    _with_generated(library, make_track, tmp_path, title="Fresh Song")
+    view = on_play_now(open_player(library, {}), library, 0, "gen1", tmp_path / "served")
+    download = Path(view.download)
+    assert download.name == "Fresh Song.wav"
+    assert download.read_bytes() == (tmp_path / "runtime/generated/gen1.wav").read_bytes()
+    assert (tmp_path / "served") in download.parents  # under the runtime folder, never next to the song
+
+
+def test_two_songs_with_the_same_title_get_separate_downloads(tmp_path: Path, make_track) -> None:
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    _with_generated(library, make_track, tmp_path, track_id="a", title="Same")
+    _with_generated(library, make_track, tmp_path, track_id="b", title="Same")
+    player = open_player(library, {})
+    first = on_play_now(player, library, 0, "a", tmp_path / "served")
+    second = on_play_now(player, library, first.token, "b", tmp_path / "served")
+    assert Path(first.download).name == Path(second.download).name == "Same.wav"
+    assert first.download != second.download
+
+
+def test_a_dj_intro_already_offers_the_songs_download(tmp_path: Path, make_track) -> None:
+    library, clips = _library(tmp_path, make_track)
+    view = on_play(open_player(library, clips), library, 0, tmp_path / "served")
+    assert view.label == SPEAKING
+    assert Path(view.download).name == "One.wav"
+    assert view.lyrics == "[verse]\nLights ahead"
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("Fresh Song", "Fresh Song"),
+        ('Rock/Roll: "Live"?', "RockRoll Live"),
+        ("  Dots and spaces. . ", "Dots and spaces"),
+        ("Café Noir", "Café Noir"),
+        ("CON", "song CON"),  # a reserved name on Windows
+        ("***", "song"),
+        ("x" * 200, "x" * 80),
+    ],
+)
+def test_download_names_are_safe_on_macos_and_windows(title: str, expected: str) -> None:
+    assert download_name(title) == expected
+
+
+def test_a_view_shows_the_lyrics_and_the_download_button() -> None:
+    view = PlayerView(
+        "a.wav", NOW_PLAYING, "One", "c.png", None, (), 2, False, lyrics="la", download="One.wav"
+    )
+    out = _gradio(view)
+    assert out[5] == "la"
+    assert out[6]["value"] == "One.wav"
+    assert out[6]["visible"] is True
+    idle = _gradio(PlayerView(None, PRESS_PLAY, "", None, None, (), 2, False))
+    assert idle[5] == ""
+    assert idle[6]["visible"] is False
+
+
+def test_a_view_that_keeps_the_audio_keeps_the_lyrics_and_download() -> None:
+    view = PlayerView(None, NOW_PLAYING, "One", "c.png", None, (), 7, False, True)
+    out = _gradio(view)
+    assert out[5] == gr.skip()
+    assert out[6] == gr.skip()
+
+
+def test_the_panel_has_a_lyrics_box_and_a_download_button() -> None:
+    with gr.Blocks():
+        panel = render()
+    ids = [getattr(o, "elem_id", None) for o in panel.outputs]
+    assert ids[5:7] == ["now-lyrics", "now-download"]
+    assert isinstance(panel.outputs[6], gr.DownloadButton)
+    assert panel.outputs[5].interactive is False
