@@ -10,9 +10,10 @@ HOW_TO = "\n".join(
     [
         "# How to use",
         "",
-        "These controls are not connected yet. This page is the shell the rest of the jukebox plugs into.",
+        "Generate and the DJ voice are not connected yet. "
+        "The player plays the sample tracks after one click.",
         "",
-        "- **Play the samples.** When the player is connected, press **Play queue** once. "
+        "- **Play the samples.** Press **Play queue** once. "
         "The browser plays nothing until that click. The queue then advances on its own.",
         "- **Generate a song.** Choose style, mood, duration, and instrumental or vocal. "
         "The button stays disabled while it runs, and a status line names the stage. "

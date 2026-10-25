@@ -796,6 +796,41 @@ def test_a_settings_file_that_cannot_be_read_stops_with_a_clear_line(
     assert gs.main() == 1
     out = capsys.readouterr().out
     assert "Stopped: the settings file could not be read" in out and "samples/ was not changed." in out
+    assert "or check that you can read it" in out  # @mlip3191 on #46: it may be a permission problem
+
+
+def test_the_final_summary_prints_each_title_on_one_line(
+    cfg, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, tmp_path: Path
+) -> None:
+    """@mlip3191 on #46: a newline in a generated title must not split the console summary."""
+    import jukebox.config as config
+
+    track = FakeSong(tmp_path)(gs.SPECS[0])
+    track = dataclasses.replace(track, id="sample_01", title="Two\nLines")
+    monkeypatch.setattr(config, "load_config", lambda: cfg)
+    monkeypatch.setattr(gs, "build_samples", lambda *a, **k: [track])
+    assert gs.main() == 0
+    out = capsys.readouterr().out
+    assert "  sample_01: Two Lines  (" in out
+
+
+@pytest.mark.parametrize(
+    "text, span",
+    [("plain-model", "`plain-model`"), ("odd`model", "`` odd`model ``"), ("`edge", "`` `edge ``")],
+)
+def test_a_backtick_in_a_model_name_cannot_break_its_code_span(text: str, span: str) -> None:
+    """@mlip3191 on #46: the calls table shows each model in a code span."""
+    assert gs._code(text) == span
+
+
+def test_the_calls_table_uses_safe_code_spans_for_model_names(tmp_path: Path) -> None:
+    models = dict(MODELS, qwen="odd`model")
+    gs.build_samples(
+        gs.SPECS, root=tmp_path, make_song=FakeSong(tmp_path), make_cover=fake_cover,
+        operator="felcervino", commit=COMMIT, models=models, now=lambda: NOW,
+    )  # fmt: skip
+    log = (tmp_path / "samples" / "GENERATION_LOG.md").read_text(encoding="utf-8")
+    assert "| Qwen | `` odd`model `` | 9001 |" in log
 
 
 # ---- brief Windows locks on fresh files (#40 review, @gunnaroc) -------------------------------
