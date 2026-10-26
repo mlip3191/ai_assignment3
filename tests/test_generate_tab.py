@@ -7,6 +7,7 @@ service. One end-to-end test runs the real pipeline with Qwen and ACE-Step mocke
 from __future__ import annotations
 
 import json
+import random
 import sys
 import threading
 import time
@@ -209,6 +210,14 @@ def test_generate_disables_the_button_and_reenables_it_on_success(library: Libra
     assert tab.updates(result[-1])[tab.OUT_BUTTON]["interactive"] is True
 
 
+def test_surprise_me_is_off_while_a_song_is_made_and_back_on_after(library: Library) -> None:
+    # Clicking it mid-run would change the form under a run that may fail and offer Retry.
+    for run in (FakeRun(library), FakeRun(library, fail=ServiceError("acestep", "timeout", "slow"))):
+        result = views(library, run)
+        assert tab.updates(result[0])[tab.OUT_SURPRISE]["interactive"] is False
+        assert tab.updates(result[-1])[tab.OUT_SURPRISE]["interactive"] is True
+
+
 def test_status_names_each_stage_in_order(library: Library) -> None:
     result = views(library, FakeRun(library))
     stages = []
@@ -299,14 +308,18 @@ def test_a_pipeline_that_raises_still_reenables_the_button(library: Library) -> 
 
 
 def test_inputs_are_never_handler_outputs(library: Library) -> None:
-    """The form keeps the user's choices on success and on failure: no handler writes to it."""
+    """The form keeps the user's choices on success and on failure: no handler writes to it, except the
+    Surprise me button, whose whole job is to fill the form when the user clicks it."""
     demo, _ = _demo(library)
     inputs = {
         _by_id(demo, i)._id
         for i in ("gen-genre", "gen-extra", "gen-mood", "gen-duration", "gen-type", "gen-theme")
     }
+    surprise = _by_id(demo, "gen-surprise")._id
     raw = demo.fns.values() if isinstance(demo.fns, dict) else demo.fns
     for fn in raw:
+        if any(t[0] == surprise for t in fn.targets):
+            continue
         assert not inputs & {c._id for c in fn.outputs}
 
 
@@ -374,6 +387,7 @@ EXPECTED_OUTPUTS = {
     tab.OUT_ADD: "gen-add-to-queue",
     tab.OUT_PLAY_NOTE: "gen-play-note",
     tab.OUT_RETRY_COVER: "gen-retry-cover",
+    tab.OUT_SURPRISE: "gen-surprise",
 }
 
 
@@ -807,3 +821,63 @@ def test_tab_imports_no_model_client() -> None:
     source = (ROOT / "jukebox" / "ui" / "generate_tab.py").read_text(encoding="utf-8")
     assert "jukebox.clients" not in source
     assert "httpx" not in source
+
+
+# ---- Surprise me: random form values (proposal on #3, lane C prototype) -----------------------------
+
+
+def test_surprise_picks_only_values_the_form_accepts() -> None:
+    rng = random.Random(7)
+    for _ in range(200):
+        genre, extra, mood, duration, song_type, theme = tab.surprise(rng)
+        assert genre in tab.GENRES
+        assert extra == ""  # fresh choices: the user's own extra tags are cleared
+        assert mood in tab.MOODS
+        assert tab.SURPRISE_MIN_S <= duration <= tab.SURPRISE_MAX_S
+        assert duration % tab.DURATION_STEP_S == 0
+        assert song_type in (tab.VOCAL, tab.INSTRUMENTAL)
+        assert theme in tab.SURPRISE_IDEAS
+
+
+def test_surprise_varies_and_includes_both_vocal_and_instrumental() -> None:
+    rng = random.Random(11)
+    picks = [tab.surprise(rng) for _ in range(60)]
+    assert len({p[0] for p in picks}) > 3 and len({p[2] for p in picks}) > 3
+    assert {p[4] for p in picks} == {tab.VOCAL, tab.INSTRUMENTAL}
+
+
+def test_surprise_is_reproducible_with_the_same_seed() -> None:
+    assert tab.surprise(random.Random(3)) == tab.surprise(random.Random(3))
+
+
+def test_surprise_lengths_stay_where_vocal_songs_sound_good() -> None:
+    assert tab.SURPRISE_MIN_S >= 30 and tab.SURPRISE_MAX_S <= tab.MAX_DURATION_S
+
+
+def test_surprise_ideas_are_original_and_pass_the_artist_screen() -> None:
+    assert len(tab.SURPRISE_IDEAS) >= 10
+    for idea in tab.SURPRISE_IDEAS:
+        assert len(idea) <= tab.MAX_THEME_CHARS
+        assert songs.check_theme(idea).text == idea, idea  # B8 removes nothing
+
+
+def test_the_surprise_button_fills_exactly_the_six_form_fields(library: Library) -> None:
+    demo, _ = _demo(library)
+    button = _by_id(demo, "gen-surprise")
+    assert button.value == "Surprise me"
+    fn = _fn_for(demo, "gen-surprise", "click")
+    assert [o.elem_id for o in fn.outputs] == [
+        "gen-genre", "gen-extra", "gen-mood", "gen-duration", "gen-type", "gen-theme",
+        "gen-status", "gen-retry",
+    ]  # fmt: skip
+    assert fn.inputs == []  # it never reads or sends the user's text anywhere
+
+
+def test_surprise_clears_an_old_failure_so_retry_cannot_use_the_new_choices() -> None:
+    # After a failure the status says "your choices are kept: press Retry". Once Surprise me
+    # replaces those choices, that line and the Retry button would be wrong, so both go.
+    values = tab.on_surprise(random.Random(7))
+    assert values[:6] == tab.surprise(random.Random(7))
+    assert values[6] == ""
+    assert values[7]["visible"] is False
+    assert len(values) == 8

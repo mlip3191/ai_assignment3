@@ -3,6 +3,7 @@
 The handler runs songs.generate_song on a worker thread and yields a view about once a second, so the
 status line keeps counting while ACE-Step works (R5). It never raises: success and failure both end
 with the Generate button enabled, and no handler writes to the form, so the user's choices stay (R6).
+The one exception is Surprise me, which fills the form with random choices only when clicked.
 This module calls the song pipeline and the cover service only. It does not import a model client.
 
 Play now and Add to queue are returned from render() with the new track's id, for the integration (A7)
@@ -14,6 +15,7 @@ from __future__ import annotations
 import functools
 import logging
 import queue
+import random
 import re
 import threading
 import time
@@ -50,6 +52,24 @@ MIN_DURATION_S = 10  # ACE-Step's documented minimum (B2)
 MAX_DURATION_S = 120  # longer songs are untested and make large files (B2, the brief)
 DEFAULT_DURATION_S = 60
 DURATION_STEP_S = 5
+# "Surprise me" fills the form with random values; you still press Generate. Lengths stay where vocal
+# songs sound good (30 s and up), and the ideas are original, with no artists (B8 removes nothing).
+SURPRISE_MIN_S = 30
+SURPRISE_MAX_S = 90
+SURPRISE_IDEAS = (
+    "a rainy evening in the city",
+    "a road trip with friends",
+    "leaving home for the first time",
+    "the last day of summer",
+    "dancing in the kitchen at midnight",
+    "a train ride through the mountains",
+    "waiting for the sunrise",
+    "an old photograph found in a drawer",
+    "a lighthouse in a storm",
+    "the first snow of the year",
+    "a quiet morning by the sea",
+    "a night market full of lights",
+)
 # B1: Qwen's title and lyrics take about 1 s; B2: ACE-Step takes 5 to 7 s from submit to saved file.
 # Both were measured with an empty class queue.
 USUAL_WAIT_S = 10
@@ -74,13 +94,15 @@ HELP = "\n".join(
         f"- **Generate:** a song usually takes about {USUAL_WAIT_S} seconds, longer when the class servers "
         "are busy. The status line counts the seconds. The cover is painted afterwards, and the song can "
         "play before it is ready.",
+        "- **Surprise me:** fills the form with a random style, mood, length, vocal or instrumental, "
+        "and song idea, and clears the extra style tags. Change anything you like, then press **Generate**.",
     ]
 )
 
 # Positions in the tuple updates() returns, matching the outputs list in render().
 OUT_STATUS, OUT_BUTTON, OUT_RETRY, OUT_RESULT, OUT_TITLE, OUT_LYRICS = range(6)
 OUT_COVER, OUT_COVER_NOTE, OUT_PLAY_NOW, OUT_ADD, OUT_TRACK, OUT_TIMER, OUT_PLAY_NOTE = range(6, 13)
-OUT_RETRY_COVER = 13
+OUT_RETRY_COVER, OUT_SURPRISE = 13, 14
 COVER_WAIT_S = 60  # no cover job this long after the song means the cover never started (C1: ~2.3 s)
 
 PLAYER_NOT_CONNECTED = "Play now and Add to queue work once the player is connected."
@@ -128,6 +150,28 @@ class GenerateTab:
     play_now: gr.Button
     add_to_queue: gr.Button
     track_id: gr.State
+
+
+def surprise(rng: random.Random | None = None) -> tuple[str, str, str, int, str, str]:
+    """Random form values for "Surprise me": style, extra tags (cleared), mood, length, vocal or
+    instrumental, and a song idea, in the order of render()'s six form inputs."""
+    rng = rng or random.Random()
+    steps = range(SURPRISE_MIN_S, SURPRISE_MAX_S + 1, DURATION_STEP_S)
+    song_type = VOCAL if rng.random() < 2 / 3 else INSTRUMENTAL  # mostly vocal: they show off lyrics
+    return (
+        rng.choice(GENRES),
+        "",
+        rng.choice(MOODS),
+        rng.choice(steps),
+        song_type,
+        rng.choice(SURPRISE_IDEAS),
+    )
+
+
+def on_surprise(rng: random.Random | None = None) -> tuple:
+    """The Surprise me click: new form values, and the status line and Retry cleared, because after a
+    failure they say the old choices are kept and Retry would now send the new ones."""
+    return (*surprise(rng), "", gr.update(visible=False))
 
 
 def compose_style(genre: str | None, extra: str | None) -> str:
@@ -254,6 +298,7 @@ def updates(view: GenerateView, *, player_connected: bool = False) -> tuple[obje
         gr.update(active=bool(cover and not cover.done)),
         gr.update(value=PLAYER_NOT_CONNECTED, visible=done and not player_connected),
         gr.update(visible=bool(cover and cover.failed)),
+        gr.update(interactive=not view.running),  # Surprise me must not change the form mid-run
     )
 
 
@@ -340,6 +385,7 @@ def render(
     theme_warning = gr.Markdown("", elem_id="gen-theme-note")
     with gr.Row():
         button = gr.Button("Generate", variant="primary", elem_id="gen-button")
+        surprise_me = gr.Button("Surprise me", elem_id="gen-surprise")
         retry = gr.Button("Retry", visible=False, elem_id="gen-retry")
     status = gr.Markdown("", elem_id="gen-status")
     with gr.Group(visible=False, elem_id="gen-result") as result:
@@ -363,6 +409,8 @@ def render(
     timer = gr.Timer(TICK_S, active=False)
 
     inputs = [genre, extra, mood, duration, song_type, theme]
+    # Fills the form only (reads nothing, calls no service); the user still presses Generate.
+    surprise_me.click(on_surprise, inputs=None, outputs=[*inputs, status, retry], show_progress="hidden")
     outputs = [
         status,
         button,
@@ -378,6 +426,7 @@ def render(
         timer,
         play_note,
         retry_cover,
+        surprise_me,
     ]
     cover_outputs = [cover, cover_note, timer, retry_cover]
 
