@@ -533,10 +533,12 @@ def render(
         return cover_updates(CoverView(str(art.placeholder_path()), art.COVER_STAGE, False))
 
     for trigger in (button, retry):
-        trigger.click(on_generate, inputs=inputs, outputs=outputs, show_progress="hidden")
         # The run's first update can wait in the queue; mark it running at the click, so Surprise me
-        # and More like this cannot change the form under it.
-        trigger.click(mark_running, outputs=[running, surprise_me], queue=False, show_progress="hidden")
+        # and More like this cannot change the form under it. The run follows the mark (never alongside
+        # it), so the run's last update, which turns them back on, always lands last.
+        trigger.click(mark_running, outputs=[running, surprise_me], queue=False, show_progress="hidden").then(
+            on_generate, inputs=inputs, outputs=outputs, show_progress="hidden"
+        )
     timer.tick(on_cover_tick, inputs=[track_id], outputs=cover_outputs, show_progress="hidden")
     retry_cover.click(on_retry_cover, inputs=[track_id], outputs=cover_outputs, show_progress="hidden")
     for box in (genre, extra):

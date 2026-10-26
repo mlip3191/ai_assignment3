@@ -137,6 +137,16 @@ def _demo(library: Library, **kwargs) -> tuple[gr.Blocks, tab.GenerateTab]:
     return demo, handles
 
 
+def _run_for(demo: gr.Blocks, elem_id: str):
+    """The song run: the event chained after this button's click, which marks the run as running."""
+    mark = _fn_for(demo, elem_id, "click")
+    raw = demo.fns.values() if isinstance(demo.fns, dict) else demo.fns
+    for fn in raw:
+        if fn.trigger_after == mark._id:
+            return fn
+    raise AssertionError(f"no run chained after the {elem_id} click")
+
+
 def _fn_for(demo: gr.Blocks, elem_id: str, event: str):
     """The registered event whose trigger is this element and event name."""
     target = _by_id(demo, elem_id)._id
@@ -278,8 +288,8 @@ def test_a_failure_reenables_the_button_shows_the_7_3_message_and_offers_retry(l
 
 def test_retry_runs_again_with_the_same_inputs(library: Library) -> None:
     demo, _ = _demo(library)
-    generate = _fn_for(demo, "gen-button", "click")
-    retry = _fn_for(demo, "gen-retry", "click")
+    generate = _run_for(demo, "gen-button")
+    retry = _run_for(demo, "gen-retry")
     assert [c._id for c in retry.inputs] == [c._id for c in generate.inputs]
     assert [c._id for c in retry.outputs] == [c._id for c in generate.outputs]
 
@@ -381,7 +391,7 @@ EXPECTED_OUTPUTS = {
 def test_generate_outputs_are_in_the_order_updates_returns(library: Library) -> None:
     demo, handles = _demo(library)
     for elem_id in ("gen-button", "gen-retry"):
-        outputs = _fn_for(demo, elem_id, "click").outputs
+        outputs = _run_for(demo, elem_id).outputs
         assert len(outputs) == len(tab.updates(tab.GenerateView(status="", running=True)))
         for index, expected in EXPECTED_OUTPUTS.items():
             assert outputs[index].elem_id == expected, f"output {index} is {outputs[index].elem_id}"
@@ -406,7 +416,7 @@ def test_the_registered_generate_handler_uses_the_pipeline_render_was_given(libr
     fake = FakeRun(library)
     covers: list[str] = []
     demo, _ = _demo(library, run=fake, start_cover=lambda track: covers.append(track.id))
-    handler = _fn_for(demo, "gen-button", "click").fn
+    handler = _run_for(demo, "gen-button").fn
     with respx.mock(assert_all_called=False) as mock:
         last = list(handler("pop", "synth", "upbeat", 60, tab.VOCAL, "a road trip"))[-1]
         assert not mock.calls
@@ -516,7 +526,7 @@ def test_render_hands_play_now_add_to_queue_and_the_track_id_to_the_integration(
     assert handles.add_to_queue is _by_id(demo, "gen-add-to-queue")
     assert isinstance(handles.track_id, gr.State)
     assert _by_id(demo, "gen-play-note").visible is False
-    generate = _fn_for(demo, "gen-button", "click")
+    generate = _run_for(demo, "gen-button")
     assert _by_id(demo, "gen-play-note")._id in {c._id for c in generate.outputs}
 
 
@@ -671,7 +681,7 @@ def test_the_default_cover_hook_saves_the_cover_into_the_tabs_own_library(
     monkeypatch.setattr(art, "_cover_jobs", JobStore())
     monkeypatch.setattr(art, "_paint", lambda track, **_kw: ("a lake at dusk", b"\xff\xd8fake-jpeg"))
     demo, _ = _demo(library, run=FakeRun(library, track_id="t-cover"))
-    list(_fn_for(demo, "gen-button", "click").fn("pop", "", "upbeat", 60, tab.VOCAL, ""))
+    list(_run_for(demo, "gen-button").fn("pop", "", "upbeat", 60, tab.VOCAL, ""))
     assert _wait_for(lambda: bool(library.get("t-cover").cover_path))
     view = tab.cover_view("t-cover", library=library)
     assert Path(view.path) == tmp_path / "runtime" / "generated" / "t-cover.jpg"
@@ -688,7 +698,7 @@ def test_the_default_cover_hook_shows_a_failed_cover_on_the_card(
 
     monkeypatch.setattr(art, "_paint", unreachable)
     demo, _ = _demo(library, run=FakeRun(library, track_id="t-nocover"))
-    list(_fn_for(demo, "gen-button", "click").fn("pop", "", "upbeat", 60, tab.VOCAL, ""))
+    list(_run_for(demo, "gen-button").fn("pop", "", "upbeat", 60, tab.VOCAL, ""))
     assert _wait_for(lambda: tab.cover_view("t-nocover", library=library).failed)
     view = tab.cover_view("t-nocover", library=library)
     assert "unreachable" in view.note
@@ -990,7 +1000,7 @@ def test_more_like_this_changes_nothing_while_running_or_without_a_song(
 
 def test_generate_keeps_a_running_flag_for_more_like_this(library: Library) -> None:
     demo, handles = _demo(library)
-    outputs = _fn_for(demo, "gen-button", "click").outputs
+    outputs = _run_for(demo, "gen-button").outputs
     assert outputs[tab.OUT_RUNNING] is handles.running
     assert tab.updates(tab.GenerateView(status="", running=True))[tab.OUT_RUNNING] is True
     assert tab.updates(tab.GenerateView(status="", running=False))[tab.OUT_RUNNING] is False
@@ -1027,13 +1037,34 @@ def test_a_generate_click_marks_the_run_at_once_even_while_it_waits_in_the_queue
     for elem_id in ("gen-button", "gen-retry"):
         target = _by_id(demo, elem_id)._id
         raw = demo.fns.values() if isinstance(demo.fns, dict) else demo.fns
-        quick = [fn for fn in raw if (target, "click") in [tuple(t) for t in fn.targets] and not fn.queue]
-        assert len(quick) == 1, elem_id
-        assert quick[0].outputs[0] is handles.running
-        assert quick[0].outputs[1] is _by_id(demo, "gen-surprise")
+        clicks = [fn for fn in raw if (target, "click") in [tuple(t) for t in fn.targets]]
+        assert len(clicks) == 1, elem_id  # only the mark; the run follows it, never alongside it
+        assert not clicks[0].queue
+        assert clicks[0].outputs[0] is handles.running
+        assert clicks[0].outputs[1] is _by_id(demo, "gen-surprise")
     running, surprise_button = tab.mark_running()
     assert running is True
     assert surprise_button["interactive"] is False
+
+
+def test_the_run_starts_only_after_the_mark_so_its_last_update_wins(library: Library) -> None:
+    # Two independent listeners on one click finish in no fixed order: when the mark landed after the
+    # run's last update, Surprise me and More like this stayed off for good (Mike's review of #61).
+    demo, handles = _demo(library)
+    for elem_id in ("gen-button", "gen-retry"):
+        mark = _fn_for(demo, elem_id, "click")
+        run = _run_for(demo, elem_id)
+        assert run.trigger_after == mark._id
+        assert run.queue  # the run still waits its turn; only the mark skips the queue
+        assert handles.running in run.outputs and _by_id(demo, "gen-surprise") in run.outputs
+
+
+def test_after_a_run_the_tab_is_no_longer_running(library: Library) -> None:
+    demo, handles = _demo(library)
+    run = _run_for(demo, "gen-button")
+    last = list(run.fn("pop", "", "upbeat", 60, tab.VOCAL, ""))[-1]
+    assert last[run.outputs.index(handles.running)] is False
+    assert last[run.outputs.index(_by_id(demo, "gen-surprise"))]["interactive"] is True
 
 
 def test_the_help_mentions_more_like_this() -> None:
