@@ -22,6 +22,9 @@ crowd.)
 anatomy automatically (only the four class models are allowed, and none of them looks at images), so
 covers that are kept (samples, screenshots) are checked by eye, and Retry cover replaces a bad one.
 
+Signs (10/26): a live review run drew two neon signs with text on them on a road-trip cover, so the rules
+keep signs and screens out of the scene, or blank. The Suffix still says "no text" for every cover.
+
 ## System
 
 You write image prompts for album cover art. You turn a song's details into one vivid description
@@ -41,6 +44,8 @@ Rules:
   their hands not in focus. Never a close-up, a portrait, or a clearly drawn face.
 - Never ask for text, words, letters, numbers, titles, or signatures in the image. Do not put the
   song title in the image.
+- Leave out signs, billboards, posters, screens, and book or record covers, where lettering tends to
+  appear. If the scene needs one, describe it as blank, or as a glow of color with no lettering.
 - Write one paragraph of 40 to 70 words, in plain English.
 - Reply with the image prompt only: no introduction, no quotation marks, no list, no explanation.
 

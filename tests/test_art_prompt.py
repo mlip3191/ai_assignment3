@@ -395,6 +395,12 @@ def test_the_template_keeps_people_soft_and_never_a_portrait() -> None:
         "a quiet beach with no crowds, figures far in the distance",
         "no crowds, people dancing in the windows above",
         "no faces, hands on the piano keys",
+        # a person and an animal together still count (Mike's second review of #58, 10/26)
+        "a girl and her dog on the beach",
+        "a rider and a horse at dusk",
+        "an owl watching a fisherman at dawn",
+        "hands holding a kitten",
+        "bare feet in the sand beside a sleeping dog",
     ],
 )
 def test_people_are_noticed(text: str) -> None:
@@ -477,6 +483,22 @@ def test_people_are_noticed(text: str) -> None:
         "a metal band around the barrel",
         "a Pac-Man arcade cabinet",
         "no man’s land at dawn",
+        # animals' body parts and measurements (Mike's second review of #58, 10/26)
+        "an owl with glowing amber eyes",
+        "a neon cat with green eyes",
+        "a fox curled up, its head on its paws",
+        "a deer raises its head",
+        "a horse with long legs",
+        "a dragon spreading its wings, eyes like embers",
+        "a heron standing on one leg in the shallows",
+        "a cliff a thousand feet above the sea",
+        "a six-foot wave",
+        "a tower fifty feet tall",
+        "a 10-foot neon cactus",
+        "hundreds of feet below the bridge",
+        "a gravel shoulder along an empty highway",
+        "the hard shoulder of a motorway at night",
+        "a statue with its arms raised",
     ],
 )
 def test_scenes_without_people_are_left_alone(text: str) -> None:
@@ -510,6 +532,19 @@ def test_an_empty_landscape_reply_gets_no_soft_figure_style() -> None:
     prompt = art.write_cover_prompt(**LOFI, chat=FakeQwen(reply=reply))
     assert art.SOFT_PEOPLE not in prompt
     assert prompt == f"{reply}, {SUFFIX}"
+
+
+def test_an_animal_reply_gets_no_soft_figure_style() -> None:
+    reply = "A snowy owl on a pine branch at night, glowing amber eyes, soft moonlight, watercolor"
+    prompt = art.write_cover_prompt(**LOFI, chat=FakeQwen(reply=reply))
+    assert prompt == f"{reply}, {SUFFIX}"
+
+
+def test_the_template_keeps_lettering_off_signs_and_screens() -> None:
+    # Mike's live run of #58 (10/26): a road-trip cover drew two neon signs with text on them.
+    system = art.load_template().system.lower()
+    for phrase in ("signs", "billboards", "screens", "blank"):
+        assert phrase in system
 
 
 def test_a_fisherman_reply_gets_the_soft_figure_style() -> None:

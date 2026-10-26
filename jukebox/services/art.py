@@ -86,11 +86,40 @@ _PEOPLE = re.compile(
     r"|(?<!\bisle\sof\s)(?<!\bpac-)man(?!\s+in\s+the\s+moon|['’]s\s+land)(?!-)|figures?(?!-|\s+of\b)"
     r"|(?!(?:ger|otto|talis|cai|cay|snow|walk|dober|ro|pac|pull|tas|speci|abdo|acu|regi|o|sta|ra|a|lu|ye|hy"
     r"|se|cycla|dol|bitu|albu|ceru|ru|fora)m[ae]n\b)\w+m[ae]n(?!-)"
-    r"|(?:(?<!\bclock\s)(?<!\bwatch\s)(?<!\bcliff\s)(?<!\brock\s)faces?|bod(?:y|ies)|(?<!\bcoat\sof\s)arms?"
-    r"|(?<!\bclock\s)(?<!\bwatch\s)(?<!\bhour\s)(?<!\bminute\s)hands?|(?<!\btable\s)(?<!\bchair\s)legs?|feet"
-    r"|foot|eyes|fingers?|shoulders?|heads?(?!\s+(?:west|east|north|south|toward|towards|into|home)\b))"
-    r"(?!-|\s+of\b)"
     r")\b",
+    re.IGNORECASE,
+)
+# Body parts. They count only when they aren't an animal's ("an owl with glowing amber eyes", "its head on
+# its paws"): see mentions_people.
+_BODY = re.compile(
+    r"\b(?:"
+    r"(?<!\bclock\s)(?<!\bwatch\s)(?<!\bcliff\s)(?<!\brock\s)faces?|bod(?:y|ies)|(?<!\bcoat\sof\s)arms?"
+    r"|(?<!\bclock\s)(?<!\bwatch\s)(?<!\bhour\s)(?<!\bminute\s)hands?|(?<!\btable\s)(?<!\bchair\s)legs?|feet"
+    r"|foot|eyes|fingers?|heads?(?!\s+(?:west|east|north|south|toward|towards|into|home)\b)"
+    r"|(?<!\bgravel\s)(?<!\broad\s)(?<!\bhard\s)(?<!\bsoft\s)(?<!\bdirt\s)(?<!\bpaved\s)(?<!\bhighway\s)shoulders?"
+    r")(?!-|\s+of\b)\b",
+    re.IGNORECASE,
+)
+# An animal (or a creature with a body) named earlier in the sentence owns the body parts after it.
+_ANIMAL = re.compile(
+    r"\b(?:owl|cat|kitten|kitt(?:y|ies)|dog|pupp(?:y|ies)|fox(?:es)?|deer|stag|doe|fawn|horse|pon(?:y|ies)|foal"
+    r"|wol(?:f|ves)|bird|crow|raven|bear|rabbit|bunn(?:y|ies)|hare|fish|koi|whale|dolphin|seal|otter|lion|tiger"
+    r"|leopard|elephant|giraffe|zebra|camel|cow|cal(?:f|ves)|sheep|lamb|goat|pig|frog|toad|butterfl(?:y|ies)"
+    r"|moth|bee|duck|swan|goose|geese|heron|crane|eagle|hawk|falcon|sparrow|robin|finch|parrot|pigeon|(?:sea)?gull"
+    r"|penguin|mouse|mice|rat|squirrel|hedgehog|badger|raccoon|monkey|panda|koala|octop(?:us|i)|jellyfish|snake"
+    r"|serpent|lizard|turtle|tortoise|dragon|unicorn|creature|animal|beast)s?\b",
+    re.IGNORECASE,
+)
+# "Its head", "its long legs": a thing's or an animal's, never a person's.
+_ITS = re.compile(r"\bits\s+(?:\w+\s+){0,2}$", re.IGNORECASE)
+# Measurements: "a thousand feet above", "fifty feet tall", "a six-foot wave", "a 10-foot cactus".
+_NUMBER = (
+    r"(?:\d+|a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|sixty"
+    r"|hundred|thousand|hundreds|thousands|few|several|many)"
+)
+_MEASURE = re.compile(
+    rf"\b{_NUMBER}(?:\s+of)?\s+(?:feet|foot)(?=\s+(?:tall|high|deep|long|wide|thick|above|below|away|across"
+    rf"|under|over|down|up)\b)|\b{_NUMBER}-(?:feet|foot)\b",
     re.IGNORECASE,
 )
 # "No people", "without a single person", "no faces or hands" and the like: an empty scene, so these words
@@ -195,7 +224,14 @@ def write_cover_prompt(
 def mentions_people(text: str) -> bool:
     """True if an image prompt describes people or body parts. FLUX draws them from the front with
     detailed faces, and sometimes wrong hands or an extra arm (TC-04 dry run, 10/24)."""
-    return bool(_PEOPLE.search(_NO_PEOPLE.sub(" ", text)))
+    text = _MEASURE.sub(" ", _NO_PEOPLE.sub(" ", text))
+    if _PEOPLE.search(text):
+        return True
+    for part in _BODY.finditer(text):
+        sentence = text[max(text.rfind(end, 0, part.start()) for end in ".;!?") + 1 : part.start()]
+        if not _ANIMAL.search(sentence) and not _ITS.search(sentence):
+            return True
+    return False
 
 
 def _lyrics_block(vocal: bool, lyrics: str | None) -> str:
