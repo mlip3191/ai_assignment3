@@ -183,12 +183,25 @@ def test_duration_bounds_come_from_the_b2_findings() -> None:
     assert tab.DEFAULT_DURATION_S == 60
 
 
+def test_artist_hints_name_the_phrases_not_every_artist(library: Library) -> None:
+    """The screen is pattern-based (README Known issues, #52), so the help and the Extra tags hint say which
+    phrases are removed, not that every artist name is."""
+    demo, _ = _demo(library)
+    for text in (str(_by_id(demo, "gen-help").value), _by_id(demo, "gen-extra").info):
+        assert "in the style of" in text
+        assert "artist names are removed" not in text.lower()
+        assert "names of real artists are removed" not in text.lower()
+        assert "capital letter" in text  # #56 review: lowercase names aren't caught (README Known issues)
+
+
 def test_help_text_explains_every_control(library: Library) -> None:
     demo, _ = _demo(library)
     help_text = str(_by_id(demo, "gen-help").value)
     for word in ("Style", "Mood", "Length", "Vocal", "Instrumental", "Song idea", "Generate"):
         assert word in help_text
-    assert "real artist" in help_text
+    assert "in the style of" in help_text
+    # The default voice can still resemble a singer (README Known issues, #52).
+    assert "imitat" not in help_text
     for elem_id in ("gen-genre", "gen-extra", "gen-mood", "gen-duration", "gen-type", "gen-theme"):
         assert _by_id(demo, elem_id).info, f"{elem_id} has no help line"
 
@@ -743,7 +756,7 @@ def test_cover_for_an_unknown_track_stops_quietly(library: Library) -> None:
 
 def test_style_and_theme_warnings_show_before_generate() -> None:
     assert "Taylor Swift" in tab.style_note("pop", "in the style of Taylor Swift")
-    assert "never imitate real artists" in tab.style_note("pop", "in the style of Taylor Swift")
+    assert "that text isn't sent to the models" in tab.style_note("pop", "in the style of Taylor Swift")
     assert tab.style_note("pop", "warm pads") == ""
     assert "Adele" in tab.theme_note("a breakup song in the style of Adele")
     assert tab.theme_note("a road trip") == ""
