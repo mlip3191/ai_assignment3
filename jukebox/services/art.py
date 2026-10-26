@@ -70,7 +70,7 @@ _PEOPLE = re.compile(
     r"people|persons?|humans?|men|woman|women|boys?|girls?|child(?:ren)?|kids?|teen(?:ager)?s?|toddlers?"
     r"|bab(?:y|ies)(?!-|'s\s+breath|\s+(?:blue|pink|grand|breath)\b)|ladies|lady|guys?(?!-|\s+(?:ropes?|lines?|wires?)\b)"
     r"|(?:boy|girl)?friends?|(?:couples?|crowds?)(?!\s+of\b)|audiences?|spectators?|tourists?|famil(?:y|ies)"
-    r"|lovers?|strangers?|someone|somebody|everyone|everybody"
+    r"|lovers?|strangers?|owners?|someone|somebody|everyone|everybody"
     r"|(?:a|an|one|two|three|four|lone|single|solitary|distant|small|tiny)\s+silhouettes?(?!-|\s+of\b)"
     r"|mothers?|fathers?|daughters?|sons?|sisters?|brothers?|grand(?:mother|father)s?|(?:grand)?parents?|brides?"
     r"|travell?ers?|wanderers?|hikers?|sailors?|cyclists?|bikers?|riders?|skaters?|surfers?|swimmers?|skiers?"
@@ -89,13 +89,19 @@ _PEOPLE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
-# Body parts. They count unless they are plainly an animal's or a thing's: see mentions_people.
-_BODY = re.compile(
+# Body parts, in two kinds (see mentions_people). Hands, fingers, arms and shoulders are a person's: animals
+# have paws and wings. Faces, heads, eyes, legs, feet and bodies can be an animal's.
+_HANDS = re.compile(
     r"\b(?:"
-    r"(?<!\bclock\s)(?<!\bwatch\s)(?<!\bcliff\s)(?<!\brock\s)faces?|bod(?:y|ies)|(?<!\bcoat\sof\s)arms?"
-    r"|(?<!\bclock\s)(?<!\bwatch\s)(?<!\bhour\s)(?<!\bminute\s)hands?|(?<!\btable\s)(?<!\bchair\s)legs?|feet"
-    r"|foot|eyes|fingers?|heads?(?!\s+(?:west|east|north|south|toward|towards|into|home)\b)"
+    r"(?<!\bcoat\sof\s)arms?|(?<!\bclock\s)(?<!\bwatch\s)(?<!\bhour\s)(?<!\bminute\s)hands?|fingers?"
     r"|(?<!\bgravel\s)(?<!\broad\s)(?<!\bhard\s)(?<!\bdirt\s)(?<!\bpaved\s)(?<!\bhighway\s)shoulders?"
+    r")(?!-|\s+of\b)\b",
+    re.IGNORECASE,
+)
+_PARTS = re.compile(
+    r"\b(?:"
+    r"(?<!\bclock\s)(?<!\bwatch\s)(?<!\bcliff\s)(?<!\brock\s)faces?|bod(?:y|ies)|(?<!\btable\s)(?<!\bchair\s)legs?"
+    r"|feet|foot|eyes|heads?(?!\s+(?:west|east|north|south|toward|towards|into|home)\b)"
     r")(?!-|\s+of\b)\b",
     re.IGNORECASE,
 )
@@ -107,19 +113,12 @@ _ANIMAL = (
     r"|penguin|mouse|mice|rat|squirrel|hedgehog|badger|raccoon|monkey|panda|koala|octop(?:us|i)|jellyfish|snake"
     r"|serpent|lizard|turtle|tortoise|dragon|unicorn|creature|animal|beast)s?"
 )
-# Just before a body part (the text up to it ends with one of these): "her hands" and "his tired eyes"
-# are a person's; "an owl with glowing amber eyes", "a wolf's eyes" and "its long-fingered hands" aren't.
+_ANIMAL_WORD = re.compile(rf"\b{_ANIMAL}\b", re.IGNORECASE)
+# Just before a body part (the text up to it ends with one of these): "her hands" and "his tired eyes" are
+# a person's; "its long-fingered hands" and "a lizard with tiny hands" aren't.
 _A_PERSONS = re.compile(r"\b(?:her|his|their|my|your|our)\s+(?:[\w'’-]+\s+){0,2}$", re.IGNORECASE)
-_NOT_A_PERSONS = re.compile(
-    rf"(?:\b{_ANIMAL}\s+with\s+(?:[\w'’-]+\s+){{0,3}}|\b{_ANIMAL}['’]s\s+(?:[\w'’-]+\s+){{0,2}}"
-    r"|\bits\s+(?:[\w'’-]+\s+){0,2})$",
-    re.IGNORECASE,
-)
-# "A snowy owl on a branch, glowing amber eyes, soft moonlight": with an animal earlier in the sentence, a
-# part set off by commas with only describing words is the animal's. "Fingers tracing the glass" isn't.
-_ANIMAL_BEFORE = re.compile(rf"\b{_ANIMAL}\b", re.IGNORECASE)
-_SET_OFF_BEFORE = re.compile(r",\s+(?:[\w'’-]+\s+){0,3}$")
-_SET_OFF_AFTER = re.compile(r"\s*(?:[,.;!?]|$)")
+_ITS = re.compile(r"\bits\s+(?:[\w'’-]+\s+){0,2}$", re.IGNORECASE)
+_ANIMAL_WITH = re.compile(rf"\b{_ANIMAL}\s+with\s+(?:[\w'’-]+\s+){{0,3}}$", re.IGNORECASE)
 # Measurements: "a thousand feet above", "fifty feet tall", "a six-foot wave", "a 10-foot cactus".
 _NUMBER = (
     r"(?:\d+|a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|sixty"
@@ -235,20 +234,16 @@ def mentions_people(text: str) -> bool:
     text = _MEASURE.sub(" ", _NO_PEOPLE.sub(" ", text))
     if _PEOPLE.search(text):
         return True
-    for part in _BODY.finditer(text):
+    for part in _HANDS.finditer(text):
         before = text[max(0, part.start() - 80) : part.start()]  # bounded, so long prompts stay fast
-        if _A_PERSONS.search(before):
+        if _A_PERSONS.search(before) or not (_ITS.search(before) or _ANIMAL_WITH.search(before)):
             return True
-        if _NOT_A_PERSONS.search(before):
-            continue
+    for part in _PARTS.finditer(text):
+        # An animal earlier in the sentence owns these ("a wolf howling at the moon, eyes glowing").
+        before = text[max(0, part.start() - 120) : part.start()]
         sentence = before[max(before.rfind(end) for end in ".;!?") + 1 :]
-        if (
-            _ANIMAL_BEFORE.search(sentence)
-            and _SET_OFF_BEFORE.search(sentence)
-            and _SET_OFF_AFTER.match(text, part.end())
-        ):
-            continue
-        return True
+        if _A_PERSONS.search(before) or not (_ITS.search(before) or _ANIMAL_WORD.search(sentence)):
+            return True
     return False
 
 

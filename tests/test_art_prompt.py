@@ -414,6 +414,12 @@ def test_the_template_keeps_people_soft_and_never_a_portrait() -> None:
         "dangling one foot over the edge of the pier",
         "two feet up on the dashboard",
         "soft shoulders in the moonlight",
+        # hands, fingers, arms and shoulders are a person's even next to an animal (review of 093f988, 10/26)
+        "A fox in the snow, cold hands, a small campfire",
+        "A horse in a field, outstretched hands, golden light",
+        "Bird's-eye view of a dance floor, raised hands, confetti",
+        "A dog's owner's hands on the leash",
+        "A dog at its owner's feet",
     ],
 )
 def test_people_are_noticed(text: str) -> None:
@@ -506,6 +512,12 @@ def test_people_are_noticed(text: str) -> None:
         "a heron with long thin legs in the shallows",
         "a wolf's amber eyes in the dark forest",
         "a lizard tilting its long-fingered hands toward the sun",
+        # eyes, heads and legs after an animal in the same sentence (review of 093f988, 10/26)
+        "A tiger in tall grass, eyes like embers, watercolor",
+        "A wolf howling at the moon, eyes glowing in the dark forest",
+        "a raven on a gravestone, eyes shining",
+        "A horse galloping through surf, legs splashing in the foam",
+        "A fox curled up asleep, head resting on its tail",
         "a cliff a thousand feet above the sea",
         "a six-foot wave",
         "a tower fifty feet tall",
