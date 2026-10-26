@@ -114,6 +114,7 @@ _ANIMAL = (
     r"|serpent|lizard|turtle|tortoise|dragon|unicorn|creature|animal|beast)s?"
 )
 _ANIMAL_WORD = re.compile(rf"\b{_ANIMAL}\b", re.IGNORECASE)
+_BIRDS_EYE = re.compile(r"\bbird['’]?s[-\s]+eye\b", re.IGNORECASE)  # a camera angle, not a bird
 # Just before a body part (the text up to it ends with one of these): "her hands" and "his tired eyes" are
 # a person's; "its long-fingered hands" and "a lizard with tiny hands" aren't.
 _A_PERSONS = re.compile(r"\b(?:her|his|their|my|your|our)\s+(?:[\w'’-]+\s+){0,2}$", re.IGNORECASE)
@@ -231,7 +232,7 @@ def write_cover_prompt(
 def mentions_people(text: str) -> bool:
     """True if an image prompt describes people or body parts. FLUX draws them from the front with
     detailed faces, and sometimes wrong hands or an extra arm (TC-04 dry run, 10/24)."""
-    text = _MEASURE.sub(" ", _NO_PEOPLE.sub(" ", text))
+    text = _BIRDS_EYE.sub(" ", _MEASURE.sub(" ", _NO_PEOPLE.sub(" ", text)))
     if _PEOPLE.search(text):
         return True
     for part in _HANDS.finditer(text):

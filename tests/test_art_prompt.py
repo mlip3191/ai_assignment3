@@ -420,6 +420,8 @@ def test_the_template_keeps_people_soft_and_never_a_portrait() -> None:
         "Bird's-eye view of a dance floor, raised hands, confetti",
         "A dog's owner's hands on the leash",
         "A dog at its owner's feet",
+        "Bird's-eye view of a packed dance floor, heads bobbing under neon haze",
+        "a birds eye view of a crowd, faces lit by phone screens",
     ],
 )
 def test_people_are_noticed(text: str) -> None:
