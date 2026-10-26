@@ -7,6 +7,7 @@ service. One end-to-end test runs the real pipeline with Qwen and ACE-Step mocke
 from __future__ import annotations
 
 import json
+import random
 import sys
 import threading
 import time
@@ -813,8 +814,6 @@ def test_tab_imports_no_model_client() -> None:
 
 
 def test_surprise_picks_only_values_the_form_accepts() -> None:
-    import random
-
     rng = random.Random(7)
     for _ in range(200):
         genre, extra, mood, duration, song_type, theme = tab.surprise(rng)
@@ -828,8 +827,6 @@ def test_surprise_picks_only_values_the_form_accepts() -> None:
 
 
 def test_surprise_varies_and_includes_both_vocal_and_instrumental() -> None:
-    import random
-
     rng = random.Random(11)
     picks = [tab.surprise(rng) for _ in range(60)]
     assert len({p[0] for p in picks}) > 3 and len({p[2] for p in picks}) > 3
@@ -837,8 +834,6 @@ def test_surprise_varies_and_includes_both_vocal_and_instrumental() -> None:
 
 
 def test_surprise_is_reproducible_with_the_same_seed() -> None:
-    import random
-
     assert tab.surprise(random.Random(3)) == tab.surprise(random.Random(3))
 
 
@@ -868,8 +863,6 @@ def test_the_surprise_button_fills_exactly_the_six_form_fields(library: Library)
 def test_surprise_clears_an_old_failure_so_retry_cannot_use_the_new_choices() -> None:
     # After a failure the status says "your choices are kept: press Retry". Once Surprise me
     # replaces those choices, that line and the Retry button would be wrong, so both go.
-    import random
-
     values = tab.on_surprise(random.Random(7))
     assert values[:6] == tab.surprise(random.Random(7))
     assert values[6] == ""
