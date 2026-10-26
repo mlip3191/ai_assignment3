@@ -138,10 +138,11 @@ Same steps, but choose **Vocal** in step 4. The first stage after **Queued** is 
   pick a song in the Library. The player reads the cover when a song starts, so a song you send to the
   player with **Play now** before its cover is ready keeps the placeholder there while it plays.
 - **Covers stay with their song.** Each cover is stored and looked up by the song's id, never by its
-  position in a list, so generating more songs or reordering the queue can't swap them.
-- **What a cover won't show:** the image prompt always asks for no text, no letters, no logos and no real
-  people, and figures, if any, are seen from behind or far away. FLUX can still add small unreadable marks,
-  for example on a book's pages; the sample covers were checked by eye (see [Sample songs](#sample-songs)).
+  position in a list, so generating more songs or adding songs to the queue can't swap them.
+- **What a cover is asked not to show:** every image prompt ends with "no text, no letters, no logos, no
+  real people", and Qwen is told to show figures, if any, only from behind or far away. Nothing checks the
+  finished image, so FLUX can still add small unreadable marks, for example on a book's pages; the sample
+  covers were checked by eye (see [Sample songs](#sample-songs)).
 
 > **TODO (C7, on rc1):** screenshots of a result card with its cover and of a failed cover with **Retry cover** (`docs/screenshots/`, no credentials visible).
 
