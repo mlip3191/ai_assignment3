@@ -89,37 +89,45 @@ _PEOPLE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
-# Body parts. They count only when they aren't an animal's ("an owl with glowing amber eyes", "its head on
-# its paws"): see mentions_people.
+# Body parts. They count unless they are plainly an animal's or a thing's: see mentions_people.
 _BODY = re.compile(
     r"\b(?:"
     r"(?<!\bclock\s)(?<!\bwatch\s)(?<!\bcliff\s)(?<!\brock\s)faces?|bod(?:y|ies)|(?<!\bcoat\sof\s)arms?"
     r"|(?<!\bclock\s)(?<!\bwatch\s)(?<!\bhour\s)(?<!\bminute\s)hands?|(?<!\btable\s)(?<!\bchair\s)legs?|feet"
     r"|foot|eyes|fingers?|heads?(?!\s+(?:west|east|north|south|toward|towards|into|home)\b)"
-    r"|(?<!\bgravel\s)(?<!\broad\s)(?<!\bhard\s)(?<!\bsoft\s)(?<!\bdirt\s)(?<!\bpaved\s)(?<!\bhighway\s)shoulders?"
+    r"|(?<!\bgravel\s)(?<!\broad\s)(?<!\bhard\s)(?<!\bdirt\s)(?<!\bpaved\s)(?<!\bhighway\s)shoulders?"
     r")(?!-|\s+of\b)\b",
     re.IGNORECASE,
 )
-# An animal (or a creature with a body) named earlier in the sentence owns the body parts after it.
-_ANIMAL = re.compile(
-    r"\b(?:owl|cat|kitten|kitt(?:y|ies)|dog|pupp(?:y|ies)|fox(?:es)?|deer|stag|doe|fawn|horse|pon(?:y|ies)|foal"
+_ANIMAL = (
+    r"(?:owl|cat|kitten|kitt(?:y|ies)|dog|pupp(?:y|ies)|fox(?:es)?|deer|stag|fawn|horse|pon(?:y|ies)|foal"
     r"|wol(?:f|ves)|bird|crow|raven|bear|rabbit|bunn(?:y|ies)|hare|fish|koi|whale|dolphin|seal|otter|lion|tiger"
     r"|leopard|elephant|giraffe|zebra|camel|cow|cal(?:f|ves)|sheep|lamb|goat|pig|frog|toad|butterfl(?:y|ies)"
     r"|moth|bee|duck|swan|goose|geese|heron|crane|eagle|hawk|falcon|sparrow|robin|finch|parrot|pigeon|(?:sea)?gull"
     r"|penguin|mouse|mice|rat|squirrel|hedgehog|badger|raccoon|monkey|panda|koala|octop(?:us|i)|jellyfish|snake"
-    r"|serpent|lizard|turtle|tortoise|dragon|unicorn|creature|animal|beast)s?\b",
+    r"|serpent|lizard|turtle|tortoise|dragon|unicorn|creature|animal|beast)s?"
+)
+# Just before a body part (the text up to it ends with one of these): "her hands" and "his tired eyes"
+# are a person's; "an owl with glowing amber eyes", "a wolf's eyes" and "its long-fingered hands" aren't.
+_A_PERSONS = re.compile(r"\b(?:her|his|their|my|your|our)\s+(?:[\w'’-]+\s+){0,2}$", re.IGNORECASE)
+_NOT_A_PERSONS = re.compile(
+    rf"(?:\b{_ANIMAL}\s+with\s+(?:[\w'’-]+\s+){{0,3}}|\b{_ANIMAL}['’]s\s+(?:[\w'’-]+\s+){{0,2}}"
+    r"|\bits\s+(?:[\w'’-]+\s+){0,2})$",
     re.IGNORECASE,
 )
-# "Its head", "its long legs": a thing's or an animal's, never a person's.
-_ITS = re.compile(r"\bits\s+(?:\w+\s+){0,2}$", re.IGNORECASE)
+# "A snowy owl on a branch, glowing amber eyes, soft moonlight": with an animal earlier in the sentence, a
+# part set off by commas with only describing words is the animal's. "Fingers tracing the glass" isn't.
+_ANIMAL_BEFORE = re.compile(rf"\b{_ANIMAL}\b", re.IGNORECASE)
+_SET_OFF_BEFORE = re.compile(r",\s+(?:[\w'’-]+\s+){0,3}$")
+_SET_OFF_AFTER = re.compile(r"\s*(?:[,.;!?]|$)")
 # Measurements: "a thousand feet above", "fifty feet tall", "a six-foot wave", "a 10-foot cactus".
 _NUMBER = (
     r"(?:\d+|a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|sixty"
     r"|hundred|thousand|hundreds|thousands|few|several|many)"
 )
 _MEASURE = re.compile(
-    rf"\b{_NUMBER}(?:\s+of)?\s+(?:feet|foot)(?=\s+(?:tall|high|deep|long|wide|thick|above|below|away|across"
-    rf"|under|over|down|up)\b)|\b{_NUMBER}-(?:feet|foot)\b",
+    rf"\b{_NUMBER}(?:\s+of)?\s+(?:feet|foot)(?=\s+(?:tall|high|deep|long|wide|thick|above|below|away"
+    rf"|across)\b)|\b{_NUMBER}-(?:feet|foot)\b",
     re.IGNORECASE,
 )
 # "No people", "without a single person", "no faces or hands" and the like: an empty scene, so these words
@@ -228,9 +236,19 @@ def mentions_people(text: str) -> bool:
     if _PEOPLE.search(text):
         return True
     for part in _BODY.finditer(text):
-        sentence = text[max(text.rfind(end, 0, part.start()) for end in ".;!?") + 1 : part.start()]
-        if not _ANIMAL.search(sentence) and not _ITS.search(sentence):
+        before = text[max(0, part.start() - 80) : part.start()]  # bounded, so long prompts stay fast
+        if _A_PERSONS.search(before):
             return True
+        if _NOT_A_PERSONS.search(before):
+            continue
+        sentence = before[max(before.rfind(end) for end in ".;!?") + 1 :]
+        if (
+            _ANIMAL_BEFORE.search(sentence)
+            and _SET_OFF_BEFORE.search(sentence)
+            and _SET_OFF_AFTER.match(text, part.end())
+        ):
+            continue
+        return True
     return False
 
 
