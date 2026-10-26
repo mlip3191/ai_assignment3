@@ -91,7 +91,7 @@ browser, usually at **http://127.0.0.1:7860** (if that port is busy, the launche
 | No sound | Click on the page first, then check your volume and output device. |
 
 ## Using the app
-_TODO: cover art (C), DJ (D), playback controls (E)._
+_TODO: DJ (D), playback controls (E)._
 
 ### Generate a song
 Open the **Generate** tab. Each choice has a one-line hint under its name.
@@ -123,6 +123,28 @@ Same steps, but choose **Vocal** in step 4. The first stage after **Queued** is 
 - Generated songs stay in the library until you stop the app.
 
 > **TODO (B9, on rc1):** link the measured runs in [Test results](#test-results) (TC-01 instrumental, TC-02 vocal, TC-03 songs kept across tabs, TC-F1 bad credentials, TC-F2 a class server not answering).
+
+### Cover art
+- **Every song gets its own cover.** After a song is saved, Qwen writes an image prompt from the song's
+  title, style, mood, theme and lyrics, and FLUX paints a square cover from it. The song is playable right
+  away; the cover follows a few seconds later.
+- **While it paints,** the result card shows the placeholder (a hand-drawn picture, not AI-generated) and
+  **Painting cover…**, and swaps in the cover by itself when it's ready, without reloading the page.
+- **If the cover fails** (for example a class server is busy), the card says what happened and adds
+  "Your song is safe; it plays with a placeholder cover.", plus a **Retry cover** button. Retry paints a new
+  cover for the same song. If no cover has started 60 seconds after the song, the card treats it as failed
+  and offers Retry cover too.
+- **In the player and the Library,** the cover shows next to **Now playing**, in **Up next**, and when you
+  pick a song in the Library. The player reads the cover when a song starts, so a song you send to the
+  player with **Play now** before its cover is ready keeps the placeholder there while it plays.
+- **Covers stay with their song.** Each cover is stored and looked up by the song's id, never by its
+  position in a list, so generating more songs or adding songs to the queue can't swap them.
+- **What a cover is asked not to show:** every image prompt ends with "no text, no letters, no logos, no
+  real people", and Qwen is told to show figures, if any, only from behind or far away. Nothing checks the
+  finished image, so FLUX can still add small unreadable marks, for example on a book's pages; the sample
+  covers were checked by eye (see [Sample songs](#sample-songs)).
+
+> **TODO (C7, on rc1):** screenshots of a result card with its cover and of a failed cover with **Retry cover** (`docs/screenshots/`, no credentials visible).
 
 ## Sample songs
 
