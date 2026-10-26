@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
 from pathlib import Path
 from urllib.parse import quote
 
@@ -20,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 
 import jukebox.clients.acestep as acestep  # noqa: E402
 import jukebox.clients.qwen as qwen  # noqa: E402
+import jukebox.services.art as art  # noqa: E402
 import jukebox.services.songs as songs  # noqa: E402
 from jukebox.clients.acestep import AceStepClient  # noqa: E402
 from jukebox.clients.qwen import QwenClient  # noqa: E402
@@ -62,6 +64,16 @@ def test_lowercase_names_are_a_known_limit(raw: str) -> None:
     """Reviews of #38: lowercase words after a pointer were removed as names, which also removed real
     descriptions ("inspired by the sea"). Only capitalized names count now; this is listed in B9."""
     assert songs.check_style(raw).text == raw
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["a breakup song in the style of adele", "a song that sounds like drake", "a road trip à la prince"],
+)
+def test_lowercase_names_are_a_known_limit_in_song_idea_too(raw: str) -> None:
+    """#56 review: the Song idea screen has the same rule, so the help text says names need a capital."""
+    result = songs.check_theme(raw)
+    assert (result.text, result.warning) == (raw, None)
 
 
 @pytest.mark.parametrize(
@@ -676,12 +688,26 @@ def test_more_voice_words_count_as_a_named_voice(voice_style: str) -> None:
 
 def test_warning_names_what_was_removed_and_says_why() -> None:
     one = songs.check_style("pop in the style of Taylor Swift").warning
-    assert one == "Removed “in the style of Taylor Swift”. Songs are original and never imitate real artists."
+    assert one == (
+        "Removed “in the style of Taylor Swift”, which may point at an artist; that text isn't sent to the models."
+    )
     two = songs.check_style("in the style of Adele, sounds like Drake, soul").warning
     assert two == (
-        "Removed “in the style of Adele” and “sounds like Drake”. "
-        "Songs are original and never imitate real artists."
+        "Removed “in the style of Adele” and “sounds like Drake”, which may point at artists; "
+        "that text isn't sent to the models."
     )
+
+
+def test_the_warning_promises_only_what_the_app_does() -> None:
+    """B9 review: the default voice can still resemble a famous singer, so the app can't promise that songs
+    "never imitate" anyone. The screen is pattern-based, so it can't promise that every artist name is
+    caught either. It can promise only that the text it removed never reaches the models."""
+    warning = songs.check_style("pop in the style of Taylor Swift").warning
+    assert "imitat" not in warning.lower()
+    assert "never" not in warning.lower()
+    assert "artist names" not in warning.lower()
+    assert "that text isn't sent" in warning
+    assert "may point at an artist" in warning  # #56 review: say why, without claiming it was an artist
 
 
 def test_no_warning_when_nothing_was_removed() -> None:
@@ -759,6 +785,33 @@ def test_pipeline_sends_cleaned_tags_and_prompts(env: dict) -> None:
     assert tags == "upbeat pop, upbeat, warm natural vocals"
     sent = json.dumps(json.loads(qwen_route.calls[0].request.content)["messages"])
     assert "Taylor" not in sent and "Swift" not in sent and "Coldplay" not in sent
+
+
+@respx.mock
+def test_the_cover_prompt_gets_the_cleaned_style_and_theme(env: dict) -> None:
+    """#56 review: the removed text never reaches FLUX either. The cover hook gets the stored, cleaned
+    Track, and the cover prompt is built from it."""
+    mock_services()
+    covered: list = []
+    done = threading.Event()
+    run(
+        env,
+        style="indie rock, sounds like Radiohead",
+        theme="rainy city, in the style of Adele",
+        start_cover=lambda track: (covered.append(track), done.set()),
+    )
+    assert done.wait(5)
+    asked: list = []
+
+    def chat(messages, **_kw) -> str:
+        asked.append(json.dumps(messages))
+        return "a rainy city street at night"
+
+    art.render_cover(
+        covered[0], env["library"].resolve("cover.jpg"), chat=chat, generate=lambda *_a, **_k: b"jpg"
+    )
+    for name in ("Radiohead", "Adele"):
+        assert name not in asked[0]
 
 
 @respx.mock
