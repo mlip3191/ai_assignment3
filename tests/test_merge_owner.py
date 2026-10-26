@@ -18,8 +18,8 @@ def test_each_lane_owns_its_files() -> None:
     assert owners_of("jukebox/clients/acestep.py", RULES) == ["gunnaroc"]
     assert owners_of("jukebox/services/art.py", RULES) == ["felcervino"]
     assert owners_of("samples/covers/a.png", RULES) == ["felcervino"]
-    assert owners_of("jukebox/services/dj.py", RULES) == ["dilloncsmart"]
-    assert owners_of("run.bat", RULES) == ["dilloncsmart"]
+    assert owners_of("jukebox/services/dj.py", RULES) == ["mlip3191"]
+    assert owners_of("run.bat", RULES) == ["mlip3191"]
     assert owners_of("app.py", RULES) == ["afondale"]
     assert owners_of("jukebox/config.py", RULES) == ["mlip3191"]
     assert owners_of("PROJECT.md", RULES) == ["mlip3191"]
@@ -28,7 +28,7 @@ def test_each_lane_owns_its_files() -> None:
 def test_specific_ui_files_beat_lane_e_ui_folder() -> None:
     assert owners_of("jukebox/ui/player_panel.py", RULES) == ["afondale"]
     assert owners_of("jukebox/ui/generate_tab.py", RULES) == ["gunnaroc"]
-    assert owners_of("jukebox/ui/dj_settings.py", RULES) == ["dilloncsmart"]
+    assert owners_of("jukebox/ui/dj_settings.py", RULES) == ["mlip3191"]
 
 
 def test_tests_have_no_owner() -> None:
@@ -56,3 +56,10 @@ def test_codeowners_handles_match_team_json() -> None:
     handles = {m["github"].lower() for m in team["members"].values()}
     owners = {o for _, os_ in RULES for o in os_}
     assert owners <= handles
+
+
+def test_lane_d_is_reviewed_by_felipe() -> None:
+    members = json.loads((ROOT / ".github" / "team.json").read_text(encoding="utf-8"))["members"]
+    assert members["D"]["github"] == "mlip3191"
+    assert members["D"]["reviewer"] == "C"
+    assert members["C"]["github"] == "felcervino"
