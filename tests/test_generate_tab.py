@@ -1060,9 +1060,11 @@ def test_the_run_starts_only_after_the_mark_so_its_last_update_wins(library: Lib
 
 
 def test_after_a_run_the_tab_is_no_longer_running(library: Library) -> None:
-    demo, handles = _demo(library)
+    demo, handles = _demo(library, run=FakeRun(library), start_cover=lambda _track: None)
     run = _run_for(demo, "gen-button")
-    last = list(run.fn("pop", "", "upbeat", 60, tab.VOCAL, ""))[-1]
+    with respx.mock(assert_all_called=False) as mock:
+        last = list(run.fn("pop", "", "upbeat", 60, tab.VOCAL, ""))[-1]
+        assert not mock.calls  # never the class servers
     assert last[run.outputs.index(handles.running)] is False
     assert last[run.outputs.index(_by_id(demo, "gen-surprise"))]["interactive"] is True
 
