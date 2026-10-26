@@ -21,6 +21,7 @@ Qwen writes the script from `prompts/dj.md`; Chatterbox speaks it; the clip is s
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import shutil
@@ -40,6 +41,7 @@ from jukebox.errors import ServiceError
 
 GENERATED_DIR = ROOT / "runtime" / "generated"
 UPLOADS_DIR = ROOT / "runtime" / "uploads"  # gitignored; the only place a voice recording is kept (H9)
+log = logging.getLogger(__name__)
 PROMPT_PATH = ROOT / "jukebox" / "prompts" / "dj.md"
 
 MAX_WORDS = 50
@@ -257,7 +259,8 @@ class VoiceRejected(ValueError):
 def check_voice(path: str | Path) -> float:
     """Check an uploaded recording and return its length in seconds, or raise VoiceRejected.
 
-    Cheap checks (type, empty, size) run before anything is decoded.
+    Cheap checks (type, empty, size, then the length from the header) run before anything is
+    decoded, and the decode stops at MAX_VOICE_S: a low-bitrate MP3 under 10 MB can run for an hour.
     """
     path = Path(path)
     if path.suffix.lower() not in VOICE_TYPES:
@@ -267,23 +270,38 @@ def check_voice(path: str | Path) -> float:
         raise VoiceRejected("That file is empty. Choose an MP3 or WAV recording.")
     if size > MAX_VOICE_BYTES:
         raise VoiceRejected(f"That file is too big. The limit is {MAX_VOICE_BYTES // (1024 * 1024)} MB.")
-    seconds = _decode_seconds(path)
+    seconds, rate = _length_seconds(path)
     if not MIN_VOICE_S <= seconds <= MAX_VOICE_S:
         raise VoiceRejected(
             f"Clip must be between {MIN_VOICE_S:g} and {MAX_VOICE_S:g} seconds (this one is {seconds:.1f})."
         )
+    _decode(path, rate)
     return seconds
 
 
-def _decode_seconds(path: Path) -> float:
-    """Decode the whole file with soundfile and return its length; VoiceRejected if it can't be read."""
+_UNREADABLE = "That file couldn't be read as audio. Try another MP3 or WAV."
+_SOUNDFILE_ERRORS = (soundfile.SoundFileError, RuntimeError, ValueError, EOFError)
+
+
+def _length_seconds(path: Path) -> tuple[float, int]:
+    """The length and sample rate from the file's header, without decoding the audio."""
     try:
-        data, rate = soundfile.read(str(path), dtype="int16")
-    except (soundfile.SoundFileError, RuntimeError, ValueError, EOFError):
-        raise VoiceRejected("That file couldn't be read as audio. Try another MP3 or WAV.") from None
-    if rate <= 0 or len(data) == 0:
-        raise VoiceRejected("That file couldn't be read as audio. Try another MP3 or WAV.")
-    return len(data) / rate
+        info = soundfile.info(str(path))
+    except _SOUNDFILE_ERRORS:
+        raise VoiceRejected(_UNREADABLE) from None
+    if info.samplerate <= 0 or info.frames <= 0:
+        raise VoiceRejected(_UNREADABLE)
+    return info.frames / info.samplerate, info.samplerate
+
+
+def _decode(path: Path, rate: int) -> None:
+    """Decode the audio (at most MAX_VOICE_S of it) to prove it's readable; VoiceRejected if not."""
+    try:
+        data, _rate = soundfile.read(str(path), frames=int(MAX_VOICE_S * rate) + 1, dtype="int16")
+    except _SOUNDFILE_ERRORS:
+        raise VoiceRejected(_UNREADABLE) from None
+    if len(data) == 0:
+        raise VoiceRejected(_UNREADABLE)
 
 
 def save_voice(path: str | Path) -> Path:
@@ -292,7 +310,11 @@ def save_voice(path: str | Path) -> Path:
     check_voice(path)
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     saved = UPLOADS_DIR / f"voice_{uuid.uuid4().hex}{path.suffix.lower()}"
-    shutil.copyfile(path, saved)
+    try:
+        shutil.copyfile(path, saved)
+    except BaseException:
+        saved.unlink(missing_ok=True)  # never leave half a recording behind
+        raise
     return saved
 
 
@@ -300,8 +322,9 @@ class VoiceSetting:
     """The DJ voice for the whole app: None for the default voice, else a recording in UPLOADS_DIR.
 
     Replacing or resetting deletes the old recording, so only the voice in use stays on disk. A clip
-    being made with the old recording at that moment fails with OSError, which D5 treats as "skip the
-    DJ clip".
+    being made with the old recording at that moment fails with ServiceError (chatterbox can't find
+    the file) or OSError, which D5 treats as "skip the DJ clip". If the delete itself fails (Windows,
+    while the file is open), the switch still happens and the file stays in the gitignored folder.
     """
 
     def __init__(self) -> None:
@@ -329,8 +352,12 @@ class VoiceSetting:
 
 
 def _forget(path: str | None) -> None:
-    if path is not None:
+    if path is None:
+        return
+    try:
         Path(path).unlink(missing_ok=True)
+    except OSError as err:
+        log.warning("old voice recording not deleted: %s", type(err).__name__)
 
 
 VOICE = VoiceSetting()

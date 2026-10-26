@@ -543,9 +543,36 @@ def test_rejects_oversize_before_decoding(tmp_path: Path, monkeypatch: pytest.Mo
     big = tmp_path / "big.wav"
     with big.open("wb") as f:
         f.truncate(dj.MAX_VOICE_BYTES + 1)
-    monkeypatch.setattr(dj, "_decode_seconds", lambda path: pytest.fail("decoded an oversize file"))
+    monkeypatch.setattr(dj, "_length_seconds", lambda path: pytest.fail("read an oversize file"))
+    monkeypatch.setattr(dj, "_decode", lambda path, rate: pytest.fail("decoded an oversize file"))
     with pytest.raises(dj.VoiceRejected, match="10 MB"):
         dj.check_voice(big)
+
+
+def test_a_long_clip_is_rejected_from_its_header_without_decoding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A low-bitrate MP3 under 10 MB can run for an hour; decoding it all would use hundreds of MB.
+    monkeypatch.setattr(dj, "_decode", lambda path, rate: pytest.fail("decoded a too-long clip"))
+    with pytest.raises(dj.VoiceRejected, match="between 5 and 30 seconds"):
+        dj.check_voice(_clip(tmp_path / "long.mp3", 40, rate=8000))
+
+
+def test_decoding_reads_at_most_the_longest_allowed_clip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import soundfile as sf
+
+    seen: list[int] = []
+    real_read = sf.read
+
+    def spy(path, frames=-1, **kwargs):
+        seen.append(frames)
+        return real_read(path, frames=frames, **kwargs)
+
+    monkeypatch.setattr(dj.soundfile, "read", spy)
+    dj.check_voice(_clip(tmp_path / "me.wav", 10))
+    assert seen and 0 < seen[0] <= int(dj.MAX_VOICE_S * 16000) + 1
 
 
 @pytest.mark.parametrize("name", ["corrupt.wav", "corrupt.mp3"])
@@ -606,3 +633,34 @@ def test_a_rejected_upload_keeps_the_current_voice_and_saves_nothing(
         voice.use(str(_clip(tmp_path / "short.wav", 2)))
     assert voice.path == str(kept)
     assert list((tmp_path / "uploads").iterdir()) == [kept]
+
+
+def test_a_failed_delete_does_not_undo_the_switch_or_the_reset(
+    tmp_path: Path, voice: dj.VoiceSetting, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # On Windows the old recording can't be deleted while D5 is reading it.
+    first = voice.use(str(_clip(tmp_path / "a.wav", 10)))
+
+    def locked(self: Path, missing_ok: bool = False) -> None:
+        raise PermissionError("in use")
+
+    monkeypatch.setattr(Path, "unlink", locked)
+    second = voice.use(str(_clip(tmp_path / "b.wav", 10)))
+    assert voice.path == str(second)
+    voice.reset()
+    assert voice.path is None
+    assert first.exists()  # left behind in the gitignored uploads folder
+
+
+def test_a_failed_copy_leaves_no_partial_file(
+    tmp_path: Path, voice: dj.VoiceSetting, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def half_copy(src: Path, dst: Path) -> None:
+        Path(dst).write_bytes(b"RIFF")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(dj.shutil, "copyfile", half_copy)
+    with pytest.raises(OSError):
+        voice.use(str(_clip(tmp_path / "me.wav", 10)))
+    assert voice.path is None
+    assert list((tmp_path / "uploads").iterdir()) == []
