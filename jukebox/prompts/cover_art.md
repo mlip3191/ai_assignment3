@@ -20,7 +20,8 @@ which is where FLUX's anatomy mistakes show. ("Small in the frame" was tried and
 crowd.)
 `art.py` adds a fixed style line (`SOFT_PEOPLE`) to every prompt that mentions people. Nothing can check
 anatomy automatically (only the four class models are allowed, and none of them looks at images), so
-covers that are kept (samples, screenshots) are checked by eye, and Retry cover replaces a bad one.
+covers that are kept (samples, screenshots) are checked by eye. Retry cover appears only after a cover
+fails, so it can't replace a finished cover that came out wrong.
 
 Signs (10/26): a live review run drew two neon signs with text on them on a road-trip cover, so the rules
 keep signs and screens out of the scene, or blank. The Suffix still says "no text" for every cover.

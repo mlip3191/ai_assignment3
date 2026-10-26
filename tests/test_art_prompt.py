@@ -576,6 +576,13 @@ def test_the_template_keeps_lettering_off_signs_and_screens() -> None:
         assert phrase in system
 
 
+def test_the_template_note_does_not_promise_retry_for_a_finished_cover() -> None:
+    # Retry cover shows only after a failed cover (generate_tab), never for one that came out wrong.
+    notes = " ".join(art.TEMPLATE_PATH.read_text(encoding="utf-8").split("## System")[0].split())
+    assert "replaces a bad one" not in notes
+    assert "Retry cover appears only after a cover fails" in notes
+
+
 def test_a_fisherman_reply_gets_the_soft_figure_style() -> None:
     prompt = art.write_cover_prompt(**LOFI, chat=FakeQwen(reply="A fisherman at dawn on a misty lake"))
     assert prompt == f"A fisherman at dawn on a misty lake, {art.SOFT_PEOPLE}, {SUFFIX}"
