@@ -1082,5 +1082,18 @@ def test_after_a_run_the_tab_is_no_longer_running(library: Library) -> None:
     assert last[run.outputs.index(_by_id(demo, "gen-surprise"))]["interactive"] is True
 
 
+def test_a_run_refused_before_any_service_call_is_no_longer_running(library: Library) -> None:
+    """@gunnaroc on #61: the click marks the run as running, so a refused run must clear it too, or
+    Surprise me and More like this stay off for the rest of the session. Uses the real pipeline."""
+    demo, handles = _demo(library, run=songs.generate_song, start_cover=lambda _track: None)
+    run = _run_for(demo, "gen-button")
+    with respx.mock(assert_all_called=False) as mock:
+        last = list(run.fn("", "in the style of Taylor Swift", "upbeat", 60, tab.VOCAL, ""))[-1]
+        assert not mock.calls  # refused before any class server
+    assert "without naming real artists" in str(last[run.outputs.index(handles.status)])
+    assert last[run.outputs.index(handles.running)] is False
+    assert last[run.outputs.index(_by_id(demo, "gen-surprise"))]["interactive"] is True
+
+
 def test_the_help_mentions_more_like_this() -> None:
     assert "More like this" in tab.HELP
