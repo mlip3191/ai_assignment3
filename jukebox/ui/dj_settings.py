@@ -1,13 +1,72 @@
-"""Placeholder DJ settings. Lane D replaces the body of render()."""
+"""The DJ voice panel (F3b, D4): upload an MP3 or WAV to use as the DJ's voice, or reset to default.
+
+The checks and storage live in jukebox.services.dj (VOICE); this module only shows the result. It
+does not call a model.
+"""
 
 from __future__ import annotations
 
+import logging
+
 import gradio as gr
+
+from jukebox.services import dj
+
+log = logging.getLogger(__name__)
+
+LIMITS = (
+    f"MP3 or WAV, {dj.MIN_VOICE_S:g} to {dj.MAX_VOICE_S:g} seconds, "
+    f"up to {dj.MAX_VOICE_BYTES // (1024 * 1024)} MB"
+)
+DEFAULT_ACTIVE = f"Default DJ voice. Upload a recording ({LIMITS}) to use your own."
+CUSTOM_ACTIVE = "**Custom voice active.** New DJ intros use your recording."
+SAVE_FAILED = "Your recording couldn't be saved. Try again."
+
+
+def _current() -> str:
+    return CUSTOM_ACTIVE if dj.VOICE.path else DEFAULT_ACTIVE
+
+
+def _outputs(status: str) -> tuple[object, ...]:
+    """status text, the Reset button (only with a custom voice), and a cleared upload box."""
+    return (
+        gr.update(value=status),
+        gr.update(visible=dj.VOICE.path is not None),
+        gr.update(value=None),
+    )
+
+
+def on_upload(file: str | None) -> tuple[object, ...]:
+    if not file:
+        return _outputs(_current())
+    try:
+        dj.VOICE.use(file)
+    except dj.VoiceRejected as err:
+        still = "Still using your custom voice." if dj.VOICE.path else "Still using the default voice."
+        return _outputs(f"{err} {still}")
+    except OSError as err:
+        log.warning("voice upload not saved: %s", type(err).__name__)
+        return _outputs(SAVE_FAILED)
+    return _outputs(CUSTOM_ACTIVE)
+
+
+def on_reset() -> tuple[object, ...]:
+    dj.VOICE.reset()
+    return _outputs(DEFAULT_ACTIVE)
 
 
 def render() -> None:
-    gr.Markdown(
-        "DJ voice is not connected yet. The default voice will be used, or you can upload an MP3 or WAV later. "
-        "Uploads stay in runtime/uploads and are not saved in the repo.",
-        elem_id="dj-settings",
-    )
+    with gr.Group(elem_id="dj-settings"):
+        upload = gr.File(
+            label=f"DJ voice ({LIMITS})",
+            file_types=list(dj.VOICE_TYPES),
+            type="filepath",
+            elem_id="dj-voice-upload",
+        )
+        status = gr.Markdown(_current(), elem_id="dj-voice-status")
+        reset = gr.Button(
+            "Reset to default", visible=dj.VOICE.path is not None, size="sm", elem_id="dj-voice-reset"
+        )
+    outputs = [status, reset, upload]
+    upload.upload(on_upload, inputs=upload, outputs=outputs)
+    reset.click(on_reset, outputs=outputs)

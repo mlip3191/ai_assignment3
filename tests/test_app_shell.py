@@ -266,4 +266,4 @@ def test_how_to_no_longer_says_generate_is_not_connected() -> None:
     assert "Generate and the DJ voice are not connected" not in text
     assert "Play now" in text
     assert "Add to queue" in text
-    assert "DJ voice" in text and "not connected" in text  # the voice upload (D4) is still to come
+    assert "DJ voice" in text and "not connected" in text  # DJ intros start playing with D5
