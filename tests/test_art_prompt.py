@@ -8,6 +8,7 @@ those arguments. No class service is ever called.
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -390,6 +391,10 @@ def test_the_template_keeps_people_soft_and_never_a_portrait() -> None:
         "a ballerina in the spotlight",
         "a couple of friends on a rooftop",
         "two distant silhouettes on the shore",
+        # a "no" list must not swallow the people after it (second review of #58, 10/26)
+        "a quiet beach with no crowds, figures far in the distance",
+        "no crowds, people dancing in the windows above",
+        "no faces, hands on the piano keys",
     ],
 )
 def test_people_are_noticed(text: str) -> None:
@@ -468,6 +473,10 @@ def test_people_are_noticed(text: str) -> None:
         "an abandoned DJ booth",
         "a rubber band on a desk",
         "a ceiling fan turning slowly",
+        "a skyline, the silhouette softened by fog",
+        "a metal band around the barrel",
+        "a Pac-Man arcade cabinet",
+        "no man’s land at dawn",
     ],
 )
 def test_scenes_without_people_are_left_alone(text: str) -> None:
@@ -488,6 +497,12 @@ SAMPLE_PROMPTS = {
 @pytest.mark.parametrize(("text", "has_people"), SAMPLE_PROMPTS.items())
 def test_the_sample_cover_prompts_are_read_correctly(text: str, has_people: bool) -> None:
     assert art.mentions_people(text) is has_people
+
+
+def test_long_runs_of_spaces_after_no_people_stay_fast() -> None:
+    start = time.perf_counter()
+    assert not art.mentions_people("no people" + " " * 5000 + "a quiet sky")
+    assert time.perf_counter() - start < 1
 
 
 def test_an_empty_landscape_reply_gets_no_soft_figure_style() -> None:

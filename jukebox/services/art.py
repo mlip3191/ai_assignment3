@@ -63,7 +63,7 @@ _TAG_LINE = re.compile(r"^\s*\[[^\]]*\]\s*$")
 # man in the moon", "a figure of speech", "a couple of candles", "guy ropes" or "a table runner". Any word
 # ending in "man" or "men" counts (fisherman, policewoman, human) except the few listed that aren't people
 # (German, ottoman, Pullman, omen, ramen). A silhouette counts only after "a", "two", "lone" and the like
-# ("a lone silhouette", sample 3), not in "palm tree silhouettes" or "the silhouette of a mountain range";
+# ("a lone silhouette", sample 3), not in "palm tree silhouettes" or "a skyline, the silhouette softened";
 # a silhouette of a person names the person.
 _PEOPLE = re.compile(
     r"\b(?:"
@@ -71,7 +71,7 @@ _PEOPLE = re.compile(
     r"|bab(?:y|ies)(?!-|'s\s+breath|\s+(?:blue|pink|grand|breath)\b)|ladies|lady|guys?(?!-|\s+(?:ropes?|lines?|wires?)\b)"
     r"|(?:boy|girl)?friends?|(?:couples?|crowds?)(?!\s+of\b)|audiences?|spectators?|tourists?|famil(?:y|ies)"
     r"|lovers?|strangers?|someone|somebody|everyone|everybody"
-    r"|(?:a|an|the|one|two|three|four|lone|single|solitary|distant|small|tiny)\s+silhouettes?(?!-|\s+of\b)"
+    r"|(?:a|an|one|two|three|four|lone|single|solitary|distant|small|tiny)\s+silhouettes?(?!-|\s+of\b)"
     r"|mothers?|fathers?|daughters?|sons?|sisters?|brothers?|grand(?:mother|father)s?|(?:grand)?parents?|brides?"
     r"|travell?ers?|wanderers?|hikers?|sailors?|cyclists?|bikers?|riders?|skaters?|surfers?|swimmers?|skiers?"
     r"|drivers?|passengers?|(?<!\btable\s)(?<!\bcarpet\s)(?<!\bsled\s)runners?(?!\s+(?:of|beans?)\b)"
@@ -80,10 +80,10 @@ _PEOPLE = re.compile(
     r"|farmers?|workers?|baristas?|chefs?|nurses?|monks?|nuns?|ballerinas?|mermaids?"
     r"|dancers?|singers?|vocalists?|musicians?|performers?|guitarists?|drummers?|bassists?|pianists?|violinists?"
     r"|saxophonists?|trumpeters?|djs?(?!\s+(?:booths?|decks)\b)|concertgoers?|partygoers?|festivalgoers?|ravers?"
-    r"|(?:rock|jazz|punk|indie|folk|blues|brass|marching|garage|metal|boy|girl)\s+bands?"
+    r"|(?:rock|jazz|punk|indie|folk|blues|brass|marching|garage|boy|girl)\s+bands?"
     r"|bands?(?=\s+(?:plays?|playing|performs?|performing|on\s+stage)\b)"
     r"|(?<!\bceiling\s)(?<!\belectric\s)(?<!\bpalm\s)fans(?!\s+of\b)"
-    r"|(?<!\bisle\sof\s)man(?!\s+in\s+the\s+moon|'s\s+land)(?!-)|figures?(?!-|\s+of\b)"
+    r"|(?<!\bisle\sof\s)(?<!\bpac-)man(?!\s+in\s+the\s+moon|['’]s\s+land)(?!-)|figures?(?!-|\s+of\b)"
     r"|(?!(?:ger|otto|talis|cai|cay|snow|walk|dober|ro|pac|pull|tas|speci|abdo|acu|regi|o|sta|ra|a|lu|ye|hy"
     r"|se|cycla|dol|bitu|albu|ceru|ru|fora)m[ae]n\b)\w+m[ae]n(?!-)"
     r"|(?:(?<!\bclock\s)(?<!\bwatch\s)(?<!\bcliff\s)(?<!\brock\s)faces?|bod(?:y|ies)|(?<!\bcoat\sof\s)arms?"
@@ -94,11 +94,11 @@ _PEOPLE = re.compile(
     re.IGNORECASE,
 )
 # "No people", "without a single person", "no faces or hands" and the like: an empty scene, so these words
-# don't count.
+# don't count. A list needs "or", "and" or "nor", so "no crowds, figures in the distance" keeps the figures.
 _NO_NOUN = r"(?:(?:visible|real|other|human)\s+)?(?:people|persons?|humans?|figures?|crowds?|faces?|hands?|bod(?:y|ies))"
 _NO_PEOPLE = re.compile(
     rf"\b(?:no|without(?:\s+any|\s+a\s+single)?|devoid\s+of|empty\s+of|free\s+of)\s+{_NO_NOUN}"
-    rf"(?:\s*,?\s*(?:or|and|nor)?\s+{_NO_NOUN})*\b",
+    rf"(?:,?\s+(?:or|and|nor)\s+{_NO_NOUN})*\b",
     re.IGNORECASE,
 )
 # Added to any prompt with people in it. FLUX follows positive descriptions better than "no ...": small,
