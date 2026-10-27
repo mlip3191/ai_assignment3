@@ -33,10 +33,10 @@
 /docs/screenshots/              @felcervino
 
 # Lane D: AI DJ & Launchers
-/jukebox/clients/chatterbox.py  @dilloncsmart
-/jukebox/services/dj.py         @dilloncsmart
-/jukebox/prompts/dj.md          @dilloncsmart
-/jukebox/ui/dj_settings.py      @dilloncsmart
-/run.sh                         @dilloncsmart
-/run.bat                        @dilloncsmart
-/requirements.txt               @dilloncsmart
+/jukebox/clients/chatterbox.py  @mlip3191
+/jukebox/services/dj.py         @mlip3191
+/jukebox/prompts/dj.md          @mlip3191
+/jukebox/ui/dj_settings.py      @mlip3191
+/run.sh                         @mlip3191
+/run.bat                        @mlip3191
+/requirements.txt               @mlip3191
