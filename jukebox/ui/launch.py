@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import socket
 from collections.abc import Callable
 from pathlib import Path
@@ -27,6 +28,20 @@ def ensure_runtime(root: Path) -> Path:
     for folder in (runtime, runtime / "generated", runtime / "uploads"):
         folder.mkdir(parents=True, exist_ok=True)
     return runtime
+
+
+def clear_old_uploads(uploads: Path) -> None:
+    """Delete DJ voice recordings and Gradio's copies left by an earlier run.
+
+    The chosen voice is kept in memory, so after a restart none of them is in use (H9). A file that
+    can't be deleted (Windows, still open) is left in the gitignored folder.
+    """
+    for recording in Path(uploads).glob("voice_*"):
+        try:
+            recording.unlink()
+        except OSError:
+            pass
+    shutil.rmtree(Path(uploads) / "gradio", ignore_errors=True)
 
 
 def allowed_paths(root: Path) -> list[str]:
@@ -76,11 +91,13 @@ def serve(
         raise RuntimeError("Gradio public share links are disabled.")
     root = Path(root)
     runtime = ensure_runtime(root)
+    port = choose_port(HOST, PORT, FALLBACK_PORT, can_bind or port_is_free)
+    if port == PORT:  # on the fallback port another copy may be running and using its recording
+        clear_old_uploads(runtime / "uploads")
     # Gradio saves every upload (a DJ voice) here before a handler sees it; the default is the system
     # temp folder. It reads this when the page is built, so set it first.
     os.environ["GRADIO_TEMP_DIR"] = str((runtime / "uploads" / "gradio").resolve())
     demo = build_demo()
-    port = choose_port(HOST, PORT, FALLBACK_PORT, can_bind or port_is_free)
     print(f"Open http://{HOST}:{port}")
     opener = launch or _launch
     opener(

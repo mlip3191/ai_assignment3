@@ -164,6 +164,35 @@ def test_gradio_refuses_uploads_over_the_voice_limit_before_saving_them(tmp_path
     assert seen["max_file_size"] == dj.MAX_VOICE_BYTES
 
 
+def _leftovers(root: Path) -> dict[str, Path]:
+    """What a previous run leaves in runtime/: an old voice, a Gradio copy, and a generated song."""
+    files = {
+        "voice": root / "runtime" / "uploads" / "voice_0a1b2c.wav",
+        "gradio": root / "runtime" / "uploads" / "gradio" / "3f2a9c" / "me.wav",
+        "song": root / "runtime" / "generated" / "t1.mp3",
+    }
+    for path in files.values():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"\x00")
+    return files
+
+
+def test_startup_deletes_recordings_and_gradio_copies_left_by_an_earlier_run(tmp_path: Path) -> None:
+    """The voice is kept in memory, so after a restart no old recording is in use (H9: keep only the one in use)."""
+    files = _leftovers(tmp_path)
+    serve(tmp_path, launch=lambda _demo, **_kwargs: None, can_bind=lambda _host, _port: True)
+    assert not files["voice"].exists()
+    assert not files["gradio"].exists()
+    assert files["song"].exists()  # generated songs and covers are not uploads
+
+
+def test_a_second_copy_on_the_fallback_port_keeps_the_first_copys_recordings(tmp_path: Path) -> None:
+    files = _leftovers(tmp_path)
+    port = serve(tmp_path, launch=lambda _demo, **_kwargs: None, can_bind=lambda _host, port: port != 7860)
+    assert port == 7861
+    assert files["voice"].exists() and files["gradio"].exists()
+
+
 def test_gradios_cached_copies_are_cleaned_up() -> None:
     """Every song, cover and clip the page shows is copied into Gradio's cache; old copies must go."""
     frequency_s, age_s = build_demo().delete_cache
