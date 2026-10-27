@@ -144,7 +144,19 @@ Same steps, but choose **Vocal** in step 4. The first stage after **Queued** is 
   finished image, so FLUX can still add small unreadable marks, for example on a book's pages; the sample
   covers were checked by eye (see [Sample songs](#sample-songs)).
 
-> **TODO (C7, on rc1):** screenshots of a result card with its cover and of a failed cover with **Retry cover** (`docs/screenshots/`, no credentials visible).
+Screenshots from `rc1` (Windows 11):
+
+![The result card of an instrumental song (lo-fi hip hop, mellow, 45 s), with its cover](docs/screenshots/cover-instrumental-result.png)
+
+*A finished song's result card with its own cover.*
+
+![The Library with a vocal song picked, showing its cover and details](docs/screenshots/library-song-cover.png)
+
+*A song's cover in the Library when you pick it.*
+
+![A failed cover: the placeholder, the note that the FLUX service is unreachable, and Retry cover](docs/screenshots/error-cover-failed-retry.png)
+
+*A failed cover (here FLUX was unreachable): the song keeps the placeholder, with the note and **Retry cover**.*
 
 ## Sample songs
 
