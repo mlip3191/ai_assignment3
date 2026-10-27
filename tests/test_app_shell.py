@@ -142,6 +142,75 @@ def test_launch_is_loopback_and_share_is_refused(tmp_path: Path) -> None:
         serve(tmp_path, share=True, launch=explode, can_bind=lambda _host, _port: True)
 
 
+def test_gradio_keeps_uploads_inside_runtime_uploads(tmp_path: Path) -> None:
+    """Gradio saves each upload (a DJ voice) before any handler runs; that copy must stay in
+    runtime/uploads/, not the system temp folder (CLAUDE.md, H9)."""
+    from gradio.utils import get_upload_folder
+
+    seen: dict[str, object] = {}
+
+    def fake_launch(demo: gr.Blocks, **_kwargs: object) -> None:
+        seen["cache"] = demo.GRADIO_CACHE
+        seen["folder"] = get_upload_folder()  # what the server uses for uploads, read at launch
+
+    serve(tmp_path, launch=fake_launch, can_bind=lambda _host, _port: True)
+    uploads = (tmp_path / "runtime" / "uploads").resolve()
+    for key in ("cache", "folder"):
+        assert Path(str(seen[key])).resolve().is_relative_to(uploads), key
+
+
+def test_gradio_refuses_uploads_over_the_voice_limit_before_saving_them(tmp_path: Path) -> None:
+    """Without a limit, a 4 GB file would be written to runtime/uploads/ in full before the DJ check."""
+    from jukebox.services import dj
+
+    seen: dict[str, object] = {}
+    serve(tmp_path, launch=lambda _demo, **kwargs: seen.update(kwargs), can_bind=lambda _host, _port: True)
+    assert seen["max_file_size"] == dj.MAX_VOICE_BYTES
+
+
+def _leftovers(root: Path) -> dict[str, Path]:
+    """What a previous run leaves in runtime/: an old voice, a Gradio copy, and a generated song."""
+    files = {
+        "voice": root / "runtime" / "uploads" / "voice_0a1b2c.wav",
+        "gradio": root / "runtime" / "uploads" / "gradio" / "3f2a9c" / "me.wav",
+        "song": root / "runtime" / "generated" / "t1.mp3",
+    }
+    for path in files.values():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"\x00")
+    return files
+
+
+def test_startup_deletes_recordings_and_gradio_copies_left_by_an_earlier_run(tmp_path: Path) -> None:
+    """The voice is kept in memory, so after a restart no old recording is in use (H9: keep only the one in use)."""
+    files = _leftovers(tmp_path)
+    serve(tmp_path, launch=lambda _demo, **_kwargs: None, can_bind=lambda _host, _port: True)
+    assert not files["voice"].exists()
+    assert not files["gradio"].exists()
+    assert files["song"].exists()  # generated songs and covers are not uploads
+
+
+def test_a_second_copy_on_the_fallback_port_keeps_the_first_copys_recordings(tmp_path: Path) -> None:
+    files = _leftovers(tmp_path)
+    port = serve(tmp_path, launch=lambda _demo, **_kwargs: None, can_bind=lambda _host, port: port != 7860)
+    assert port == 7861
+    assert files["voice"].exists() and files["gradio"].exists()
+
+
+def test_the_page_refreshes_the_dj_voice_panel_when_it_opens() -> None:
+    """A reload or a second tab shows the app-wide voice, not the one when the page was built (#69)."""
+    demo = build_demo()
+    fns = demo.fns.values() if isinstance(demo.fns, dict) else demo.fns
+    loads = [fn for fn in fns if (demo._id, "load") in [tuple(t) for t in fn.targets]]
+    assert any("dj-voice-status" in [getattr(o, "elem_id", None) for o in fn.outputs] for fn in loads)
+
+
+def test_gradios_cached_copies_are_cleaned_up() -> None:
+    """Every song, cover and clip the page shows is copied into Gradio's cache; old copies must go."""
+    frequency_s, age_s = build_demo().delete_cache
+    assert 0 < frequency_s <= age_s <= 86400
+
+
 def test_allowed_paths_are_samples_runtime_and_assets(tmp_path: Path) -> None:
     samples = (tmp_path / "samples").resolve()
     runtime = (tmp_path / "runtime").resolve()
@@ -270,7 +339,7 @@ def test_how_to_no_longer_says_generate_is_not_connected() -> None:
     assert "Generate and the DJ voice are not connected" not in text
     assert "Play now" in text
     assert "Add to queue" in text
-    assert "DJ voice" in text and "not connected" in text  # the voice upload (D4) is still to come
+    assert "DJ voice" in text and "not connected" in text  # DJ intros start playing with D5
 
 
 def test_more_like_this_reads_the_library_list_and_fills_the_generate_form() -> None:

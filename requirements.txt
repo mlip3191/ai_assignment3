@@ -3,3 +3,4 @@
 # Only add packages here with a PR; scripts/check_models.py rejects AI SDKs and local-model packages.
 httpx==0.28.1
 gradio==6.30.0
+soundfile==0.14.0

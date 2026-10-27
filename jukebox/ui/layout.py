@@ -30,7 +30,9 @@ HOW_TO = "\n".join(
 
 
 def build_demo() -> gr.Blocks:
-    with gr.Blocks(title="AI Jukebox") as demo:
+    # Gradio copies every file the page shows into its cache (runtime/uploads/gradio, set in launch.py):
+    # check hourly and delete copies older than a day, so it can't grow forever.
+    with gr.Blocks(title="AI Jukebox", delete_cache=(3600, 86400)) as demo:
         gr.Markdown(HOW_TO, elem_id="how-to")
         with gr.Row():
             with gr.Column():
@@ -41,7 +43,7 @@ def build_demo() -> gr.Blocks:
                         library = library_tab.render()
             with gr.Column():
                 panel = player_panel.render()
-                dj_settings.render()
+                voice = dj_settings.render()
         # Both tabs send a song to the player by its track id, so a song is never found by list position.
         panel.connect_add(generate.add_to_queue, generate.track_id)
         panel.connect_play_now(generate.play_now, generate.track_id)
@@ -49,4 +51,6 @@ def build_demo() -> gr.Blocks:
         panel.connect_play_now(library.play_now, library.selected)
         # More like this fills the Generate form from the chosen song and opens that tab.
         generate.connect_more_like_this(library.more_like_this, library.selected, tabs)
+        # The DJ voice is app-wide: each page that opens shows it as it is now.
+        voice.connect_load(demo)
     return demo

@@ -12,25 +12,36 @@ Qwen writes the script from `prompts/dj.md`; Chatterbox speaks it; the clip is s
     and the song still plays.
   - Clips are named `dj_<track_id>_<voice_key>.<ext>`. `voice_key` is "default" or a short hash of
     the reference recording, so a new voice never reuses an old clip (D5 caches by both).
+  - A custom voice (F3b, D4) is an MP3 or WAV the user uploads. It is checked here (type, size,
+    decodes with soundfile, 5-30 s from D1) before anything is sent to Chatterbox, then copied to
+    `runtime/uploads/` under a random name (H9). `VOICE` holds the one app-wide choice; D5 reads
+    `VOICE.path` when it makes clips.
 """
 
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
+import shutil
 import tempfile
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
+
+import soundfile
 
 from jukebox.clients import chatterbox, qwen
 from jukebox.config import ROOT
 from jukebox.errors import ServiceError
 
 GENERATED_DIR = ROOT / "runtime" / "generated"
+UPLOADS_DIR = ROOT / "runtime" / "uploads"  # gitignored; the only place a voice recording is kept (H9)
+log = logging.getLogger(__name__)
 PROMPT_PATH = ROOT / "jukebox" / "prompts" / "dj.md"
 
 MAX_WORDS = 50
@@ -47,6 +58,11 @@ REPLACE_ATTEMPTS = 5
 REPLACE_WAIT_S = 0.05
 _REPLACE_LOCK = threading.Lock()
 _sleep = time.sleep  # tests replace this
+# Voice upload limits: PROJECT.md 8.3, kept inside the server's own (20 MB, 0.5-60 s) per D1.
+VOICE_TYPES = (".mp3", ".wav")
+MAX_VOICE_BYTES = 10 * 1024 * 1024
+MIN_VOICE_S = 5.0
+MAX_VOICE_S = 30.0
 
 
 class TrackInfo(Protocol):
@@ -231,3 +247,117 @@ def _write_atomically(path: Path, data: bytes) -> None:
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
+
+
+# ---- custom voice (D4) -------------------------------------------------------------------------
+
+
+class VoiceRejected(ValueError):
+    """The upload can't be used as a voice. str(err) is the plain reason to show the user."""
+
+
+def check_voice(path: str | Path) -> float:
+    """Check an uploaded recording and return its length in seconds, or raise VoiceRejected.
+
+    Cheap checks (type, empty, size, then the length from the header) run before anything is
+    decoded, and the decode stops at MAX_VOICE_S: a low-bitrate MP3 under 10 MB can run for an hour.
+    """
+    path = Path(path)
+    if path.suffix.lower() not in VOICE_TYPES:
+        raise VoiceRejected("Only MP3 or WAV files are supported.")
+    size = path.stat().st_size
+    if size == 0:
+        raise VoiceRejected("That file is empty. Choose an MP3 or WAV recording.")
+    if size > MAX_VOICE_BYTES:
+        raise VoiceRejected(f"That file is too big. The limit is {MAX_VOICE_BYTES // (1024 * 1024)} MB.")
+    seconds, rate = _length_seconds(path)
+    if not MIN_VOICE_S <= seconds <= MAX_VOICE_S:
+        raise VoiceRejected(
+            f"Clip must be between {MIN_VOICE_S:g} and {MAX_VOICE_S:g} seconds (this one is {seconds:.1f})."
+        )
+    _decode(path, rate)
+    return seconds
+
+
+_UNREADABLE = "That file couldn't be read as audio. Try another MP3 or WAV."
+_SOUNDFILE_ERRORS = (soundfile.SoundFileError, RuntimeError, ValueError, EOFError)
+
+
+def _length_seconds(path: Path) -> tuple[float, int]:
+    """The length and sample rate from the file's header, without decoding the audio."""
+    try:
+        info = soundfile.info(str(path))
+    except _SOUNDFILE_ERRORS:
+        raise VoiceRejected(_UNREADABLE) from None
+    if info.samplerate <= 0 or info.frames <= 0:
+        raise VoiceRejected(_UNREADABLE)
+    return info.frames / info.samplerate, info.samplerate
+
+
+def _decode(path: Path, rate: int) -> None:
+    """Decode the audio (at most MAX_VOICE_S of it) to prove it's readable; VoiceRejected if not."""
+    try:
+        data, _rate = soundfile.read(str(path), frames=int(MAX_VOICE_S * rate) + 1, dtype="int16")
+    except _SOUNDFILE_ERRORS:
+        raise VoiceRejected(_UNREADABLE) from None
+    if len(data) == 0:
+        raise VoiceRejected(_UNREADABLE)
+
+
+def save_voice(path: str | Path) -> Path:
+    """Check the upload, then copy it into UPLOADS_DIR under a random name. Returns the copy."""
+    path = Path(path)
+    check_voice(path)
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    saved = UPLOADS_DIR / f"voice_{uuid.uuid4().hex}{path.suffix.lower()}"
+    try:
+        shutil.copyfile(path, saved)
+    except BaseException:
+        saved.unlink(missing_ok=True)  # never leave half a recording behind
+        raise
+    return saved
+
+
+class VoiceSetting:
+    """The DJ voice for the whole app: None for the default voice, else a recording in UPLOADS_DIR.
+
+    Replacing or resetting deletes the old recording, so only the voice in use stays on disk. A clip
+    being made with the old recording at that moment fails with ServiceError (chatterbox can't find
+    the file) or OSError, which D5 treats as "skip the DJ clip". If the delete itself fails (Windows,
+    while the file is open), the switch still happens and the file stays in the gitignored folder.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._path: str | None = None
+
+    @property
+    def path(self) -> str | None:
+        with self._lock:
+            return self._path
+
+    def use(self, upload: str) -> Path:
+        """Check and save `upload`, then make it the voice. VoiceRejected leaves the voice as it was."""
+        saved = save_voice(upload)
+        with self._lock:
+            old, self._path = self._path, str(saved)
+        _forget(old)
+        return saved
+
+    def reset(self) -> None:
+        """Go back to the default voice."""
+        with self._lock:
+            old, self._path = self._path, None
+        _forget(old)
+
+
+def _forget(path: str | None) -> None:
+    if path is None:
+        return
+    try:
+        Path(path).unlink(missing_ok=True)
+    except OSError as err:
+        log.warning("old voice recording not deleted: %s", type(err).__name__)
+
+
+VOICE = VoiceSetting()

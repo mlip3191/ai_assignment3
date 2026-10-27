@@ -46,6 +46,12 @@ def isolate_git_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def isolate_gradio_upload_folder(monkeypatch: pytest.MonkeyPatch) -> None:
+    """serve() sets GRADIO_TEMP_DIR for the app; undo it after each test so it can't leak into others."""
+    monkeypatch.delenv("GRADIO_TEMP_DIR", raising=False)
+
+
 @pytest.fixture
 def make_track():
     """Build a valid generated Track; override any field by keyword."""
