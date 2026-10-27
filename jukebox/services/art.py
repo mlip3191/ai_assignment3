@@ -130,16 +130,17 @@ _A_THINGS = re.compile(
     r"|turntable|statue|guitar|piano|chair|table)(?:['’]s|s['’])\s+(?:[\w'’-]+\s+)?$",
     re.IGNORECASE,
 )
-# "Face" as a verb: "a cabin faces a frozen lake", "windows face the sea". The word before is the subject:
-# one thing before "faces", things before "face", and not an article, number, possessive or adjective
-# ("a face toward the light", "two faces each lit", "Sarah's face", "pale faces" are faces).
+# "Face" as a verb: "a small cabin faces a frozen lake", "tall windows face the sea". The subject is right
+# before it: things before "face"; one thing after "a" or "the" before "faces". Otherwise it's a face: "a face
+# toward the light", "two faces each lit", "Sarah's face", "wet faces toward the rain", "with faces toward".
 _FACE_VERB = re.compile(
     r"faces?\s+(?:the|a|an|out|outward|away|toward|towards|onto|each|east|west|north|south)\b", re.IGNORECASE
 )
 _SUBJECT = re.compile(r"\b([\w'’]+)\s+$")
+_ONE_SUBJECT = re.compile(r"\b(?:a|an|the|one)\s+(?:[\w'’-]+\s+)?([\w'’]+)\s+$", re.IGNORECASE)
 _NOT_A_SUBJECT = frozenset(
     "a an the one two three four five six many few some all its this that these those his her their our my your"
-    " pale happy young old small tiny bright tired sad weary".split()
+    " pale happy young old small tiny bright tired sad weary lit wet dim bare cold warm".split()
 )
 # Measurements: "a thousand feet above", "fifty feet tall", "a six-foot wave", "a 10-foot cactus".
 _NUMBER = (
@@ -278,13 +279,14 @@ def mentions_people(text: str) -> bool:
 def _faces_as_verb(text: str, part: re.Match[str], before: str) -> bool:
     if not _FACE_VERB.match(text, part.start()):
         return False
-    subject = _SUBJECT.search(before)
+    plural = part.group().lower() == "face"  # "windows face", "a cabin faces"
+    subject = (_SUBJECT if plural else _ONE_SUBJECT).search(before)
     if not subject:
         return False
     word = subject.group(1).lower()
     if word in _NOT_A_SUBJECT or word.endswith(("'s", "’s", "ed", "ing")):
         return False
-    return word.endswith("s") == (part.group().lower() == "face")  # "windows face", "a cabin faces"
+    return word.endswith("s") == plural
 
 
 def _lyrics_block(vocal: bool, lyrics: str | None) -> str:

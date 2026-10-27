@@ -442,6 +442,11 @@ def test_the_template_keeps_people_soft_and_never_a_portrait() -> None:
         "the moon's light on faces",
         "a girl faces the sea",
         "game players around a table",
+        "lit faces toward the stage",
+        "the wet faces toward the rain",
+        "bare faces each lit",
+        "a crowd with faces toward the sun",
+        "and faces toward the light",
     ],
 )
 def test_people_are_noticed(text: str) -> None:
