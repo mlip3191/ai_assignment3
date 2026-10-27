@@ -7,8 +7,10 @@ does not call a model.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import gradio as gr
+from gradio.utils import get_upload_folder
 
 from jukebox.services import dj
 
@@ -47,7 +49,23 @@ def on_upload(file: str | None) -> tuple[object, ...]:
     except OSError as err:
         log.warning("voice upload not saved: %s", type(err).__name__)
         return _outputs(SAVE_FAILED)
+    finally:
+        _discard(file)
     return _outputs(CUSTOM_ACTIVE)
+
+
+def _discard(file: str) -> None:
+    """Delete Gradio's copy of the upload, so the saved voice in runtime/uploads/ is the only one (H9).
+
+    Only a file inside Gradio's upload folder is deleted, never one from anywhere else.
+    """
+    path = Path(file).resolve()
+    if not path.is_relative_to(Path(get_upload_folder()).resolve()):
+        return
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as err:
+        log.warning("Gradio's copy of the upload not deleted: %s", type(err).__name__)
 
 
 def on_reset() -> tuple[object, ...]:

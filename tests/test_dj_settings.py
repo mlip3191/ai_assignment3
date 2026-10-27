@@ -94,6 +94,45 @@ def test_an_unexpected_save_error_is_a_plain_message(
     assert "secret" not in status["value"]
 
 
+def _gradio_copy(cache: Path, name: str, seconds: float) -> Path:
+    """An upload where Gradio puts it: a folder inside its upload cache."""
+    folder = cache / "3f2a9c"
+    folder.mkdir(parents=True)
+    return _clip(folder / name, seconds)
+
+
+def test_gradios_copy_of_the_upload_is_deleted_once_saved(
+    tmp_path: Path, voice: dj.VoiceSetting, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = tmp_path / "gradio"
+    monkeypatch.setenv("GRADIO_TEMP_DIR", str(cache))
+    upload = _gradio_copy(cache, "me.wav", 10)
+    settings.on_upload(str(upload))
+    assert not upload.exists()  # only the copy in runtime/uploads/ is kept
+    assert Path(voice.path).exists()
+
+
+def test_gradios_copy_of_a_rejected_upload_is_deleted_too(
+    tmp_path: Path, voice: dj.VoiceSetting, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = tmp_path / "gradio"
+    monkeypatch.setenv("GRADIO_TEMP_DIR", str(cache))
+    upload = _gradio_copy(cache, "me.wav", 2)
+    status, _reset, _upload = settings.on_upload(str(upload))
+    assert "between 5 and 30 seconds" in status["value"]
+    assert not upload.exists()
+    assert voice.path is None
+
+
+def test_a_file_outside_gradios_cache_is_never_deleted(
+    tmp_path: Path, voice: dj.VoiceSetting, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GRADIO_TEMP_DIR", str(tmp_path / "gradio"))
+    mine = _clip(tmp_path / "mine.wav", 10)
+    settings.on_upload(str(mine))
+    assert mine.exists()
+
+
 def test_render_builds_upload_status_and_reset() -> None:
     with gr.Blocks() as demo:
         settings.render()

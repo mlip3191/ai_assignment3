@@ -138,6 +138,23 @@ def test_launch_is_loopback_and_share_is_refused(tmp_path: Path) -> None:
         serve(tmp_path, share=True, launch=explode, can_bind=lambda _host, _port: True)
 
 
+def test_gradio_keeps_uploads_inside_runtime_uploads(tmp_path: Path) -> None:
+    """Gradio saves each upload (a DJ voice) before any handler runs; that copy must stay in
+    runtime/uploads/, not the system temp folder (CLAUDE.md, H9)."""
+    from gradio.utils import get_upload_folder
+
+    seen: dict[str, object] = {}
+
+    def fake_launch(demo: gr.Blocks, **_kwargs: object) -> None:
+        seen["cache"] = demo.GRADIO_CACHE
+        seen["folder"] = get_upload_folder()  # what the server uses for uploads, read at launch
+
+    serve(tmp_path, launch=fake_launch, can_bind=lambda _host, _port: True)
+    uploads = (tmp_path / "runtime" / "uploads").resolve()
+    for key in ("cache", "folder"):
+        assert Path(str(seen[key])).resolve().is_relative_to(uploads), key
+
+
 def test_allowed_paths_are_samples_runtime_and_assets(tmp_path: Path) -> None:
     samples = (tmp_path / "samples").resolve()
     runtime = (tmp_path / "runtime").resolve()

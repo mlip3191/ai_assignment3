@@ -74,7 +74,10 @@ def serve(
     if share:
         raise RuntimeError("Gradio public share links are disabled.")
     root = Path(root)
-    ensure_runtime(root)
+    runtime = ensure_runtime(root)
+    # Gradio saves every upload (a DJ voice) here before a handler sees it; the default is the system
+    # temp folder. It reads this when the page is built, so set it first.
+    os.environ["GRADIO_TEMP_DIR"] = str((runtime / "uploads" / "gradio").resolve())
     demo = build_demo()
     port = choose_port(HOST, PORT, FALLBACK_PORT, can_bind or port_is_free)
     print(f"Open http://{HOST}:{port}")
