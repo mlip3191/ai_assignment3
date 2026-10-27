@@ -239,6 +239,52 @@ def test_a_voice_recording_that_is_gone_skips_the_dj_clip(tmp_path: Path, voice_
     assert fake.calls == []
 
 
+def test_a_voice_change_during_prefetch_never_files_the_old_voice_under_the_new_one(
+    tmp_path: Path, make
+) -> None:
+    """The voice is read once per prefetch, so the job's recording and its cache key always match."""
+    fake = make()
+    old = _recording(tmp_path, "voice_old.mp3", b"old voice")
+    new = _recording(tmp_path, "voice_new.mp3", b"new voice")
+    reads = iter([old])  # the first read sees the old voice; every later read sees the new one
+    prefetcher = dj.Prefetcher(voice=lambda: next(reads, new), out_dir=tmp_path / "gen")
+    prefetcher.prefetch(ONE).result(timeout=5)
+    # The job belongs to the old voice, which is no longer in use: it's skipped, not filed under the
+    # new voice (before the fix, the old recording was spoken and cached as the new voice's intro).
+    assert fake.calls == []
+    assert prefetcher.clips.get("t1") is None
+
+
+def test_an_intro_queued_for_a_voice_no_longer_in_use_is_skipped(tmp_path: Path, voice_holder, make) -> None:
+    gate = threading.Event()
+    fake = make(gate=gate)
+    prefetcher = _prefetcher(tmp_path, voice_holder)
+    busy = prefetcher.prefetch(TWO)  # the worker is busy with this one
+    voice_holder[0] = _recording(tmp_path, "voice_a.mp3", b"voice A")
+    stale = prefetcher.prefetch(ONE)  # queued for voice A
+    voice_holder[0] = None  # the user resets before it starts
+    gate.set()
+    busy.result(timeout=5)
+    assert stale.result(timeout=5) is None
+    assert [c["track"] for c in fake.calls] == ["t2"]  # no Qwen or Chatterbox call for a voice gone
+    voice_holder[0] = _recording(tmp_path, "voice_a.mp3", b"voice A")
+    assert prefetcher.prefetch(ONE) is not None  # and it can be asked for again later
+
+
+def test_an_unexpected_error_is_logged_and_the_next_intro_still_gets_made(
+    tmp_path: Path, voice_holder, make, caplog: pytest.LogCaptureFixture
+) -> None:
+    fake = make(error=ValueError("a bug"))
+    prefetcher = _prefetcher(tmp_path, voice_holder)
+    with caplog.at_level("WARNING", logger="jukebox.services.dj"):
+        assert prefetcher.prefetch(ONE).result(timeout=5) is None
+    assert "DJ intro skipped: ValueError" in caplog.text
+    assert "a bug" not in caplog.text  # the type only, never the message
+    fake.error = None
+    prefetcher.prefetch(TWO).result(timeout=5)
+    assert prefetcher.clips.get("t2") is not None
+
+
 # ---- the player's clip map ---------------------------------------------------------------------
 
 

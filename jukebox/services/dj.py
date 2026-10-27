@@ -377,8 +377,9 @@ class Prefetcher:
     """Makes DJ intros ahead of time, cached by (track_id, voice_key) (PROJECT.md 8.3, 8.4).
 
     `prefetch` returns at once; one background worker makes one clip at a time (Chatterbox is a
-    shared class server), and the same clip is never made twice. A ServiceError or OSError only
-    leaves the clip out, so the player plays the song with "DJ unavailable".
+    shared class server), and the same clip is never made twice. A clip queued for a voice that is
+    no longer in use is dropped before any call. Any failure only leaves the clip out (logged by
+    type), so the player plays the song with "DJ unavailable".
     """
 
     def __init__(self, *, voice: Callable[[], str | None] | None = None, out_dir: Path | None = None) -> None:
@@ -398,7 +399,9 @@ class Prefetcher:
 
     def current_key(self) -> str | None:
         """The cache key for the voice in use, or None when its recording can't be read."""
-        path = self.voice_path()
+        return self._key_for(self.voice_path())
+
+    def _key_for(self, path: str | None) -> str | None:
         if path is None:
             return "default"
         with self._lock:
@@ -416,8 +419,8 @@ class Prefetcher:
     def prefetch(self, track: TrackInfo, previous: TrackInfo | None = None) -> Future | None:
         """Start making this track's intro in the current voice. None if it's ready, already being
         made, or the voice recording can't be read (then there's no intro, never another voice)."""
-        path = self.voice_path()
-        key = self.current_key()
+        path = self.voice_path()  # read once, so the recording and its cache key always match
+        key = self._key_for(path)
         if key is None:
             return None
         slot = (track.id, key)
@@ -442,6 +445,11 @@ class Prefetcher:
             job, track, previous, path, slot = self._jobs.get()
             if not job.set_running_or_notify_cancel():
                 continue
+            if slot[1] != self.current_key():  # the voice changed while it waited: no Qwen or TTS call
+                with self._lock:
+                    self._pending.discard(slot)
+                job.set_result(None)
+                continue
             try:
                 job.set_result(self._make(track, previous, path, slot))
             except BaseException as err:  # never let one job stop the worker
@@ -455,7 +463,7 @@ class Prefetcher:
             clip = make_clip(track, voice_ref_path=path, previous=previous, out_dir=self._out_dir)
         except ServiceError as err:
             log.warning("DJ intro skipped: %s %s", err.service, err.kind)
-        except OSError as err:
+        except Exception as err:  # OSError, or anything unexpected: the type only, never paths or text
             log.warning("DJ intro skipped: %s", type(err).__name__)
         finally:
             with self._lock:
