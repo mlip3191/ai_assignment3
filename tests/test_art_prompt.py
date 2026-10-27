@@ -429,6 +429,19 @@ def test_the_template_keeps_people_soft_and_never_a_portrait() -> None:
         "Football players run across a muddy field",
         # a face that turns toward something is still a person's
         "turning her face toward the rain",
+        # a face that only looks like the verb, and parts past a thing's own part (review of e616af9, 10/27)
+        "a face up close, rain on glass",
+        "a pale face down in the snow",
+        "a face the color of ash",
+        "a face toward the light",
+        "Sarah's face toward the window",
+        "two faces each lit by candles",
+        "pale faces toward the stage",
+        "the piano's keys under fingers",
+        "the piano's keys and hands",
+        "the moon's light on faces",
+        "a girl faces the sea",
+        "game players around a table",
     ],
 )
 def test_people_are_noticed(text: str) -> None:
@@ -549,6 +562,12 @@ def test_people_are_noticed(text: str) -> None:
         "an old record player on a shelf",
         "a vintage cassette player glowing on a desk",
         "a player piano in an empty saloon",
+        "a record-player on a shelf",
+        "a CD-player glowing in the dark",
+        "a tone-arm resting on the record",
+        "an old radio player on the windowsill",
+        "the mountains' faces at dusk",
+        "an old house faces east over the bay",
     ],
 )
 def test_scenes_without_people_are_left_alone(text: str) -> None:
