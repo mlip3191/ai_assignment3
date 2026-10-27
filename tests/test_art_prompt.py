@@ -422,6 +422,13 @@ def test_the_template_keeps_people_soft_and_never_a_portrait() -> None:
         "A dog at its owner's feet",
         "Bird's-eye view of a packed dance floor, heads bobbing under neon haze",
         "a birds eye view of a crowd, faces lit by phone screens",
+        # missed in Gunnar's review of #58 (10/27)
+        "A student studies at a desk by a rainy window, headphones on",
+        "students on the library steps at dusk",
+        "A piano player at a smoky bar",
+        "Football players run across a muddy field",
+        # a face that turns toward something is still a person's
+        "turning her face toward the rain",
     ],
 )
 def test_people_are_noticed(text: str) -> None:
@@ -528,6 +535,20 @@ def test_people_are_noticed(text: str) -> None:
         "a gravel shoulder along an empty highway",
         "the hard shoulder of a motorway at night",
         "a statue with its arms raised",
+        # "face" as a verb, a thing's face, and a turntable's tone arm (Gunnar's review of #58, 10/27)
+        "A small cabin faces a frozen lake under the northern lights",
+        "Tall windows face the sea at dusk",
+        "Rows of empty seats face a dark stage under one spotlight",
+        "The mountain's face glows orange at sunset",
+        "The moon's pale face over a sleeping harbor",
+        "Waves crash against the cliff's face",
+        "A vinyl record's label face down on a wooden floor",
+        "A turntable's tone arm resting on a spinning vinyl record",
+        "A record player with its tone arm raised",
+        # "player" that is a machine, not a person
+        "an old record player on a shelf",
+        "a vintage cassette player glowing on a desk",
+        "a player piano in an empty saloon",
     ],
 )
 def test_scenes_without_people_are_left_alone(text: str) -> None:
@@ -554,6 +575,12 @@ def test_long_runs_of_spaces_after_no_people_stay_fast() -> None:
     start = time.perf_counter()
     assert not art.mentions_people("no people" + " " * 5000 + "a quiet sky")
     assert time.perf_counter() - start < 1
+
+
+def test_many_things_faces_stay_fast() -> None:
+    start = time.perf_counter()
+    assert not art.mentions_people("the moon's face " * 7000)  # about 100,000 characters
+    assert time.perf_counter() - start < 2
 
 
 def test_an_empty_landscape_reply_gets_no_soft_figure_style() -> None:

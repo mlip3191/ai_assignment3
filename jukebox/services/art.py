@@ -77,7 +77,9 @@ _PEOPLE = re.compile(
     r"|drivers?|passengers?|(?<!\btable\s)(?<!\bcarpet\s)(?<!\bsled\s)runners?(?!\s+(?:of|beans?)\b)"
     r"|pedestrians|pedestrian(?!\s+(?:bridges?|crossings?|paths?|streets?|zones?|walkways?|tunnels?)\b)"
     r"|astronauts?|cowboys?(?!-|\s+(?:hats?|boots?)\b)|cowgirls?|soldiers?|warriors?|pilots?(?!\s+(?:lights?|whales?)\b)"
-    r"|farmers?|workers?|baristas?|chefs?|nurses?|monks?|nuns?|ballerinas?|mermaids?"
+    r"|farmers?|workers?|baristas?|chefs?|nurses?|monks?|nuns?|ballerinas?|mermaids?|students?"
+    r"|(?<!\brecord\s)(?<!\bvinyl\s)(?<!\bmusic\s)(?<!\bcassette\s)(?<!\btape\s)(?<!\bcd\s)(?<!\bdvd\s)"
+    r"(?<!\bmp3\s)(?<!\bmedia\s)(?<!\bvideo\s)players?(?!-|\s+pianos?\b)"
     r"|dancers?|singers?|vocalists?|musicians?|performers?|guitarists?|drummers?|bassists?|pianists?|violinists?"
     r"|saxophonists?|trumpeters?|djs?(?!\s+(?:booths?|decks)\b)|concertgoers?|partygoers?|festivalgoers?|ravers?"
     r"|(?:rock|jazz|punk|indie|folk|blues|brass|marching|garage|boy|girl)\s+bands?"
@@ -93,7 +95,7 @@ _PEOPLE = re.compile(
 # have paws and wings. Faces, heads, eyes, legs, feet and bodies can be an animal's.
 _HANDS = re.compile(
     r"\b(?:"
-    r"(?<!\bcoat\sof\s)arms?|(?<!\bclock\s)(?<!\bwatch\s)(?<!\bhour\s)(?<!\bminute\s)hands?|fingers?"
+    r"(?<!\bcoat\sof\s)(?<!\btone\s)arms?|(?<!\bclock\s)(?<!\bwatch\s)(?<!\bhour\s)(?<!\bminute\s)hands?|fingers?"
     r"|(?<!\bgravel\s)(?<!\broad\s)(?<!\bhard\s)(?<!\bdirt\s)(?<!\bpaved\s)(?<!\bhighway\s)shoulders?"
     r")(?!-|\s+of\b)\b",
     re.IGNORECASE,
@@ -120,6 +122,17 @@ _BIRDS_EYE = re.compile(r"\bbird['’]?s[-\s]+eye\b", re.IGNORECASE)  # a camera
 _A_PERSONS = re.compile(r"\b(?:her|his|their|my|your|our)\s+(?:[\w'’-]+\s+){0,2}$", re.IGNORECASE)
 _ITS = re.compile(r"\bits\s+(?:[\w'’-]+\s+){0,2}$", re.IGNORECASE)
 _ANIMAL_WITH = re.compile(rf"\b{_ANIMAL}\s+with\s+(?:[\w'’-]+\s+){{0,3}}$", re.IGNORECASE)
+# A thing's part: "the mountain's face", "the moon's pale face", "a record's label face down".
+_A_THINGS = re.compile(
+    r"\b(?:mountain|hill|moon|sun|planet|cliff|rock|stone|glacier|tower|building|wall|clock|watch|record"
+    r"|turntable|statue|guitar|piano|chair|table)['’]s\s+(?:[\w'’-]+\s+){0,2}$",
+    re.IGNORECASE,
+)
+# "Face" as a verb, or "face down": "a cabin faces a frozen lake", "windows face the sea".
+_FACE_VERB = re.compile(
+    r"faces?\s+(?:the|a|an|down|up|out|outward|away|toward|towards|onto|each|east|west|north|south)\b",
+    re.IGNORECASE,
+)
 # Measurements: "a thousand feet above", "fifty feet tall", "a six-foot wave", "a 10-foot cactus".
 _NUMBER = (
     r"(?:\d+|a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|sixty"
@@ -237,11 +250,17 @@ def mentions_people(text: str) -> bool:
         return True
     for part in _HANDS.finditer(text):
         before = text[max(0, part.start() - 80) : part.start()]  # bounded, so long prompts stay fast
+        if _A_THINGS.search(before):
+            continue
         if _A_PERSONS.search(before) or not (_ITS.search(before) or _ANIMAL_WITH.search(before)):
             return True
     for part in _PARTS.finditer(text):
         # An animal earlier in the sentence owns these ("a wolf howling at the moon, eyes glowing").
         before = text[max(0, part.start() - 120) : part.start()]
+        # "A cabin faces the lake" names no person; "her face toward the rain" does.
+        a_verb = _FACE_VERB.match(text, part.start()) and not _A_PERSONS.search(before)
+        if _A_THINGS.search(before) or a_verb:
+            continue
         sentence = before[max(before.rfind(end) for end in ".;!?") + 1 :]
         if _A_PERSONS.search(before) or not (_ITS.search(before) or _ANIMAL_WORD.search(sentence)):
             return True
