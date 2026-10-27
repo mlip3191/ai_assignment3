@@ -21,6 +21,7 @@ The block also shows the user's OS. Whenever you tell the user to run something 
 ## 2. Find the lane and the task
 - Find the user's lane issue: `gh issue list --label lane --assignee @me --state open --json number,title`.
   If there's none, run `gh issue list --label lane --json number,title,assignees` and ask which lane is theirs.
+  If there's more than one (one person can hold more than one lane), pick the issue whose title starts with `Lane <letter>:` for the task key's letter (D4 → Lane D). If no key was given or none matches, ask which lane.
 - Read it: `gh issue view <lane#> --json number,title,body`.
 - **If a task key was given**, find the line `- [ ] **<KEY>**` in that body. If the key belongs to another lane, say so and ask whether they really mean to work outside their lane.
 - **If no key was given**, list the unticked tasks (`- [ ] **KEY**`) in order and suggest the first one whose "Needs" are all done (step 4). Ask the user to confirm.

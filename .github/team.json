@@ -13,7 +13,7 @@
       "name": "Gunnar O'Connor",
       "github": "gunnaroc",
       "os": "",
-      "reviewer": "D"
+      "reviewer": "C"
     },
     "C": {
       "role": "Cover Art, Samples & Evidence",
@@ -24,10 +24,10 @@
     },
     "D": {
       "role": "AI DJ & Launchers",
-      "name": "Dillon Smart",
-      "github": "dilloncsmart",
-      "os": "",
-      "reviewer": "C"
+      "name": "Michael Lippert",
+      "github": "mlip3191",
+      "os": "macos",
+      "reviewer": "B"
     },
     "E": {
       "role": "Player, UX & QA",
