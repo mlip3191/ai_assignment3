@@ -9,6 +9,7 @@ from pathlib import Path
 
 import gradio as gr
 
+from jukebox.services import dj
 from jukebox.ui.layout import build_demo
 
 HOST = "127.0.0.1"
@@ -88,6 +89,7 @@ def serve(
         server_port=port,
         share=False,
         allowed_paths=allowed_paths(root),
+        max_file_size=dj.MAX_VOICE_BYTES,  # refused before it's written to disk; the voice is the only upload
     )
     return port
 

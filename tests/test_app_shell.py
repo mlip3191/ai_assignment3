@@ -155,6 +155,21 @@ def test_gradio_keeps_uploads_inside_runtime_uploads(tmp_path: Path) -> None:
         assert Path(str(seen[key])).resolve().is_relative_to(uploads), key
 
 
+def test_gradio_refuses_uploads_over_the_voice_limit_before_saving_them(tmp_path: Path) -> None:
+    """Without a limit, a 4 GB file would be written to runtime/uploads/ in full before the DJ check."""
+    from jukebox.services import dj
+
+    seen: dict[str, object] = {}
+    serve(tmp_path, launch=lambda _demo, **kwargs: seen.update(kwargs), can_bind=lambda _host, _port: True)
+    assert seen["max_file_size"] == dj.MAX_VOICE_BYTES
+
+
+def test_gradios_cached_copies_are_cleaned_up() -> None:
+    """Every song, cover and clip the page shows is copied into Gradio's cache; old copies must go."""
+    frequency_s, age_s = build_demo().delete_cache
+    assert 0 < frequency_s <= age_s <= 86400
+
+
 def test_allowed_paths_are_samples_runtime_and_assets(tmp_path: Path) -> None:
     samples = (tmp_path / "samples").resolve()
     runtime = (tmp_path / "runtime").resolve()

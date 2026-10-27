@@ -30,7 +30,9 @@ HOW_TO = "\n".join(
 
 
 def build_demo() -> gr.Blocks:
-    with gr.Blocks(title="AI Jukebox") as demo:
+    # Gradio copies every file the page shows into its cache (runtime/uploads/gradio, set in launch.py):
+    # check hourly and delete copies older than a day, so it can't grow forever.
+    with gr.Blocks(title="AI Jukebox", delete_cache=(3600, 86400)) as demo:
         gr.Markdown(HOW_TO, elem_id="how-to")
         with gr.Row():
             with gr.Column():
