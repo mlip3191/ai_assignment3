@@ -149,6 +149,46 @@ def test_a_reload_after_reset_shows_the_default_voice(tmp_path: Path, voice: dj.
     assert reset["visible"] is False
 
 
+def _library_with(tmp_path: Path, make_track, *tracks: tuple[str, str]):
+    """A library in tmp_path holding (id, source) tracks, each with a stand-in audio file."""
+    from jukebox.library import Library
+
+    library = Library(root=tmp_path)
+    for track_id, source in tracks:
+        audio = f"runtime/generated/{track_id}.mp3"
+        (tmp_path / audio).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / audio).write_bytes(b"\x00")
+        library.add(make_track(id=track_id, source=source, audio_path=audio))
+    return library
+
+
+def test_opening_a_page_warms_the_first_samples_intro(
+    tmp_path: Path, make_track, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D5: Play queue starts with the first sample, so its intro is made before anyone presses Play."""
+    library = _library_with(
+        tmp_path, make_track, ("g1", "generated"), ("sample_01", "sample"), ("sample_02", "sample")
+    )
+    monkeypatch.setattr(settings, "get_library", lambda: library)
+    asked: list[tuple[str, object]] = []
+    monkeypatch.setattr(
+        dj.PREFETCH, "prefetch", lambda track, previous=None: asked.append((track.id, previous))
+    )
+    settings.on_load()
+    assert asked == [("sample_01", None)]
+
+
+def test_opening_a_page_with_no_samples_warms_nothing(
+    tmp_path: Path, make_track, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = _library_with(tmp_path, make_track, ("g1", "generated"))
+    monkeypatch.setattr(settings, "get_library", lambda: library)
+    asked: list[str] = []
+    monkeypatch.setattr(dj.PREFETCH, "prefetch", lambda track, previous=None: asked.append(track.id))
+    settings.on_load()
+    assert asked == []
+
+
 def test_connect_load_refreshes_the_panel_when_a_page_opens() -> None:
     with gr.Blocks() as demo:
         panel = settings.render()

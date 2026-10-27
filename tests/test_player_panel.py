@@ -453,6 +453,42 @@ def test_a_dj_clip_filled_in_after_the_song_was_queued_is_used(
     _SESSIONS.clear()
 
 
+def test_an_item_starting_prefetches_the_next_songs_intro(
+    tmp_path: Path, make_track, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D5: whenever something starts, the intro for the next queued song is made in the background."""
+    import jukebox.services.dj as dj
+
+    asked: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(
+        dj.PREFETCH,
+        "prefetch",
+        lambda track, previous=None: asked.append((track.id, getattr(previous, "id", None))),
+    )
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    player = open_player(library, {})
+    runtime = tmp_path / "served"
+
+    view = on_play(player, library, 0, runtime)  # sample_01 starts; sample_02 is next
+    assert asked[-1] == ("sample_02", "sample_01")
+    view = on_skip(player, library, view.token, runtime)  # sample_02 starts
+    assert asked[-1] == ("sample_03", "sample_02")
+    before = len(asked)
+    view = on_end(player, library, view.token, view.audio, runtime)  # sample_03 starts; nothing next
+    assert view.title == "Three"
+    assert len(asked) == before  # nothing is queued, so there is no intro to make
+    on_add(player, library, view.token, "sample_01", runtime)  # sample_01 becomes the next song
+    assert asked[-1] == ("sample_01", "sample_03")
+    on_play_now(player, library, view.token, "sample_02", runtime)  # sample_02 starts; sample_01 still next
+    assert asked[-1] == ("sample_01", "sample_02")
+
+
+def test_the_player_reads_the_prefetched_clips() -> None:
+    import jukebox.services.dj as dj
+
+    assert _CLIPS is dj.PREFETCH.clips
+
+
 def test_render_returns_a_panel_that_binds_buttons_to_this_players_outputs() -> None:
     with gr.Blocks() as demo:
         panel = render()

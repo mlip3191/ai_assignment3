@@ -16,6 +16,10 @@ Qwen writes the script from `prompts/dj.md`; Chatterbox speaks it; the clip is s
     decodes with soundfile, 5-30 s from D1) before anything is sent to Chatterbox, then copied to
     `runtime/uploads/` under a random name (H9). `VOICE` holds the one app-wide choice; D5 reads
     `VOICE.path` when it makes clips.
+  - Prefetch (D5): `PREFETCH` makes the next song's intro in the background, one at a time, and
+    caches it by (track_id, voice_key). Its `clips` map is what the player reads, always for the
+    current voice, so changing the voice invalidates it. A failure leaves the clip out; the player
+    then plays the song with "DJ unavailable", never another voice or model.
 """
 
 from __future__ import annotations
@@ -23,12 +27,15 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import queue
 import re
 import shutil
 import tempfile
 import threading
 import time
 import uuid
+from collections.abc import Callable, Iterator, MutableMapping
+from concurrent.futures import Future
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -361,3 +368,151 @@ def _forget(path: str | None) -> None:
 
 
 VOICE = VoiceSetting()
+
+
+# ---- prefetch (D5) -----------------------------------------------------------------------------
+
+
+class Prefetcher:
+    """Makes DJ intros ahead of time, cached by (track_id, voice_key) (PROJECT.md 8.3, 8.4).
+
+    `prefetch` returns at once; one background worker makes one clip at a time (Chatterbox is a
+    shared class server), and the same clip is never made twice. A ServiceError or OSError only
+    leaves the clip out, so the player plays the song with "DJ unavailable".
+    """
+
+    def __init__(self, *, voice: Callable[[], str | None] | None = None, out_dir: Path | None = None) -> None:
+        self._voice = voice
+        self._out_dir = out_dir
+        self._lock = threading.Lock()
+        self._ready: dict[tuple[str, str], str] = {}
+        self._pending: set[tuple[str, str]] = set()
+        self._keys: dict[str, str] = {}
+        self._jobs: queue.Queue = queue.Queue()
+        self._worker: threading.Thread | None = None
+        self.clips = ClipMap(self)
+
+    def voice_path(self) -> str | None:
+        """The voice in use now: the app-wide VOICE unless a test gave another."""
+        return self._voice() if self._voice is not None else VOICE.path
+
+    def current_key(self) -> str | None:
+        """The cache key for the voice in use, or None when its recording can't be read."""
+        path = self.voice_path()
+        if path is None:
+            return "default"
+        with self._lock:
+            known = self._keys.get(path)
+        if known is not None:
+            return known
+        try:
+            key = voice_key(path)
+        except OSError:
+            return None
+        with self._lock:
+            self._keys[path] = key
+        return key
+
+    def prefetch(self, track: TrackInfo, previous: TrackInfo | None = None) -> Future | None:
+        """Start making this track's intro in the current voice. None if it's ready, already being
+        made, or the voice recording can't be read (then there's no intro, never another voice)."""
+        path = self.voice_path()
+        key = self.current_key()
+        if key is None:
+            return None
+        slot = (track.id, key)
+        with self._lock:
+            if slot in self._ready or slot in self._pending:
+                return None
+            self._pending.add(slot)
+        job: Future = Future()
+        self._jobs.put((job, track, previous, path, slot))
+        self._start_worker()
+        return job
+
+    def _start_worker(self) -> None:
+        with self._lock:
+            if self._worker is None or not self._worker.is_alive():
+                # A daemon thread, so a Chatterbox call in progress never holds up stopping the app.
+                self._worker = threading.Thread(target=self._work, name="dj-prefetch", daemon=True)
+                self._worker.start()
+
+    def _work(self) -> None:
+        while True:
+            job, track, previous, path, slot = self._jobs.get()
+            if not job.set_running_or_notify_cancel():
+                continue
+            try:
+                job.set_result(self._make(track, previous, path, slot))
+            except BaseException as err:  # never let one job stop the worker
+                job.set_exception(err)
+
+    def _make(
+        self, track: TrackInfo, previous: TrackInfo | None, path: str | None, slot: tuple[str, str]
+    ) -> None:
+        clip = None
+        try:
+            clip = make_clip(track, voice_ref_path=path, previous=previous, out_dir=self._out_dir)
+        except ServiceError as err:
+            log.warning("DJ intro skipped: %s %s", err.service, err.kind)
+        except OSError as err:
+            log.warning("DJ intro skipped: %s", type(err).__name__)
+        finally:
+            with self._lock:
+                self._pending.discard(slot)
+                if clip is not None:
+                    self._ready[slot] = str(clip.audio_path)
+
+    def _get(self, track_id: str) -> str | None:
+        key = self.current_key()
+        if key is None:
+            return None
+        with self._lock:
+            return self._ready.get((track_id, key))
+
+    def _set(self, track_id: str, path: str) -> None:
+        key = self.current_key()
+        if key is None:
+            raise KeyError(track_id)
+        with self._lock:
+            self._ready[(track_id, key)] = path
+
+    def _delete(self, track_id: str) -> None:
+        key = self.current_key()
+        with self._lock:
+            if key is None or (track_id, key) not in self._ready:
+                raise KeyError(track_id)
+            del self._ready[(track_id, key)]
+
+    def _track_ids(self) -> list[str]:
+        key = self.current_key()
+        with self._lock:
+            return [track_id for track_id, k in self._ready if k == key]
+
+
+class ClipMap(MutableMapping[str, str]):
+    """track_id -> intro path in the voice in use now: what the player reads (live)."""
+
+    def __init__(self, prefetcher: Prefetcher) -> None:
+        self._prefetcher = prefetcher
+
+    def __getitem__(self, track_id: str) -> str:
+        path = self._prefetcher._get(track_id)
+        if path is None:
+            raise KeyError(track_id)
+        return path
+
+    def __setitem__(self, track_id: str, path: str) -> None:
+        self._prefetcher._set(track_id, path)
+
+    def __delitem__(self, track_id: str) -> None:
+        self._prefetcher._delete(track_id)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._prefetcher._track_ids())
+
+    def __len__(self) -> int:
+        return len(self._prefetcher._track_ids())
+
+
+PREFETCH = Prefetcher()
