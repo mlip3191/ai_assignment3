@@ -91,7 +91,7 @@ browser, usually at **http://127.0.0.1:7860** (if that port is busy, the launche
 | No sound | Click on the page first, then check your volume and output device. |
 
 ## Using the app
-_TODO: cover art (C), DJ (D), playback controls (E)._
+_TODO: DJ (D), playback controls (E)._
 
 ### Generate a song
 Open the **Generate** tab. Each choice has a one-line hint under its name.
@@ -105,24 +105,44 @@ Open the **Generate** tab. Each choice has a one-line hint under its name.
 4. **Vocal or instrumental:** choose **Instrumental**.
 5. **Song idea (optional):** what the song is about, for example *a rainy evening*. It shapes the title and the cover.
 6. Click **Generate**. The button greys out, and the status line shows **Queued**, then names each stage and counts the seconds, for example "**Composing music…** · 4 s · usually about 10 s, longer when the class servers are busy". When it says **Added to your library**, the result card shows the title, and the cover a few seconds later.
+7. **Play it.** When the song is ready, **Play now** and **Add to queue** on the result card turn on. **Play now** plays the song at once in the player on the right. **Add to queue** puts it at the end of the queue, without interrupting the song that's playing. If nothing is playing, press **Play queue** to start it.
 
 **A vocal song**
 
 Same steps, but choose **Vocal** in step 4. The first stage after **Queued** is **Writing lyrics…** instead of **Naming your track…**, and the result card also shows the lyrics, which the text model (Qwen) writes for each song. Vocal songs sound best at 30 seconds or more.
 
-> **TODO (B9, on rc1):** screenshots of an instrumental and a vocal result card, each with its cover.
+> **TODO (B9, on rc1):** screenshots of an instrumental and a vocal result card, each with its cover, and the song playing after **Play now**.
 
 **What to expect**
 - **Wait:** about 5 to 10 seconds per song when the class servers are quiet. We measured 4.8 to 9.5 s in B5 (#32), 5.5 to 7 s in B6 (#36), and a reviewer saw 7 s. Most of it is the music model (ACE-Step, 4.4 to 8.4 s); the text model (Qwen) takes 0.4 to 1.5 s. The page says "usually about 10 s". It can take longer when many people use the class servers, and the status line keeps counting so you can see it hasn't frozen.
 - **The cover** is painted after the song is saved, usually 2 to 3 s later. The card shows a placeholder and "Painting cover…" until it arrives. If the cover fails, the song is kept, and a **Retry cover** button appears.
 - **Phrases that point at a real artist are removed** when the name starts with a capital letter. In **Extra style tags**, phrases like "in the style of …", "featuring …" or "…'s voice" with an artist's name show a note under the box ("Removed …"), and the song is generated without them. **Song idea** only removes "in the style of …" (or "in the vein / spirit / manner of …"), "sounds like …" and "à la …", because a song idea is a subject and may name a person. The app asks the models for original songs; see [Known issues](#known-issues) for what it can't prevent.
 - **If something fails,** the status line says what went wrong in plain words, your choices stay filled in, and **Retry** appears when trying again can help (a slow or unreachable class server). If your settings are wrong, it says to fix them and restart.
-- **Play now / Add to queue** on the result card are greyed out for now, with the note "Play now and Add to queue work once the player is connected."
-
-  > **TODO (B9, after A7, #55):** replace this with the steps once the player is connected, and add a screenshot.
-- Generated songs stay in the library until you stop the app.
+- **Every song, samples included, is also listed in the Library tab.** Pick one to see its cover and details, then use the same **Play now** and **Add to queue** buttons. Generated songs stay there until you stop the app.
 
 > **TODO (B9, on rc1):** link the measured runs in [Test results](#test-results) (TC-01 instrumental, TC-02 vocal, TC-03 songs kept across tabs, TC-F1 bad credentials, TC-F2 a class server not answering).
+
+### Cover art
+- **Every song gets its own cover.** After a song is saved, Qwen writes an image prompt from the song's
+  title, style, mood, theme and lyrics, and FLUX paints a square cover from it. The song is playable right
+  away; the cover follows a few seconds later.
+- **While it paints,** the result card shows the placeholder (a hand-drawn picture, not AI-generated) and
+  **Painting cover…**, and swaps in the cover by itself when it's ready, without reloading the page.
+- **If the cover fails** (for example a class server is busy), the card says what happened and adds
+  "Your song is safe; it plays with a placeholder cover.", plus a **Retry cover** button. Retry paints a new
+  cover for the same song. If no cover has started 60 seconds after the song, the card treats it as failed
+  and offers Retry cover too.
+- **In the player and the Library,** the cover shows next to **Now playing**, in **Up next**, and when you
+  pick a song in the Library. The player reads the cover when a song starts, so a song you send to the
+  player with **Play now** before its cover is ready keeps the placeholder there while it plays.
+- **Covers stay with their song.** Each cover is stored and looked up by the song's id, never by its
+  position in a list, so generating more songs or adding songs to the queue can't swap them.
+- **What a cover is asked not to show:** every image prompt ends with "no text, no letters, no logos, no
+  real people", and Qwen is told to show figures, if any, only from behind or far away. Nothing checks the
+  finished image, so FLUX can still add small unreadable marks, for example on a book's pages; the sample
+  covers were checked by eye (see [Sample songs](#sample-songs)).
+
+> **TODO (C7, on rc1):** screenshots of a result card with its cover and of a failed cover with **Retry cover** (`docs/screenshots/`, no credentials visible).
 
 ## Sample songs
 

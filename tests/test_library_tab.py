@@ -96,6 +96,7 @@ def test_render_exposes_the_buttons_and_the_list_whose_value_is_the_chosen_id() 
     assert isinstance(tab, LibraryTab)
     assert tab.play_now.elem_id == "lib-play-now"
     assert tab.add_to_queue.elem_id == "lib-add-to-queue"
+    assert tab.more_like_this.elem_id == "lib-more-like-this"
     assert isinstance(tab.selected, gr.Radio)  # read at the click, so it can't lag a pick
 
 

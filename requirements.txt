@@ -1,4 +1,4 @@
-# Runtime dependencies, each pinned to an exact version (PROJECT.md §4). Owned by lane D (@dilloncsmart).
+# Runtime dependencies, each pinned to an exact version (PROJECT.md §4). Owned by lane D (@mlip3191).
 # run.sh / run.bat install these into .venv; they reinstall automatically when this file changes.
 # Only add packages here with a PR; scripts/check_models.py rejects AI SDKs and local-model packages.
 httpx==0.28.1

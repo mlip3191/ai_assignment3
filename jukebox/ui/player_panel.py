@@ -11,6 +11,9 @@ Add to queue and Play now (A7) reach the same session player from the Generate
 card and the Library tab. ``render()`` returns a ``PlayerPanel`` that binds a
 button and a track-id state to this panel's outputs. Add to queue never touches
 the audio that is playing.
+
+Under the audio, a Lyrics box shows the current song's lyrics, and Download song saves a copy named
+after the song (the served file's name carries the play token, so it cannot be the song's name).
 """
 
 from __future__ import annotations
@@ -35,6 +38,17 @@ NOW_PLAYING = "Now playing"
 PRESS_PLAY = "Press Play queue."
 NO_SAMPLES = "No sample tracks are loaded."
 UNKNOWN_TRACK = "That song is not in the library. Pick one from the list."
+NO_LYRICS = "Instrumental, no lyrics."
+MAX_NAME_CHARS = 80
+_UNSAFE_IN_NAME = re.compile(r"[^\w \-'(),.&!]+")
+# Names Windows will not use for a file, whatever the extension.
+_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"{port}{n}" for port in ("COM", "LPT") for n in (*"0123456789", "¹", "²", "³")),
+}
 _TOKEN_IN_NAME = re.compile(r"^t(\d+)-")
 _CLIPS: dict[str, str] = {}
 
@@ -75,6 +89,8 @@ class PlayerView:
     token: int
     ignored: bool
     keep_audio: bool = False
+    lyrics: str = ""
+    download: str | None = None
 
 
 def open_player(library: Library, dj_clips: Mapping[str, str] | None = None) -> Player:
@@ -235,9 +251,12 @@ def render(*, library: Library | None = None) -> PlayerPanel:
         type="filepath",
         autoplay=True,
         interactive=False,
-        buttons=["download"],
+        buttons=[],  # Download song below saves it under the song's name; this one would save the served name
         elem_id="now-playing",
     )
+    download = gr.DownloadButton("Download song", visible=False, size="sm", elem_id="now-download")
+    with gr.Accordion("Lyrics", open=False):
+        lyrics = gr.Textbox(show_label=False, lines=8, interactive=False, elem_id="now-lyrics")
     upcoming = gr.Gallery(
         label="Up next",
         type="filepath",
@@ -251,7 +270,7 @@ def render(*, library: Library | None = None) -> PlayerPanel:
     session = gr.State("")
     play_btn = gr.Button("Play queue", elem_id="play-queue")
     skip_btn = gr.Button("Skip", elem_id="skip")
-    outputs = [audio, status, cover, upcoming, token, session]
+    outputs = [audio, status, cover, upcoming, token, lyrics, download, session]
 
     def play_clicked(current: int, session_id: str) -> tuple[object, ...]:
         player, session_id = player_for(session_id, library)
@@ -307,8 +326,13 @@ def _show(
             failed.up_next,
             token,
             False,
+            lyrics=failed.lyrics,
         )
-    return _view(player, library, token, audio=str(served), ignored=False)
+    try:
+        download = _download(library, item.track_id, runtime)
+    except OSError:
+        download = None  # the song still plays; only the button stays hidden
+    return replace(_view(player, library, token, audio=str(served), ignored=False), download=download)
 
 
 def _title(library: Library, track_id: str) -> str:
@@ -325,6 +349,7 @@ def _view(
     ignored: bool,
 ) -> PlayerView:
     current = player.current
+    lyrics = ""
     if current is None:
         label = FINISHED if player.notice == FINISHED else PRESS_PLAY
         title = ""
@@ -333,10 +358,48 @@ def _view(
         label = SPEAKING if current.kind == "dj" else NOW_PLAYING
         title = _title(library, current.track_id)
         cover = str(cover_for(current.track_id, library=library))
+        lyrics = lyrics_text(library, current.track_id)
     upcoming = tuple(
         (_title(library, track_id), str(cover_for(track_id, library=library))) for track_id in player.queue
     )
-    return PlayerView(audio, label, title, cover, player.notice, upcoming, token, ignored)
+    return PlayerView(audio, label, title, cover, player.notice, upcoming, token, ignored, lyrics=lyrics)
+
+
+def lyrics_text(library: Library, track_id: str) -> str:
+    """The song's lyrics as written for it, or a short line for an instrumental."""
+    track = library.get(track_id)
+    if track is None:
+        return ""
+    if not track.vocal or not (track.lyrics or "").strip():
+        return NO_LYRICS
+    return track.lyrics
+
+
+def download_name(title: str) -> str:
+    """The song's title as a file name that works on macOS and Windows (no extension)."""
+    name = " ".join(_UNSAFE_IN_NAME.sub("", title).split())
+    name = name[:MAX_NAME_CHARS].strip(" .")
+    if not name:
+        return "song"
+    reserved = name.split(".")[0].strip().upper() in _RESERVED_NAMES  # Windows checks the part before a dot
+    return f"song {name}" if reserved else name
+
+
+def _download(library: Library, track_id: str, runtime: Path) -> str | None:
+    """A copy of the song named after its title, made once per song in a folder named by its id, so equal
+    titles never clash and replays reuse it. It is written under a temporary name, then renamed."""
+    track = library.get(track_id)
+    if track is None:
+        return None
+    src = _source_file(str(library.resolve(track.audio_path)))
+    folder = runtime / "download" / track.id
+    dest = folder / f"{download_name(track.title)}{src.suffix}"
+    if not dest.is_file():
+        folder.mkdir(parents=True, exist_ok=True)
+        partial = folder / f".{uuid.uuid4().hex}.part"
+        shutil.copyfile(src, partial)
+        partial.replace(dest)
+    return str(dest)
 
 
 def _serve(source: str, token: int, runtime: Path) -> Path:
@@ -392,11 +455,12 @@ def _idle_text() -> str:
 
 def _gradio(view: PlayerView) -> tuple[object, ...]:
     if view.ignored:
-        return (gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip())
+        return (gr.skip(),) * 7
     gallery = [(cover, title) for title, cover in view.up_next]
     if view.keep_audio:
-        return (gr.skip(), panel_text(view), gr.skip(), gallery, gr.skip())
-    return (view.audio, panel_text(view), view.cover, gallery, view.token)
+        return (gr.skip(), panel_text(view), gr.skip(), gallery, gr.skip(), gr.skip(), gr.skip())
+    download = gr.update(value=view.download, visible=view.download is not None)
+    return (view.audio, panel_text(view), view.cover, gallery, view.token, view.lyrics, download)
 
 
 def _known_id(library: Library, track_id: str | None) -> str:
