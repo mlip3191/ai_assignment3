@@ -3,8 +3,9 @@
 The list is a Radio whose values are track ids, so a choice always means the same song, whatever else
 joins the library afterwards. Songs and covers that arrive later show up on the next refresh, with no
 page reload. Play now and Add to queue are returned from render() with the chosen id, and the page
-connects them to the player (see ``PlayerPanel``). This module calls the library and the cover lookup
-only. It does not call a model.
+connects them to the player (see ``PlayerPanel``). More like this is returned the same way, and the
+page connects it to the Generate form (see ``GenerateTab.connect_more_like_this``). This module calls
+the library and the cover lookup only. It does not call a model.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ class LibraryTab:
     play_now: gr.Button
     add_to_queue: gr.Button
     selected: gr.Radio
+    more_like_this: gr.Button
 
 
 def choices(library: Library) -> list[tuple[str, str]]:
@@ -115,6 +117,7 @@ def render(*, library: Library | None = None) -> LibraryTab:
             with gr.Row():
                 play_now = gr.Button("Play now", elem_id="lib-play-now")
                 add_to_queue = gr.Button("Add to queue", elem_id="lib-add-to-queue")
+                more_like_this = gr.Button("More like this", elem_id="lib-more-like-this")
     selected = gr.State(None)
     seen = gr.State(snapshot(library))
     timer = gr.Timer(REFRESH_S)
@@ -131,4 +134,4 @@ def render(*, library: Library | None = None) -> LibraryTab:
         outputs=[listing, cover, details, seen],
         **lane,
     )
-    return LibraryTab(play_now, add_to_queue, listing)
+    return LibraryTab(play_now, add_to_queue, listing, more_like_this)

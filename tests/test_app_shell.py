@@ -63,7 +63,8 @@ def _event_bindings(demo: gr.Blocks) -> set[tuple[str, str]]:
         if not targets:
             continue
         for target in targets:
-            if isinstance(target, (list, tuple)) and len(target) >= 2:
+            # A step chained with .then() has no block of its own (its target id is None).
+            if isinstance(target, (list, tuple)) and len(target) >= 2 and target[0] is not None:
                 elem_id = by_block_id.get(int(target[0]))
                 if elem_id:
                     found.add((elem_id, str(target[1])))
@@ -270,3 +271,32 @@ def test_how_to_no_longer_says_generate_is_not_connected() -> None:
     assert "Play now" in text
     assert "Add to queue" in text
     assert "DJ voice" in text and "not connected" in text  # the voice upload (D4) is still to come
+
+
+def test_more_like_this_reads_the_library_list_and_fills_the_generate_form() -> None:
+    from jukebox.ui import generate_tab
+
+    demo = build_demo()
+    by_elem = {block.elem_id: block for block in demo.blocks.values() if getattr(block, "elem_id", None)}
+    block_id = by_elem["lib-more-like-this"]._id
+    wired = [fn for fn in demo.fns.values() if any(target == (block_id, "click") for target in fn.targets)]
+    assert len(wired) == 1
+    assert wired[0].inputs[0] is by_elem["lib-list"]
+    assert wired[0].outputs[0] is by_elem["gen-genre"]
+    tabs = wired[0].outputs[-1]
+    assert isinstance(tabs, gr.Tabs)
+    tab_ids = [child.id for child in tabs.children]
+    assert generate_tab.TAB_ID in tab_ids  # the tab it opens exists
+
+
+def test_only_surprise_me_and_more_like_this_write_to_the_generate_form() -> None:
+    """In the whole app, the form keeps the user's choices: only the two buttons whose job is to fill it
+    write to it (Mike's review of #61)."""
+    demo = build_demo()
+    by_id = {block._id: block.elem_id for block in demo.blocks.values() if getattr(block, "elem_id", None)}
+    form = {"gen-genre", "gen-extra", "gen-mood", "gen-duration", "gen-type", "gen-theme"}
+    writers = set()
+    for fn in demo.fns.values():
+        if form & {getattr(c, "elem_id", None) for c in fn.outputs}:
+            writers |= {by_id.get(target) for target, _event in fn.targets}
+    assert writers == {"gen-surprise", "lib-more-like-this"}
