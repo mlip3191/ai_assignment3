@@ -449,8 +449,8 @@ def test_the_template_keeps_people_soft_and_never_a_portrait() -> None:
         "and faces toward the light",
         # a word between the count and "silhouettes": a real Qwen prompt from the C6 trial run (10/27)
         "Four joyful silhouettes lean out, wind-tousled hair catching bright sunlight",
-        "a dark silhouette stands at the end of the pier",
         "three small silhouettes on the dune",
+        "two laughing silhouettes on the pier",
     ],
 )
 def test_people_are_noticed(text: str) -> None:
@@ -580,6 +580,17 @@ def test_people_are_noticed(text: str) -> None:
         "a lone tree silhouette at dusk",
         "a dark silhouette of a mountain against the stars",
         "a tree silhouette on the ridge",
+        # a number and a thing before "silhouettes" (review of 18bc5d5, 10/27): FLUX adds people when wrong
+        "two tree silhouettes",
+        "three palm silhouettes against the sunset",
+        "four mountain silhouettes",
+        "five cypress silhouettes line the ridge",
+        "three bird silhouettes over the bay",
+        "two boat silhouettes on the water",
+        "ten building silhouettes on the skyline",
+        "mountains form a dark silhouette",
+        "hills rendered as a dark silhouette",
+        "a black silhouette of a castle",
     ],
 )
 def test_scenes_without_people_are_left_alone(text: str) -> None:

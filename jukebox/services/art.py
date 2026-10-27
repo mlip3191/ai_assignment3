@@ -63,18 +63,18 @@ _TAG_LINE = re.compile(r"^\s*\[[^\]]*\]\s*$")
 # man in the moon", "a figure of speech", "a couple of candles", "guy ropes" or "a table runner". Any word
 # ending in "man" or "men" counts (fisherman, policewoman, human) except the few listed that aren't people
 # (German, ottoman, Pullman, omen, ramen). A silhouette counts only after "a", "two", "lone" and the like
-# ("a lone silhouette", sample 3, "a dark silhouette"), or a number and one word ("four joyful silhouettes"),
-# not in "palm tree silhouettes" or "a skyline, the silhouette softened"; a silhouette of a person names the
-# person.
+# ("a lone silhouette", sample 3), or a number and a word only people are ("four joyful silhouettes"), not
+# in "palm tree silhouettes", "two tree silhouettes" or "a skyline, the silhouette softened"; a silhouette
+# of a person names the person. A wrong match is not harmless: FLUX then adds people to an empty scene.
 _PEOPLE = re.compile(
     r"\b(?:"
     r"people|persons?|humans?|men|woman|women|boys?|girls?|child(?:ren)?|kids?|teen(?:ager)?s?|toddlers?"
     r"|bab(?:y|ies)(?!-|'s\s+breath|\s+(?:blue|pink|grand|breath)\b)|ladies|lady|guys?(?!-|\s+(?:ropes?|lines?|wires?)\b)"
     r"|(?:boy|girl)?friends?|(?:couples?|crowds?)(?!\s+of\b)|audiences?|spectators?|tourists?|famil(?:y|ies)"
     r"|lovers?|strangers?|owners?|someone|somebody|everyone|everybody"
-    r"|(?:a|an|one|two|three|four|lone|single|solitary|distant|small|tiny)"
-    r"\s+(?:(?:dark|black|shadowy|faint|tall|lone|distant|small|tiny)\s+)?silhouettes?(?!-|\s+of\b)"
-    r"|(?:two|three|four|five|six|seven|eight|nine|ten)\s+[\w-]+\s+silhouettes(?!-|\s+of\b)"
+    r"|(?:a|an|one|two|three|four|lone|single|solitary|distant|small|tiny)\s+silhouettes?(?!-|\s+of\b)"
+    r"|(?:two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:joyful|laughing|dancing|smiling|cheerful|happy"
+    r"|young|waving|walking|embracing)\s+silhouettes(?!-|\s+of\b)"
     r"|mothers?|fathers?|daughters?|sons?|sisters?|brothers?|grand(?:mother|father)s?|(?:grand)?parents?|brides?"
     r"|travell?ers?|wanderers?|hikers?|sailors?|cyclists?|bikers?|riders?|skaters?|surfers?|swimmers?|skiers?"
     r"|drivers?|passengers?|(?<!\btable\s)(?<!\bcarpet\s)(?<!\bsled\s)runners?(?!\s+(?:of|beans?)\b)"
