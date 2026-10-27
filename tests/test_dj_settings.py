@@ -133,6 +133,32 @@ def test_a_file_outside_gradios_cache_is_never_deleted(
     assert mine.exists()
 
 
+def test_a_reload_still_shows_the_custom_voice_and_reset(tmp_path: Path, voice: dj.VoiceSetting) -> None:
+    """The voice is app-wide, so a new page or a second tab must show it (@gunnaroc on #69)."""
+    settings.on_upload(str(_clip(tmp_path / "me.wav", 10)))
+    status, reset, _upload = settings.on_load()
+    assert "Custom voice active" in status["value"]
+    assert reset["visible"] is True
+
+
+def test_a_reload_after_reset_shows_the_default_voice(tmp_path: Path, voice: dj.VoiceSetting) -> None:
+    settings.on_upload(str(_clip(tmp_path / "me.wav", 10)))
+    settings.on_reset()
+    status, reset, _upload = settings.on_load()
+    assert status["value"] == settings.DEFAULT_ACTIVE
+    assert reset["visible"] is False
+
+
+def test_connect_load_refreshes_the_panel_when_a_page_opens() -> None:
+    with gr.Blocks() as demo:
+        panel = settings.render()
+        panel.connect_load(demo)
+    fns = demo.fns.values() if isinstance(demo.fns, dict) else demo.fns
+    loads = [fn for fn in fns if (demo._id, "load") in [tuple(t) for t in fn.targets]]
+    assert len(loads) == 1
+    assert [o.elem_id for o in loads[0].outputs] == ["dj-voice-status", "dj-voice-reset", "dj-voice-upload"]
+
+
 def test_render_builds_upload_status_and_reset() -> None:
     with gr.Blocks() as demo:
         settings.render()

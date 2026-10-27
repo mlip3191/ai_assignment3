@@ -43,10 +43,12 @@ def build_demo() -> gr.Blocks:
                         library = library_tab.render()
             with gr.Column():
                 panel = player_panel.render()
-                dj_settings.render()
+                voice = dj_settings.render()
         # Both tabs send a song to the player by its track id, so a song is never found by list position.
         panel.connect_add(generate.add_to_queue, generate.track_id)
         panel.connect_play_now(generate.play_now, generate.track_id)
         panel.connect_add(library.add_to_queue, library.selected)
         panel.connect_play_now(library.play_now, library.selected)
+        # The DJ voice is app-wide: each page that opens shows it as it is now.
+        voice.connect_load(demo)
     return demo

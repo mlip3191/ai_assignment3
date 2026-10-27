@@ -193,6 +193,14 @@ def test_a_second_copy_on_the_fallback_port_keeps_the_first_copys_recordings(tmp
     assert files["voice"].exists() and files["gradio"].exists()
 
 
+def test_the_page_refreshes_the_dj_voice_panel_when_it_opens() -> None:
+    """A reload or a second tab shows the app-wide voice, not the one when the page was built (#69)."""
+    demo = build_demo()
+    fns = demo.fns.values() if isinstance(demo.fns, dict) else demo.fns
+    loads = [fn for fn in fns if (demo._id, "load") in [tuple(t) for t in fn.targets]]
+    assert any("dj-voice-status" in [getattr(o, "elem_id", None) for o in fn.outputs] for fn in loads)
+
+
 def test_gradios_cached_copies_are_cleaned_up() -> None:
     """Every song, cover and clip the page shows is copied into Gradio's cache; old copies must go."""
     frequency_s, age_s = build_demo().delete_cache

@@ -7,6 +7,7 @@ does not call a model.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 import gradio as gr
@@ -73,7 +74,22 @@ def on_reset() -> tuple[object, ...]:
     return _outputs(DEFAULT_ACTIVE)
 
 
-def render() -> None:
+def on_load() -> tuple[object, ...]:
+    """A page opening (a reload or a second tab) shows the app-wide voice as it is now."""
+    return _outputs(_current())
+
+
+@dataclass(frozen=True)
+class DjSettings:
+    """What the page connects: connect_load() refreshes the panel each time a page opens."""
+
+    outputs: tuple  # status, Reset, upload box, in _outputs() order
+
+    def connect_load(self, demo: gr.Blocks) -> None:
+        demo.load(on_load, outputs=list(self.outputs), show_progress="hidden")
+
+
+def render() -> DjSettings:
     with gr.Group(elem_id="dj-settings"):
         upload = gr.File(
             label=f"DJ voice ({LIMITS})",
@@ -88,3 +104,4 @@ def render() -> None:
     outputs = [status, reset, upload]
     upload.upload(on_upload, inputs=upload, outputs=outputs)
     reset.click(on_reset, outputs=outputs)
+    return DjSettings(tuple(outputs))
