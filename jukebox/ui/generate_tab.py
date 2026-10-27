@@ -3,6 +3,9 @@
 The handler runs songs.generate_song on a worker thread and yields a view about once a second, so the
 status line keeps counting while ACE-Step works (R5). It never raises: success and failure both end
 with the Generate button enabled, and no handler writes to the form, so the user's choices stay (R6).
+The exceptions are Surprise me, which fills the form with random choices, and More like this (a
+Library button, connected with GenerateTab.connect_more_like_this), which fills it from a song. Both act
+only when clicked, and neither while a song is being made.
 This module calls the song pipeline and the cover service only. It does not import a model client.
 
 Play now and Add to queue are returned from render() with the new track's id, for the integration (A7)
@@ -14,6 +17,7 @@ from __future__ import annotations
 import functools
 import logging
 import queue
+import random
 import re
 import threading
 import time
@@ -50,6 +54,24 @@ MIN_DURATION_S = 10  # ACE-Step's documented minimum (B2)
 MAX_DURATION_S = 120  # longer songs are untested and make large files (B2, the brief)
 DEFAULT_DURATION_S = 60
 DURATION_STEP_S = 5
+# "Surprise me" fills the form with random values; you still press Generate. Lengths stay where vocal
+# songs sound good (30 s and up), and the ideas are original, with no artists (B8 removes nothing).
+SURPRISE_MIN_S = 30
+SURPRISE_MAX_S = 90
+SURPRISE_IDEAS = (
+    "a rainy evening in the city",
+    "a road trip with friends",
+    "leaving home for the first time",
+    "the last day of summer",
+    "dancing in the kitchen at midnight",
+    "a train ride through the mountains",
+    "waiting for the sunrise",
+    "an old photograph found in a drawer",
+    "a lighthouse in a storm",
+    "the first snow of the year",
+    "a quiet morning by the sea",
+    "a night market full of lights",
+)
 # B1: Qwen's title and lyrics take about 1 s; B2: ACE-Step takes 5 to 7 s from submit to saved file.
 # Both were measured with an empty class queue.
 USUAL_WAIT_S = 10
@@ -74,13 +96,19 @@ HELP = "\n".join(
         f"- **Generate:** a song usually takes about {USUAL_WAIT_S} seconds, longer when the class servers "
         "are busy. The status line counts the seconds. The cover is painted afterwards, and the song can "
         "play before it is ready.",
+        "- **Surprise me:** fills the form with a random style, mood, length, vocal or instrumental, "
+        "and song idea, and clears the extra style tags. Change anything you like, then press **Generate**.",
+        "- **More like this** (in the **Library** tab): fills this form from the song you picked there.",
     ]
 )
 
 # Positions in the tuple updates() returns, matching the outputs list in render().
 OUT_STATUS, OUT_BUTTON, OUT_RETRY, OUT_RESULT, OUT_TITLE, OUT_LYRICS = range(6)
 OUT_COVER, OUT_COVER_NOTE, OUT_PLAY_NOW, OUT_ADD, OUT_TRACK, OUT_TIMER, OUT_PLAY_NOTE = range(6, 13)
-OUT_RETRY_COVER = 13
+OUT_RETRY_COVER, OUT_SURPRISE, OUT_RUNNING = 13, 14, 15
+TAB_ID = "generate"  # the Generate tab's id in the page, so More like this can open it
+LIKE_BUSY = "A song is being made. Try More like this when it is done."
+LIKE_PICK = "Pick a song in the list first."
 COVER_WAIT_S = 60  # no cover job this long after the song means the cover never started (C1: ~2.3 s)
 
 PLAYER_NOT_CONNECTED = "Play now and Add to queue work once the player is connected."
@@ -123,11 +151,111 @@ class GenerateView:
 
 @dataclass(frozen=True)
 class GenerateTab:
-    """What the integration connects to the player: both buttons pass the new song's `track_id`."""
+    """What the integration connects: Play now and Add to queue pass the new song's `track_id`, and
+    connect_more_like_this() lets another tab's button fill this form from a song."""
 
     play_now: gr.Button
     add_to_queue: gr.Button
     track_id: gr.State
+    form: tuple  # the six form inputs, in render()'s order
+    status: gr.Markdown
+    retry: gr.Button
+    running: gr.State  # True while a song is being made
+    library: Library
+
+    def connect_more_like_this(
+        self, button: gr.Button, selected: gr.components.Component, tabs: gr.Tabs
+    ) -> None:
+        """Fill the form from the song whose id `selected` holds, then open the Generate tab."""
+
+        def clicked(track_id: str | None, running: bool) -> tuple[object, ...]:
+            return more_like_this(self.library, track_id, running=bool(running))
+
+        button.click(
+            clicked,
+            inputs=[selected, self.running],
+            outputs=[*self.form, self.status, self.retry, tabs],
+            show_progress="hidden",
+        )
+
+
+def surprise(rng: random.Random | None = None) -> tuple[str, str, str, int, str, str]:
+    """Random form values for "Surprise me": style, extra tags (cleared), mood, length, vocal or
+    instrumental, and a song idea, in the order of render()'s six form inputs."""
+    rng = rng or random.Random()
+    steps = range(SURPRISE_MIN_S, SURPRISE_MAX_S + 1, DURATION_STEP_S)
+    song_type = VOCAL if rng.random() < 2 / 3 else INSTRUMENTAL  # mostly vocal: they show off lyrics
+    return (
+        rng.choice(GENRES),
+        "",
+        rng.choice(MOODS),
+        rng.choice(steps),
+        song_type,
+        rng.choice(SURPRISE_IDEAS),
+    )
+
+
+def on_surprise(rng: random.Random | None = None) -> tuple:
+    """The Surprise me click: new form values, and the status line and Retry cleared, because after a
+    failure they say the old choices are kept and Retry would now send the new ones."""
+    return (*surprise(rng), "", gr.update(visible=False))
+
+
+def like(track: Track) -> tuple[str | None, str, str | None, int, str, str]:
+    """Form values for a song like this one, in the order of render()'s six form inputs.
+
+    The style is the first listed genre found as a whole word in the song's tags (the longest, so
+    "lo-fi hip hop" beats "hip hop"); when the first tag is exactly that genre, the other tags are the
+    extra tags, otherwise all of them are. A genre or mood that is not in the lists is None (left as is).
+    """
+    tags = [t.strip() for t in track.style.split(",") if t.strip()]
+    genre = None
+    for tag in tags:
+        found = [g for g in GENRES if re.search(rf"(?<![\w-]){re.escape(g)}(?![\w-])", tag, re.IGNORECASE)]
+        if found:
+            genre = max(found, key=len)
+            break
+    if genre is not None:
+        tags = [t for t in tags if t.lower() != genre.lower()]  # the style is sent once, from Style
+    extra = ""
+    for tag in tags:  # whole tags only, as many as the box takes
+        joined = f"{extra}, {tag}" if extra else tag
+        if len(joined) > MAX_EXTRA_CHARS:
+            break
+        extra = joined
+    mood = next((m for m in MOODS if m == track.mood.strip().lower()), None)
+    steps = round(
+        (min(max(track.duration_s, MIN_DURATION_S), MAX_DURATION_S) - MIN_DURATION_S) / DURATION_STEP_S
+    )
+    duration = min(MIN_DURATION_S + steps * DURATION_STEP_S, MAX_DURATION_S)
+    song_type = VOCAL if track.vocal else INSTRUMENTAL
+    return genre, extra, mood, duration, song_type, (track.theme or "")[:MAX_THEME_CHARS]
+
+
+def more_like_this(library: Library, track_id: str | None, *, running: bool) -> tuple[object, ...]:
+    """The More like this click: the form, the status line, Retry (hidden), and the tab to open.
+
+    While a song is being made, or with no song picked, nothing changes and a short notice pops up,
+    so a run that fails never offers Retry with choices it did not use.
+    """
+    track = library.get(track_id) if isinstance(track_id, str) and track_id.strip() else None
+    if running or track is None:
+        gr.Warning(LIKE_BUSY if running else LIKE_PICK)
+        return (gr.skip(),) * 9
+    values = like(track)
+    lines = [f"Filled in from **{_escape(track.title)}**. Change anything you like, then press **Generate**."]
+    if values[0] is None:
+        kept = "; its tags are in Extra style tags" if values[1] else ""
+        lines.append(f"Its style is not in the list, so Style stays as it was{kept}.")
+    if values[2] is None:
+        lines.append(f"Its mood ({_escape(track.mood)}) is not in the list, so Mood stays as it was.")
+    form = tuple(gr.skip() if v is None else v for v in values)
+    return (*form, "\n\n".join(lines), gr.update(visible=False), gr.update(selected=TAB_ID))
+
+
+def mark_running() -> tuple[bool, object]:
+    """At the Generate or Retry click: the run counts as running, and Surprise me is off."""
+    return True, gr.update(interactive=False)
 
 
 def compose_style(genre: str | None, extra: str | None) -> str:
@@ -254,6 +382,8 @@ def updates(view: GenerateView, *, player_connected: bool = False) -> tuple[obje
         gr.update(active=bool(cover and not cover.done)),
         gr.update(value=PLAYER_NOT_CONNECTED, visible=done and not player_connected),
         gr.update(visible=bool(cover and cover.failed)),
+        gr.update(interactive=not view.running),  # Surprise me must not change the form mid-run
+        view.running,  # read by More like this, which lives in another tab
     )
 
 
@@ -340,6 +470,7 @@ def render(
     theme_warning = gr.Markdown("", elem_id="gen-theme-note")
     with gr.Row():
         button = gr.Button("Generate", variant="primary", elem_id="gen-button")
+        surprise_me = gr.Button("Surprise me", elem_id="gen-surprise")
         retry = gr.Button("Retry", visible=False, elem_id="gen-retry")
     status = gr.Markdown("", elem_id="gen-status")
     with gr.Group(visible=False, elem_id="gen-result") as result:
@@ -360,9 +491,12 @@ def render(
             add_to_queue = gr.Button("Add to queue", interactive=False, elem_id="gen-add-to-queue")
         play_note = gr.Markdown(PLAYER_NOT_CONNECTED, visible=False, elem_id="gen-play-note")
     track_id = gr.State(None)
+    running = gr.State(False)
     timer = gr.Timer(TICK_S, active=False)
 
     inputs = [genre, extra, mood, duration, song_type, theme]
+    # Fills the form only (reads nothing, calls no service); the user still presses Generate.
+    surprise_me.click(on_surprise, inputs=None, outputs=[*inputs, status, retry], show_progress="hidden")
     outputs = [
         status,
         button,
@@ -378,6 +512,8 @@ def render(
         timer,
         play_note,
         retry_cover,
+        surprise_me,
+        running,
     ]
     cover_outputs = [cover, cover_note, timer, retry_cover]
 
@@ -399,13 +535,18 @@ def render(
         return cover_updates(CoverView(str(art.placeholder_path()), art.COVER_STAGE, False))
 
     for trigger in (button, retry):
-        trigger.click(on_generate, inputs=inputs, outputs=outputs, show_progress="hidden")
+        # The run's first update can wait in the queue; mark it running at the click, so Surprise me
+        # and More like this cannot change the form under it. The run follows the mark (never alongside
+        # it), so the run's last update, which turns them back on, always lands last.
+        trigger.click(mark_running, outputs=[running, surprise_me], queue=False, show_progress="hidden").then(
+            on_generate, inputs=inputs, outputs=outputs, show_progress="hidden"
+        )
     timer.tick(on_cover_tick, inputs=[track_id], outputs=cover_outputs, show_progress="hidden")
     retry_cover.click(on_retry_cover, inputs=[track_id], outputs=cover_outputs, show_progress="hidden")
     for box in (genre, extra):
         box.change(style_note, inputs=[genre, extra], outputs=[style_warning], show_progress="hidden")
     theme.change(theme_note, inputs=[theme], outputs=[theme_warning], show_progress="hidden")
-    return GenerateTab(play_now, add_to_queue, track_id)
+    return GenerateTab(play_now, add_to_queue, track_id, tuple(inputs), status, retry, running, library)
 
 
 def _running(stage: str, elapsed_s: int) -> GenerateView:

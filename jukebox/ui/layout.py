@@ -34,8 +34,8 @@ def build_demo() -> gr.Blocks:
         gr.Markdown(HOW_TO, elem_id="how-to")
         with gr.Row():
             with gr.Column():
-                with gr.Tabs():
-                    with gr.Tab("Generate", elem_id="generate-tab"):
+                with gr.Tabs() as tabs:
+                    with gr.Tab("Generate", id=generate_tab.TAB_ID, elem_id="generate-tab"):
                         generate = generate_tab.render(player_connected=True)
                     with gr.Tab("Library", elem_id="library-tab"):
                         library = library_tab.render()
@@ -47,4 +47,6 @@ def build_demo() -> gr.Blocks:
         panel.connect_play_now(generate.play_now, generate.track_id)
         panel.connect_add(library.add_to_queue, library.selected)
         panel.connect_play_now(library.play_now, library.selected)
+        # More like this fills the Generate form from the chosen song and opens that tab.
+        generate.connect_more_like_this(library.more_like_this, library.selected, tabs)
     return demo
