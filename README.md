@@ -144,7 +144,7 @@ Same steps, but choose **Vocal** in step 4. The first stage after **Queued** is 
 
 Screenshots from `rc1` (Windows 11):
 
-![The result card of an instrumental song (lo-fi hip hop, mellow, 45 s), with its cover](docs/screenshots/cover-instrumental-result.png)
+![A finished song's result card with its cover](docs/screenshots/cover-instrumental-result.png)
 
 *A finished song's result card with its own cover.*
 
