@@ -47,11 +47,13 @@ class FakeMake:
         self.gate = gate
         self.error = error
         self.calls: list[dict] = []
+        self.started = threading.Event()  # set once the worker is inside a call
 
     def __call__(self, track, *, voice_ref_path=None, previous=None, out_dir=None):
         self.calls.append(
             {"track": track.id, "voice": voice_ref_path, "previous": getattr(previous, "id", None)}
         )
+        self.started.set()
         if self.gate is not None:
             assert self.gate.wait(5), "the test never released the clip"
         if self.error is not None:
@@ -259,7 +261,8 @@ def test_an_intro_queued_for_a_voice_no_longer_in_use_is_skipped(tmp_path: Path,
     gate = threading.Event()
     fake = make(gate=gate)
     prefetcher = _prefetcher(tmp_path, voice_holder)
-    busy = prefetcher.prefetch(TWO)  # the worker is busy with this one
+    busy = prefetcher.prefetch(TWO)
+    assert fake.started.wait(5)  # the worker is inside this one before the voice changes
     voice_holder[0] = _recording(tmp_path, "voice_a.mp3", b"voice A")
     stale = prefetcher.prefetch(ONE)  # queued for voice A
     voice_holder[0] = None  # the user resets before it starts
@@ -283,6 +286,25 @@ def test_an_unexpected_error_is_logged_and_the_next_intro_still_gets_made(
     fake.error = None
     prefetcher.prefetch(TWO).result(timeout=5)
     assert prefetcher.clips.get("t2") is not None
+
+
+def test_an_error_while_checking_the_voice_never_stops_the_worker(tmp_path: Path, make) -> None:
+    """Something unexpected in the worker's voice check fails that job only; later intros still come."""
+    fake = make()
+    reads = {"n": 0}
+
+    def voice() -> str | None:
+        reads["n"] += 1
+        if reads["n"] == 2:  # the worker's check, after prefetch's own read
+            raise RuntimeError("a bug")
+        return None
+
+    prefetcher = dj.Prefetcher(voice=voice, out_dir=tmp_path / "gen")
+    with pytest.raises(RuntimeError):
+        prefetcher.prefetch(ONE).result(timeout=5)
+    assert prefetcher.prefetch(ONE).result(timeout=5) is None  # not stuck as "being made"
+    assert prefetcher.clips.get("t1") is not None
+    assert [c["track"] for c in fake.calls] == ["t1"]
 
 
 # ---- the player's clip map ---------------------------------------------------------------------

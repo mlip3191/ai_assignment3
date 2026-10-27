@@ -445,14 +445,16 @@ class Prefetcher:
             job, track, previous, path, slot = self._jobs.get()
             if not job.set_running_or_notify_cancel():
                 continue
-            if slot[1] != self.current_key():  # the voice changed while it waited: no Qwen or TTS call
+            try:
+                if slot[1] != self.current_key():  # the voice changed while it waited: no Qwen or TTS call
+                    with self._lock:
+                        self._pending.discard(slot)
+                    job.set_result(None)
+                    continue
+                job.set_result(self._make(track, previous, path, slot))
+            except BaseException as err:  # never let one job stop the worker or stay "being made"
                 with self._lock:
                     self._pending.discard(slot)
-                job.set_result(None)
-                continue
-            try:
-                job.set_result(self._make(track, previous, path, slot))
-            except BaseException as err:  # never let one job stop the worker
                 job.set_exception(err)
 
     def _make(
