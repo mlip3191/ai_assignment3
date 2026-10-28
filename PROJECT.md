@@ -15,12 +15,12 @@ This is the team's working plan. It is the single source of truth for scope, own
 
 | | |
 |---|---|
-| **Phase** | Build under way (as of 10/21). Merged: the five spikes (including the playback spike), config, the client layer, the library, the song prompts and pipeline, the cover prompt and service, and the DJ prompt and service. In review: the app shell, the queue, the real-artist screen, and the sample generator. Integration (A7) is not done. The original M0 and M1 dates have passed (the whole schedule moved +7 days on 10/20, §14 Q2). |
-| **Is the app built?** | **No.** There is nothing to run yet. Path 1 below describes the finished app (v1.0) and is the contract the team builds to. |
-| **What works today** | The repo scaffold: setup script, doctor, Claude Code skills and guardrails, GitHub automation, and CI (Ubuntu on every PR; Windows and macOS after each merge to `main`). |
-| **Latest release** | none (will be the `v1.0` tag) |
+| **Phase** | Release candidates (as of 10/27). The core features are on `main` and wired together (A7): song generation, cover art with Retry cover, the library, the player and queue, the three sample songs, and the DJ voice upload (D4). Still open: DJ prefetch (D5, #70, in review) and a cover-prompt fix (C3, #58). Next: tag `rc2`, then the independent deploy tests from the ZIP on Windows and macOS (E6), the full test matrix (E7), the README (A9), and `v1.0` (A10). The schedule moved +7 days on 10/20 (§14 Q2). |
+| **Is the app built?** | **Mostly.** The app runs from `main`, and `rc1` was run on Windows 11 for the cover-art evidence (TC-04) and the screenshots. Nobody has installed it from the ZIP with only the README yet (E6), so Path 1 below is still the contract the team builds to, not a tested guide. On `main` today the DJ does not speak between songs: the player says "DJ unavailable for this track" until D5 merges, and a custom DJ voice is accepted but has no effect yet. |
+| **What works today** | Song generation (instrumental and vocal), a cover for every song, the library, the player and queue, three sample songs, and the DJ voice upload. Also the repo tooling: setup script, doctor, Claude Code skills and guardrails, GitHub automation, and CI (Ubuntu on every PR; Windows and macOS after each merge to `main`). The Windows CI job has failed since 10/24 on one test, which ran WSL's `bash` instead of Git Bash; `run.sh` itself is fine. The fix is in A8 and is not merged yet. |
+| **Latest release** | `rc1` (10/25, commit `a1a8846`), a release candidate. `rc2` is planned. `v1.0` will be the submitted version. |
 | **Due date** | Fri 10/30/2026 (§14 Q2, answered 10/20) |
-| **Blockers** | None on formats: §7.1 is filled for all four services (§14 Q3). Repo access (§14 Q5) is decided: the repo stays public until we submit; at submission the release lead makes it private and invites the professor (#42). |
+| **Blockers** | None on formats: §7.1 is filled for all four services (§14 Q3). Repo access (§14 Q5) is decided: the repo stays public until we submit; at submission the release lead makes it private and invites the professor (#42). Open: `rc2` waits on D5, or on a decision to leave D5 for `rc3`; E6 and E7 wait for `rc2`. Not yet tested: a voice upload with a real VBR MP3, and the DJ voice upload on macOS. |
 
 ### 0.2 Notes for AI assistants reading this file
 
