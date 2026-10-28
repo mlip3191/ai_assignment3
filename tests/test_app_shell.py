@@ -88,11 +88,13 @@ def test_how_to_covers_play_generate_voice_and_measured_waits() -> None:
     assert "Play queue" in text
     assert "Generate a song" in text
     assert "DJ voice" in text
-    assert "not connected" in text
+    assert "not connected" not in text  # D5: the DJ speaks now
+    assert "before each song" in text
     assert "1.5 seconds" in text
     assert "5 to 7 seconds" in text
     assert "2.3 seconds" in text
-    assert "DJ wait has not been measured" in text
+    assert "about 0.3 seconds" in text  # the measured gap between an intro and its song (PROJECT.md §2)
+    assert "has not been measured" not in text
     assert "usually takes" not in text.lower()
 
 
@@ -339,7 +341,7 @@ def test_how_to_no_longer_says_generate_is_not_connected() -> None:
     assert "Generate and the DJ voice are not connected" not in text
     assert "Play now" in text
     assert "Add to queue" in text
-    assert "DJ voice" in text and "not connected" in text  # DJ intros start playing with D5
+    assert "DJ voice" in text and "not connected" not in text  # DJ intros play since D5
 
 
 def test_more_like_this_reads_the_library_list_and_fills_the_generate_form() -> None:

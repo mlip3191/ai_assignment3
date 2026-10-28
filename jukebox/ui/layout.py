@@ -10,7 +10,8 @@ HOW_TO = "\n".join(
     [
         "# How to use",
         "",
-        "The DJ voice is not connected yet, so songs play without a DJ intro for now.",
+        "The DJ speaks a short intro before each song. It is made in the background while the song "
+        "before it plays, so the next song starts without a wait.",
         "",
         "- **Play the samples.** Press **Play queue** once. "
         "The browser plays nothing until that click. The queue then advances on its own.",
@@ -22,7 +23,9 @@ HOW_TO = "\n".join(
         "When it finishes, **Play now** plays the new song at once and **Add to queue** puts it "
         "at the end of the queue. Every song is also listed in the **Library** tab.",
         "- **Change the DJ voice.** Keep the default voice, or upload an MP3 or WAV. "
-        "A failed DJ intro still leaves the song. The DJ wait has not been measured.",
+        "A new voice applies to intros made after the change, so the next song may play without an intro. "
+        "A failed DJ intro still leaves the song. Measured on Windows 11, the gap between an intro "
+        "and its song is about 0.3 seconds.",
         "",
         "Generated songs stay available until you stop the app.",
     ]
