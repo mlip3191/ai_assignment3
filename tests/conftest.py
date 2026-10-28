@@ -52,8 +52,7 @@ def no_background_dj_calls(monkeypatch: pytest.MonkeyPatch) -> None:
     unless the test replaces it, so no test reaches a class server from a background thread."""
     import jukebox.services.dj as dj
 
-    if hasattr(dj, "PREFETCH"):
-        monkeypatch.setattr(dj.PREFETCH, "prefetch", lambda track, previous=None: None)
+    monkeypatch.setattr(dj.PREFETCH, "prefetch", lambda track, previous=None, **_: None)
 
 
 @pytest.fixture(autouse=True)

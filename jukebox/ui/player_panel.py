@@ -349,7 +349,8 @@ def _prefetch_next(player: Player, library: Library) -> None:
         return
     current = player.current
     previous = library.get(current.track_id) if current is not None else None
-    dj.PREFETCH.prefetch(upcoming, previous=previous)
+    # If the listener skips past this song before its turn comes, the intro is no longer needed.
+    dj.PREFETCH.prefetch(upcoming, previous=previous, still_wanted=lambda: player.queue[:1] == [upcoming.id])
 
 
 def _title(library: Library, track_id: str) -> str:

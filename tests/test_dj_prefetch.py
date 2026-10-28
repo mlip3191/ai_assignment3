@@ -81,8 +81,18 @@ def make(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     return install
 
 
-def _prefetcher(tmp_path: Path, voice_holder: list[str | None]) -> dj.Prefetcher:
-    return dj.Prefetcher(voice=lambda: voice_holder[0], out_dir=tmp_path / "gen")
+class Clock:
+    """A clock the test moves by hand, for the cooldown after a failed intro."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def _prefetcher(tmp_path: Path, voice_holder: list[str | None], **kwargs) -> dj.Prefetcher:
+    return dj.Prefetcher(voice=lambda: voice_holder[0], out_dir=tmp_path / "gen", **kwargs)
 
 
 def _recording(tmp_path: Path, name: str, content: bytes) -> str:
@@ -219,16 +229,43 @@ def test_a_disk_error_skips_the_dj_clip(tmp_path: Path, voice_holder, make) -> N
     assert prefetcher.clips.get("t1") is None
 
 
-def test_a_failed_clip_is_tried_again_the_next_time_it_is_asked_for(
+def test_a_failed_clip_is_tried_again_once_the_cooldown_has_passed(
     tmp_path: Path, voice_holder, make
 ) -> None:
     fake = make(error=ServiceError("chatterbox", "unavailable", "The chatterbox service is unreachable."))
-    prefetcher = _prefetcher(tmp_path, voice_holder)
+    clock = Clock()
+    prefetcher = _prefetcher(tmp_path, voice_holder, clock=clock, cooldown_s=30)
     prefetcher.prefetch(ONE).result(timeout=5)
     fake.error = None
+    clock.now += 31
     prefetcher.prefetch(ONE).result(timeout=5)
     assert prefetcher.clips.get("t1") is not None
     assert len(fake.calls) == 2
+
+
+def test_a_failed_clip_is_not_asked_for_again_within_the_cooldown(tmp_path: Path, voice_holder, make) -> None:
+    """A reload or a skip against a broken class server must not queue the same failing calls again."""
+    fake = make(error=ServiceError("qwen", "timeout", "The qwen service took too long to respond."))
+    clock = Clock()
+    prefetcher = _prefetcher(tmp_path, voice_holder, clock=clock, cooldown_s=30)
+    prefetcher.prefetch(ONE).result(timeout=5)
+    clock.now += 29
+    assert prefetcher.prefetch(ONE) is None  # still cooling down: no new job, no Qwen or TTS call
+    assert len(fake.calls) == 1
+    clock.now += 2
+    assert prefetcher.prefetch(ONE) is not None  # cooldown over
+
+
+def test_a_failure_only_cools_down_that_song_and_that_voice(tmp_path: Path, voice_holder, make) -> None:
+    fake = make(error=ServiceError("chatterbox", "unavailable", "The chatterbox service is unreachable."))
+    clock = Clock()
+    prefetcher = _prefetcher(tmp_path, voice_holder, clock=clock, cooldown_s=30)
+    prefetcher.prefetch(ONE).result(timeout=5)
+    fake.error = None
+    prefetcher.prefetch(TWO).result(timeout=5)  # another song is not held back
+    assert prefetcher.clips.get("t2") is not None
+    voice_holder[0] = _recording(tmp_path, "voice_a.mp3", b"voice A")
+    assert prefetcher.prefetch(ONE) is not None  # the same song in another voice is a different intro
 
 
 def test_a_voice_recording_that_is_gone_skips_the_dj_clip(tmp_path: Path, voice_holder, make) -> None:
@@ -307,7 +344,101 @@ def test_an_error_while_checking_the_voice_never_stops_the_worker(tmp_path: Path
     assert [c["track"] for c in fake.calls] == ["t1"]
 
 
+def test_an_error_in_the_worker_outside_the_clip_is_logged_by_type_only(
+    tmp_path: Path, make, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The job's Future is thrown away by the caller, so the worker must log what it caught."""
+    make()
+    reads = {"n": 0}
+
+    def voice() -> str | None:
+        reads["n"] += 1
+        if reads["n"] == 2:  # the worker's check, after prefetch's own read
+            raise RuntimeError("a secret path /home/x")
+        return None
+
+    prefetcher = dj.Prefetcher(voice=voice, out_dir=tmp_path / "gen")
+    with caplog.at_level("WARNING", logger="jukebox.services.dj"):
+        with pytest.raises(RuntimeError):
+            prefetcher.prefetch(ONE).result(timeout=5)
+    assert "DJ prefetch failed: RuntimeError" in caplog.text
+    assert "secret path" not in caplog.text
+
+
+# ---- songs that are no longer next -------------------------------------------------------------
+
+
+def test_an_intro_for_a_song_that_is_no_longer_next_is_skipped(tmp_path: Path, voice_holder, make) -> None:
+    """Skips pile up while a slow call runs; an intro nobody needs any more must not use the server."""
+    gate = threading.Event()
+    fake = make(gate=gate)
+    prefetcher = _prefetcher(tmp_path, voice_holder)
+    busy = prefetcher.prefetch(TWO)
+    assert fake.started.wait(5)
+    next_up = {"t1": True}
+    stale = prefetcher.prefetch(ONE, still_wanted=lambda: next_up["t1"])
+    next_up["t1"] = False  # the listener skipped past it while it waited
+    gate.set()
+    busy.result(timeout=5)
+    assert stale.result(timeout=5) is None
+    assert [c["track"] for c in fake.calls] == ["t2"]  # no Qwen or Chatterbox call for t1
+    assert prefetcher.clips.get("t1") is None
+    assert prefetcher.prefetch(ONE) is not None  # a skipped job is not "being made" or a failure
+
+
+def test_an_intro_for_a_song_that_is_still_next_is_made(tmp_path: Path, voice_holder, make) -> None:
+    gate = threading.Event()
+    fake = make(gate=gate)
+    prefetcher = _prefetcher(tmp_path, voice_holder)
+    busy = prefetcher.prefetch(TWO)
+    assert fake.started.wait(5)
+    wanted = prefetcher.prefetch(ONE, still_wanted=lambda: True)
+    gate.set()
+    busy.result(timeout=5)
+    wanted.result(timeout=5)
+    assert [c["track"] for c in fake.calls] == ["t2", "t1"]
+    assert prefetcher.clips.get("t1") is not None
+
+
+def test_a_job_without_a_still_wanted_check_always_runs(tmp_path: Path, voice_holder, make) -> None:
+    """The page-load warm-up has no 'next in the queue' to compare with."""
+    fake = make()
+    prefetcher = _prefetcher(tmp_path, voice_holder)
+    prefetcher.prefetch(ONE).result(timeout=5)
+    assert [c["track"] for c in fake.calls] == ["t1"]
+
+
+def test_the_still_wanted_check_runs_without_the_prefetchers_lock(tmp_path: Path, voice_holder, make) -> None:
+    """The check reads the player (its own lock); holding ours there could deadlock the two."""
+    make()
+    prefetcher = _prefetcher(tmp_path, voice_holder)
+    could_take_it: list[bool] = []
+
+    def wanted() -> bool:
+        # The lock is not reentrant: if this worker thread were already holding it, taking it here
+        # would block until the timeout. (Another thread may briefly hold it, so wait a moment.)
+        got = prefetcher._lock.acquire(timeout=2)
+        could_take_it.append(got)
+        if got:
+            prefetcher._lock.release()
+        return True
+
+    prefetcher.prefetch(ONE, still_wanted=wanted).result(timeout=5)
+    assert could_take_it == [True]
+
+
 # ---- the player's clip map ---------------------------------------------------------------------
+
+
+def test_the_clip_map_lists_only_the_current_voices_clips(tmp_path: Path, voice_holder, make) -> None:
+    make()
+    prefetcher = _prefetcher(tmp_path, voice_holder)
+    prefetcher.prefetch(ONE).result(timeout=5)
+    assert list(prefetcher.clips) == ["t1"]
+    assert len(prefetcher.clips) == 1
+    voice_holder[0] = _recording(tmp_path, "voice_a.mp3", b"voice A")
+    assert list(prefetcher.clips) == []  # t1's intro is in the old voice
+    assert len(prefetcher.clips) == 0
 
 
 def test_the_clip_map_takes_a_clip_set_by_hand_for_the_current_voice(tmp_path: Path, voice_holder) -> None:

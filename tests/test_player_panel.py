@@ -463,7 +463,7 @@ def test_an_item_starting_prefetches_the_next_songs_intro(
     monkeypatch.setattr(
         dj.PREFETCH,
         "prefetch",
-        lambda track, previous=None: asked.append((track.id, getattr(previous, "id", None))),
+        lambda track, previous=None, **_: asked.append((track.id, getattr(previous, "id", None))),
     )
     library, _clips = _library(tmp_path, make_track, clips_for=set())
     player = open_player(library, {})
@@ -481,6 +481,32 @@ def test_an_item_starting_prefetches_the_next_songs_intro(
     assert asked[-1] == ("sample_01", "sample_03")
     on_play_now(player, library, view.token, "sample_02", runtime)  # sample_02 starts; sample_01 still next
     assert asked[-1] == ("sample_01", "sample_02")
+
+
+def test_a_prefetch_is_only_wanted_while_its_song_is_still_next(
+    tmp_path: Path, make_track, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D5: after a skip, an intro still waiting for its turn is for a song that is no longer next."""
+    import jukebox.services.dj as dj
+
+    checks: dict[str, object] = {}
+    monkeypatch.setattr(
+        dj.PREFETCH,
+        "prefetch",
+        lambda track, previous=None, still_wanted=None: checks.__setitem__(track.id, still_wanted),
+    )
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    player = open_player(library, {})
+    runtime = tmp_path / "served"
+
+    view = on_play(player, library, 0, runtime)  # sample_01 starts; sample_02 is next
+    assert callable(checks["sample_02"])
+    assert checks["sample_02"]() is True
+    view = on_skip(player, library, view.token, runtime)  # sample_02 starts; sample_03 is next
+    assert checks["sample_02"]() is False  # its intro, if still queued, is no longer needed
+    assert checks["sample_03"]() is True
+    on_skip(player, library, view.token, runtime)  # sample_03 starts; the queue is empty
+    assert checks["sample_03"]() is False
 
 
 def test_the_player_reads_the_prefetched_clips() -> None:

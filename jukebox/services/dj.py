@@ -372,6 +372,8 @@ VOICE = VoiceSetting()
 
 # ---- prefetch (D5) -----------------------------------------------------------------------------
 
+FAILED_COOLDOWN_S = 30.0  # after an intro fails, don't ask the class servers for it again for this long
+
 
 class Prefetcher:
     """Makes DJ intros ahead of time, cached by (track_id, voice_key) (PROJECT.md 8.3, 8.4).
@@ -382,12 +384,22 @@ class Prefetcher:
     type), so the player plays the song with "DJ unavailable".
     """
 
-    def __init__(self, *, voice: Callable[[], str | None] | None = None, out_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        voice: Callable[[], str | None] | None = None,
+        out_dir: Path | None = None,
+        clock: Callable[[], float] = time.monotonic,
+        cooldown_s: float = FAILED_COOLDOWN_S,
+    ) -> None:
         self._voice = voice
         self._out_dir = out_dir
+        self._clock = clock
+        self._cooldown_s = cooldown_s
         self._lock = threading.Lock()
         self._ready: dict[tuple[str, str], str] = {}
         self._pending: set[tuple[str, str]] = set()
+        self._failed: dict[tuple[str, str], float] = {}  # slot -> when its intro last failed
         self._keys: dict[str, str] = {}
         self._jobs: queue.Queue = queue.Queue()
         self._worker: threading.Thread | None = None
@@ -416,9 +428,19 @@ class Prefetcher:
             self._keys[path] = key
         return key
 
-    def prefetch(self, track: TrackInfo, previous: TrackInfo | None = None) -> Future | None:
+    def prefetch(
+        self,
+        track: TrackInfo,
+        previous: TrackInfo | None = None,
+        *,
+        still_wanted: Callable[[], bool] | None = None,
+    ) -> Future | None:
         """Start making this track's intro in the current voice. None if it's ready, already being
-        made, or the voice recording can't be read (then there's no intro, never another voice)."""
+        made, failed a moment ago (the cooldown), or the voice recording can't be read (then there's
+        no intro, never another voice).
+
+        `still_wanted` is asked when the job's turn comes; if it says no (the listener skipped past
+        this song), the job is dropped before any Qwen or Chatterbox call."""
         path = self.voice_path()  # read once, so the recording and its cache key always match
         key = self._key_for(path)
         if key is None:
@@ -427,9 +449,12 @@ class Prefetcher:
         with self._lock:
             if slot in self._ready or slot in self._pending:
                 return None
+            failed_at = self._failed.get(slot)
+            if failed_at is not None and self._clock() - failed_at < self._cooldown_s:
+                return None  # a reload or skip must not repeat calls that just failed
             self._pending.add(slot)
         job: Future = Future()
-        self._jobs.put((job, track, previous, path, slot))
+        self._jobs.put((job, track, previous, path, slot, still_wanted))
         self._start_worker()
         return job
 
@@ -442,17 +467,21 @@ class Prefetcher:
 
     def _work(self) -> None:
         while True:
-            job, track, previous, path, slot = self._jobs.get()
+            job, track, previous, path, slot, still_wanted = self._jobs.get()
             if not job.set_running_or_notify_cancel():
                 continue
             try:
-                if slot[1] != self.current_key():  # the voice changed while it waited: no Qwen or TTS call
+                # Dropped before any Qwen or TTS call: the voice changed while it waited, or (the check
+                # runs without our lock, since it reads the player) the listener skipped past the song.
+                if slot[1] != self.current_key() or (still_wanted is not None and not still_wanted()):
                     with self._lock:
                         self._pending.discard(slot)
                     job.set_result(None)
                     continue
                 job.set_result(self._make(track, previous, path, slot))
             except BaseException as err:  # never let one job stop the worker or stay "being made"
+                # Nobody reads the Future (the caller drops it), so log it here: the type only.
+                log.warning("DJ prefetch failed: %s", type(err).__name__)
                 with self._lock:
                     self._pending.discard(slot)
                 job.set_exception(err)
@@ -472,6 +501,9 @@ class Prefetcher:
                 self._pending.discard(slot)
                 if clip is not None:
                     self._ready[slot] = str(clip.audio_path)
+                    self._failed.pop(slot, None)
+                else:
+                    self._failed[slot] = self._clock()
 
     def _get(self, track_id: str) -> str | None:
         key = self.current_key()

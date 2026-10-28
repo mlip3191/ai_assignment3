@@ -172,7 +172,7 @@ def test_opening_a_page_warms_the_first_samples_intro(
     monkeypatch.setattr(settings, "get_library", lambda: library)
     asked: list[tuple[str, object]] = []
     monkeypatch.setattr(
-        dj.PREFETCH, "prefetch", lambda track, previous=None: asked.append((track.id, previous))
+        dj.PREFETCH, "prefetch", lambda track, previous=None, **_: asked.append((track.id, previous))
     )
     settings.on_load()
     assert asked == [("sample_01", None)]
@@ -184,7 +184,7 @@ def test_opening_a_page_with_no_samples_warms_nothing(
     library = _library_with(tmp_path, make_track, ("g1", "generated"))
     monkeypatch.setattr(settings, "get_library", lambda: library)
     asked: list[str] = []
-    monkeypatch.setattr(dj.PREFETCH, "prefetch", lambda track, previous=None: asked.append(track.id))
+    monkeypatch.setattr(dj.PREFETCH, "prefetch", lambda track, previous=None, **_: asked.append(track.id))
     settings.on_load()
     assert asked == []
 
