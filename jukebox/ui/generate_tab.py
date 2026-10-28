@@ -484,7 +484,8 @@ def render(
             elem_id="gen-cover",
         )
         cover_note = gr.Markdown("", visible=False, elem_id="gen-cover-note")
-        retry_cover = gr.Button("Retry cover", size="sm", visible=False, elem_id="gen-retry-cover")
+        # Full size, like Play now and Add to queue: at size="sm" it read as plain text (#66).
+        retry_cover = gr.Button("Retry cover", visible=False, elem_id="gen-retry-cover")
         lyrics = gr.Textbox(label="Lyrics", lines=8, interactive=False, visible=False, elem_id="gen-lyrics")
         with gr.Row():
             play_now = gr.Button("Play now", interactive=False, elem_id="gen-play-now")

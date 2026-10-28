@@ -669,6 +669,14 @@ def test_a_double_click_on_retry_cover_starts_one_cover(
         assert out[2]["active"] is True
 
 
+def test_retry_cover_looks_like_the_other_card_buttons(library: Library) -> None:
+    """#66: at size="sm" it rendered as small plain text, easy to miss on the failed-cover card."""
+    demo, _ = _demo(library)
+    retry_cover, play_now = _by_id(demo, "gen-retry-cover"), _by_id(demo, "gen-play-now")
+    assert retry_cover.size == play_now.size
+    assert retry_cover.variant == play_now.variant
+
+
 def test_the_result_card_offers_retry_cover_only_when_the_cover_failed() -> None:
     painting = tab.GenerateView(status="", running=False, track_id="t1", cover=tab.CoverView("p", "x", False))
     failed = tab.GenerateView(
