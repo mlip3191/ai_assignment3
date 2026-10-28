@@ -16,6 +16,9 @@ regenerated, never hand-edited.
   - FLUX.2 klein 4B, port 9006: `black-forest-labs/FLUX.2-klein-4B`
 - **Seeds:** sent and recorded below. ACE-Step did not reproduce audio from a fixed seed in B2's test,
   so the committed files are the source of truth, not a regeneration.
+- **Cover prompts:** written before the soft-figure rules for people were added to
+  `jukebox/prompts/cover_art.md` and `art.py` (PR #58), so they don't end with that style line. Each cover
+  was still checked by eye (below).
 
 ---
 
