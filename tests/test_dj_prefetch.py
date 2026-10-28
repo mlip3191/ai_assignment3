@@ -365,6 +365,54 @@ def test_an_error_in_the_worker_outside_the_clip_is_logged_by_type_only(
     assert "secret path" not in caplog.text
 
 
+# ---- which intros failed (the player's notice) -------------------------------------------------
+
+
+def test_a_song_nobody_asked_an_intro_for_has_not_failed(tmp_path: Path, voice_holder) -> None:
+    assert _prefetcher(tmp_path, voice_holder).has_failed("t1") is False
+
+
+def test_has_failed_is_true_only_for_that_song_in_that_voice_until_it_succeeds(
+    tmp_path: Path, voice_holder, make
+) -> None:
+    fake = make(error=ServiceError("chatterbox", "unavailable", "The chatterbox service is unreachable."))
+    clock = Clock()
+    prefetcher = _prefetcher(tmp_path, voice_holder, clock=clock, cooldown_s=30)
+    prefetcher.prefetch(ONE).result(timeout=5)
+    assert prefetcher.has_failed("t1") is True
+    assert prefetcher.has_failed("t2") is False  # another song
+    voice_holder[0] = _recording(tmp_path, "voice_a.mp3", b"voice A")
+    assert prefetcher.has_failed("t1") is False  # another voice is another intro
+    voice_holder[0] = None
+    clock.now += 100  # past the cooldown: still counted as failed until an intro is made
+    assert prefetcher.has_failed("t1") is True
+    fake.error = None
+    prefetcher.prefetch(ONE).result(timeout=5)
+    assert prefetcher.has_failed("t1") is False
+
+
+def test_a_skipped_job_is_not_a_failure(tmp_path: Path, voice_holder, make) -> None:
+    gate = threading.Event()
+    fake = make(gate=gate)
+    prefetcher = _prefetcher(tmp_path, voice_holder)
+    busy = prefetcher.prefetch(TWO)
+    assert fake.started.wait(5)
+    skipped = prefetcher.prefetch(ONE, still_wanted=lambda: False)
+    gate.set()
+    busy.result(timeout=5)
+    assert skipped.result(timeout=5) is None
+    assert prefetcher.has_failed("t1") is False
+
+
+def test_a_voice_recording_that_cannot_be_read_counts_as_a_failed_intro(
+    tmp_path: Path, voice_holder, make
+) -> None:
+    """No intro can be made (and never in another voice), so the listener is told the DJ is out."""
+    make()
+    voice_holder[0] = str(tmp_path / "uploads" / "voice_gone.wav")
+    assert _prefetcher(tmp_path, voice_holder).has_failed("t1") is True
+
+
 # ---- songs that are no longer next -------------------------------------------------------------
 
 

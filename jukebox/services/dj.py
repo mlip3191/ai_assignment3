@@ -505,6 +505,16 @@ class Prefetcher:
                 else:
                     self._failed[slot] = self._clock()
 
+    def has_failed(self, track_id: str) -> bool:
+        """True if this song's intro, in the voice in use now, could not be made: its last attempt
+        failed (until a later one succeeds), or the voice recording can't be read. A song nobody asked
+        an intro for (Play now) or whose job was skipped has not failed."""
+        key = self.current_key()
+        if key is None:
+            return True
+        with self._lock:
+            return (track_id, key) in self._failed
+
     def _get(self, track_id: str) -> str | None:
         key = self.current_key()
         if key is None:

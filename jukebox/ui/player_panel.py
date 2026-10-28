@@ -24,7 +24,7 @@ from __future__ import annotations
 import re
 import shutil
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -97,10 +97,15 @@ class PlayerView:
     download: str | None = None
 
 
-def open_player(library: Library, dj_clips: Mapping[str, str] | None = None) -> Player:
-    """A queue over this library. ``dj_clips`` is read live and may start empty."""
+def open_player(
+    library: Library,
+    dj_clips: Mapping[str, str] | None = None,
+    dj_failed: Callable[[str], bool] | None = None,
+) -> Player:
+    """A queue over this library. ``dj_clips`` is read live and may start empty. ``dj_failed`` says
+    whether a song's DJ intro failed; without it a missing clip always gets the notice."""
     clips = dj_clips if dj_clips is not None else {}
-    return Player(LibrarySongs(library), clips)
+    return Player(LibrarySongs(library), clips, dj_failed)
 
 
 _SESSIONS: dict[str, Player] = {}
@@ -118,7 +123,8 @@ def player_for(session_id: str, library: Library) -> tuple[Player, str]:
         if found is not None:
             return found, session_id
     new_id = uuid.uuid4().hex
-    player = open_player(library, _CLIPS)
+    # A song with no intro says "DJ unavailable" only if its intro failed (not when none was asked for).
+    player = open_player(library, _CLIPS, dj.PREFETCH.has_failed)
     _SESSIONS[new_id] = player
     return player, new_id
 

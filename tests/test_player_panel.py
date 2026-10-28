@@ -483,6 +483,26 @@ def test_an_item_starting_prefetches_the_next_songs_intro(
     assert asked[-1] == ("sample_01", "sample_02")
 
 
+def test_the_apps_player_says_dj_unavailable_only_for_intros_that_failed(
+    tmp_path: Path, make_track, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D5: a song with no intro because none was asked for (Play now) plays quietly, with no notice."""
+    import jukebox.services.dj as dj
+
+    monkeypatch.setattr(dj.PREFETCH, "has_failed", lambda track_id: track_id == "sample_02")
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    player, _session = player_for("", library)
+    runtime = tmp_path / "served"
+
+    view = on_play(player, library, 0, runtime)  # sample_01: no intro, and nothing failed
+    assert view.notice is None
+    assert DJ_UNAVAILABLE not in panel_text(view)
+    view = on_skip(player, library, view.token, runtime)  # sample_02: its intro failed
+    assert view.notice == DJ_UNAVAILABLE
+    assert DJ_UNAVAILABLE in panel_text(view)
+    _SESSIONS.clear()
+
+
 def test_a_prefetch_is_only_wanted_while_its_song_is_still_next(
     tmp_path: Path, make_track, monkeypatch: pytest.MonkeyPatch
 ) -> None:
