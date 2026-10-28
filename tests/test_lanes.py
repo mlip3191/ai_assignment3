@@ -198,13 +198,12 @@ def test_submission_date_matches_project_md() -> None:
     assert milestone + timedelta(days=1) == submission_due(text)
 
 
-def test_feature_freeze_date_matches_m2() -> None:
+def test_no_feature_freeze_is_mentioned() -> None:
+    """The release lead dropped the feature freeze (10/27); teammates were holding work back for it."""
     spec, _ = load()
-    m2 = next(c for c in spec["checkpoints"] if c["title"].startswith("M2 "))
-    due = date.fromisoformat(m2["due"])
-    m = re.search(r"Feature freeze (Mon|Tue|Wed|Thu|Fri|Sat|Sun) (\d{1,2})/(\d{1,2})", m2["description"])
-    assert m is not None, "M2 description lost its 'Feature freeze Day MM/DD' text"
-    assert (m.group(1), int(m.group(2)), int(m.group(3))) == (due.strftime("%a"), due.month, due.day)
+    for checkpoint in spec["checkpoints"]:
+        assert "freeze" not in checkpoint["description"].lower(), checkpoint["title"]
+    assert "freeze" not in (ROOT / "PROJECT.md").read_text(encoding="utf-8").lower()
 
 
 @pytest.mark.parametrize("path", ["PROJECT.md", "scripts/github/issues.json"])
@@ -269,7 +268,6 @@ def test_prose_dates_match_the_checkpoints() -> None:
     milestone = date.fromisoformat(spec["milestone"]["due"])
     assert f'"v1.0 submission" (due {milestone.month}/{milestone.day})' in text
     assert f"Your M0 tasks are due {_due_label(due['M0'])}" in text
-    assert f"Feature freeze {_due_label(due['M2'])}, 9 pm" in text
 
 
 def test_heading_end_label_reads_ranges_and_rejects_bad_headings() -> None:

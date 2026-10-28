@@ -1001,7 +1001,6 @@ The plan was written Mon 10/12. It aims to be **submission-ready Thu 10/29 eveni
 | Generate the 3 sample songs; write `GENERATION_LOG.md` | C |
 | Error/recovery pass: force each failure kind, check messages and recovery | E (drives), all fix |
 | `run.sh` / `run.bat` tested on Mac **and** Windows | D |
-| **Feature freeze Tue 10/27, 9 pm** — after this, only bug fixes and docs | All |
 
 ### M3 — Independent deploy test · Wed 10/28
 
