@@ -6,9 +6,11 @@ test_launcher.py). These tests check the parts that only live in the two shell f
 
 from __future__ import annotations
 
+import platform
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -229,10 +231,52 @@ def test_run_sh_starts_with_bash_and_stops_on_errors() -> None:
     assert 'cd "$(dirname "$0")"' in body  # works when started from another folder (drag into Terminal)
 
 
-@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not installed")
+def _bash() -> str | None:
+    """The bash to check run.sh with: Git Bash on Windows (as test_guardrails.py does), else the one on PATH."""
+    if platform.system() == "Windows":
+        if str(ROOT / "scripts") not in sys.path:
+            sys.path.insert(0, str(ROOT / "scripts"))
+        import doctor  # noqa: PLC0415  (imported late so a test can replace git_bash_path)
+
+        return doctor.git_bash_path()
+    return shutil.which("bash")
+
+
+@pytest.mark.skipif(_bash() is None, reason="no bash (Git Bash on Windows) available")
 def test_run_sh_has_valid_bash_syntax() -> None:
-    result = subprocess.run(["bash", "-n", str(RUN_SH)], capture_output=True, text=True)
+    result = subprocess.run([_bash(), "-n", str(RUN_SH)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_bash_on_windows_is_git_bash_never_the_bare_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A bare `bash` on Windows finds the WSL launcher in System32 first; with no distro installed it
+    exits 1 with UTF-16 text (this failed windows-latest CI for every commit after D6)."""
+    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
+    import doctor
+
+    git_bash = r"C:\Program Files\Git\bin\bash.exe"
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    monkeypatch.setattr(doctor, "git_bash_path", lambda: git_bash)
+    monkeypatch.setattr(shutil, "which", lambda name: r"C:\Windows\System32\bash.exe")
+    assert _bash() == git_bash
+
+
+def test_bash_on_windows_without_git_bash_is_none_so_the_syntax_test_skips(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
+    import doctor
+
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    monkeypatch.setattr(doctor, "git_bash_path", lambda: None)
+    monkeypatch.setattr(shutil, "which", lambda name: r"C:\Windows\System32\bash.exe")
+    assert _bash() is None
+
+
+def test_bash_on_macos_and_linux_is_the_one_on_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(shutil, "which", lambda name: "/bin/bash" if name == "bash" else None)
+    assert _bash() == "/bin/bash"
 
 
 def test_run_sh_is_checked_out_with_lf_line_endings() -> None:

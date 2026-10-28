@@ -58,6 +58,117 @@ _THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
 _EDGE_PUNCT = " \t\n.,;:"
 _QUOTE_PAIRS = {'"': '"', "'": "'", "“": "”", "‘": "’"}
 _TAG_LINE = re.compile(r"^\s*\[[^\]]*\]\s*$")
+# People and body parts in an image prompt. Body-part words don't count when they name part of a thing
+# ("the face of the cliff", "a clock face", "clock hands", "table legs", "a hand-painted sign"); nor do "the
+# man in the moon", "a figure of speech", "a couple of candles", "guy ropes" or "a table runner". Any word
+# ending in "man" or "men" counts (fisherman, policewoman, human) except the few listed that aren't people
+# (German, ottoman, Pullman, omen, ramen). A silhouette counts only after "a", "two", "lone" and the like
+# ("a lone silhouette", sample 3), or a number and a word only people are ("four joyful silhouettes"), not
+# in "palm tree silhouettes", "two tree silhouettes" or "a skyline, the silhouette softened"; a silhouette
+# of a person names the person. A wrong match is not harmless: FLUX then adds people to an empty scene.
+_PEOPLE = re.compile(
+    r"\b(?:"
+    r"people|persons?|humans?|men|woman|women|boys?|girls?|child(?:ren)?|kids?|teen(?:ager)?s?|toddlers?"
+    r"|bab(?:y|ies)(?!-|'s\s+breath|\s+(?:blue|pink|grand|breath)\b)|ladies|lady|guys?(?!-|\s+(?:ropes?|lines?|wires?)\b)"
+    r"|(?:boy|girl)?friends?|(?:couples?|crowds?)(?!\s+of\b)|audiences?|spectators?|tourists?|famil(?:y|ies)"
+    r"|lovers?|strangers?|owners?|someone|somebody|everyone|everybody"
+    r"|(?:a|an|one|two|three|four|lone|single|solitary|distant|small|tiny)\s+silhouettes?(?!-|\s+of\b)"
+    r"|(?:two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:joyful|laughing|dancing|smiling|cheerful|happy"
+    r"|young|waving|walking|embracing)\s+silhouettes(?!-|\s+of\b)"
+    r"|mothers?|fathers?|daughters?|sons?|sisters?|brothers?|grand(?:mother|father)s?|(?:grand)?parents?|brides?"
+    r"|travell?ers?|wanderers?|hikers?|sailors?|cyclists?|bikers?|riders?|skaters?|surfers?|swimmers?|skiers?"
+    r"|drivers?|passengers?|(?<!\btable\s)(?<!\bcarpet\s)(?<!\bsled\s)runners?(?!\s+(?:of|beans?)\b)"
+    r"|pedestrians|pedestrian(?!\s+(?:bridges?|crossings?|paths?|streets?|zones?|walkways?|tunnels?)\b)"
+    r"|astronauts?|cowboys?(?!-|\s+(?:hats?|boots?)\b)|cowgirls?|soldiers?|warriors?|pilots?(?!\s+(?:lights?|whales?)\b)"
+    r"|farmers?|workers?|baristas?|chefs?|nurses?|monks?|nuns?|ballerinas?|mermaids?|students?"
+    r"|(?<!\brecord[-\s])(?<!\bvinyl[-\s])(?<!\bmusic[-\s])(?<!\bcassette[-\s])(?<!\btape[-\s])(?<!\bcd[-\s])"
+    r"(?<!\bdvd[-\s])(?<!\bblu-ray[-\s])(?<!\bmp3[-\s])(?<!\bmedia[-\s])(?<!\bvideo[-\s])(?<!\baudio[-\s])"
+    r"(?<!\bradio[-\s])players?(?!-|\s+pianos?\b)"
+    r"|dancers?|singers?|vocalists?|musicians?|performers?|guitarists?|drummers?|bassists?|pianists?|violinists?"
+    r"|saxophonists?|trumpeters?|djs?(?!\s+(?:booths?|decks)\b)|concertgoers?|partygoers?|festivalgoers?|ravers?"
+    r"|(?:rock|jazz|punk|indie|folk|blues|brass|marching|garage|boy|girl)\s+bands?"
+    r"|bands?(?=\s+(?:plays?|playing|performs?|performing|on\s+stage)\b)"
+    r"|(?<!\bceiling\s)(?<!\belectric\s)(?<!\bpalm\s)fans(?!\s+of\b)"
+    r"|(?<!\bisle\sof\s)(?<!\bpac-)man(?!\s+in\s+the\s+moon|['’]s\s+land)(?!-)|figures?(?!-|\s+of\b)"
+    r"|(?!(?:ger|otto|talis|cai|cay|snow|walk|dober|ro|pac|pull|tas|speci|abdo|acu|regi|o|sta|ra|a|lu|ye|hy"
+    r"|se|cycla|dol|bitu|albu|ceru|ru|fora)m[ae]n\b)\w+m[ae]n(?!-)"
+    r")\b",
+    re.IGNORECASE,
+)
+# Body parts, in two kinds (see mentions_people). Hands, fingers, arms and shoulders are a person's: animals
+# have paws and wings. Faces, heads, eyes, legs, feet and bodies can be an animal's.
+_HANDS = re.compile(
+    r"\b(?:"
+    r"(?<!\bcoat\sof\s)(?<!\btone[-\s])arms?|(?<!\bclock\s)(?<!\bwatch\s)(?<!\bhour\s)(?<!\bminute\s)hands?|fingers?"
+    r"|(?<!\bgravel\s)(?<!\broad\s)(?<!\bhard\s)(?<!\bdirt\s)(?<!\bpaved\s)(?<!\bhighway\s)shoulders?"
+    r")(?!-|\s+of\b)\b",
+    re.IGNORECASE,
+)
+_PARTS = re.compile(
+    r"\b(?:"
+    r"(?<!\bclock\s)(?<!\bwatch\s)(?<!\bcliff\s)(?<!\brock\s)faces?|bod(?:y|ies)|(?<!\btable\s)(?<!\bchair\s)legs?"
+    r"|feet|foot|eyes|heads?(?!\s+(?:west|east|north|south|toward|towards|into|home)\b)"
+    r")(?!-|\s+of\b)\b",
+    re.IGNORECASE,
+)
+_ANIMAL = (
+    r"(?:owl|cat|kitten|kitt(?:y|ies)|dog|pupp(?:y|ies)|fox(?:es)?|deer|stag|fawn|horse|pon(?:y|ies)|foal"
+    r"|wol(?:f|ves)|bird|crow|raven|bear|rabbit|bunn(?:y|ies)|hare|fish|koi|whale|dolphin|seal|otter|lion|tiger"
+    r"|leopard|elephant|giraffe|zebra|camel|cow|cal(?:f|ves)|sheep|lamb|goat|pig|frog|toad|butterfl(?:y|ies)"
+    r"|moth|bee|duck|swan|goose|geese|heron|crane|eagle|hawk|falcon|sparrow|robin|finch|parrot|pigeon|(?:sea)?gull"
+    r"|penguin|mouse|mice|rat|squirrel|hedgehog|badger|raccoon|monkey|panda|koala|octop(?:us|i)|jellyfish|snake"
+    r"|serpent|lizard|turtle|tortoise|dragon|unicorn|creature|animal|beast)s?"
+)
+_ANIMAL_WORD = re.compile(rf"\b{_ANIMAL}\b", re.IGNORECASE)
+_BIRDS_EYE = re.compile(r"\bbird['’]?s[-\s]+eye\b", re.IGNORECASE)  # a camera angle, not a bird
+# Just before a body part (the text up to it ends with one of these): "her hands" and "his tired eyes" are
+# a person's; "its long-fingered hands" and "a lizard with tiny hands" aren't.
+_A_PERSONS = re.compile(r"\b(?:her|his|their|my|your|our)\s+(?:[\w'’-]+\s+){0,2}$", re.IGNORECASE)
+_ITS = re.compile(r"\bits\s+(?:[\w'’-]+\s+){0,2}$", re.IGNORECASE)
+_ANIMAL_WITH = re.compile(rf"\b{_ANIMAL}\s+with\s+(?:[\w'’-]+\s+){{0,3}}$", re.IGNORECASE)
+# A thing's part, at most one word after the thing: "the mountain's face", "the moon's pale face", "a
+# record's label face down", "the mountains' faces" (not "the piano's keys under fingers").
+_A_THINGS = re.compile(
+    r"\b(?:mountain|hill|moon|sun|planet|cliff|rock|stone|glacier|tower|building|wall|clock|watch|record"
+    r"|turntable|statue|guitar|piano|chair|table)(?:['’]s|s['’])\s+(?:[\w'’-]+\s+)?$",
+    re.IGNORECASE,
+)
+# "Face" as a verb: "a small cabin faces a frozen lake", "tall windows face the sea". The subject is right
+# before it: things before "face"; one thing after "a" or "the" before "faces". Otherwise it's a face: "a face
+# toward the light", "two faces each lit", "Sarah's face", "wet faces toward the rain", "with faces toward".
+_FACE_VERB = re.compile(
+    r"faces?\s+(?:the|a|an|out|outward|away|toward|towards|onto|each|east|west|north|south)\b", re.IGNORECASE
+)
+_SUBJECT = re.compile(r"\b([\w'’]+)\s+$")
+_ONE_SUBJECT = re.compile(r"\b(?:a|an|the|one)\s+(?:[\w'’-]+\s+)?([\w'’]+)\s+$", re.IGNORECASE)
+_NOT_A_SUBJECT = frozenset(
+    "a an the one two three four five six many few some all its this that these those his her their our my your"
+    " pale happy young old small tiny bright tired sad weary lit wet dim bare cold warm".split()
+)
+# Measurements: "a thousand feet above", "fifty feet tall", "a six-foot wave", "a 10-foot cactus".
+_NUMBER = (
+    r"(?:\d+|a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|sixty"
+    r"|hundred|thousand|hundreds|thousands|few|several|many)"
+)
+_MEASURE = re.compile(
+    rf"\b{_NUMBER}(?:\s+of)?\s+(?:feet|foot)(?=\s+(?:tall|high|deep|long|wide|thick|above|below|away"
+    rf"|across)\b)|\b{_NUMBER}-(?:feet|foot)\b",
+    re.IGNORECASE,
+)
+# "No people", "without a single person", "no faces or hands" and the like: an empty scene, so these words
+# don't count. A list needs "or", "and" or "nor", so "no crowds, figures in the distance" keeps the figures.
+_NO_NOUN = r"(?:(?:visible|real|other|human)\s+)?(?:people|persons?|humans?|figures?|crowds?|faces?|hands?|bod(?:y|ies))"
+_NO_PEOPLE = re.compile(
+    rf"\b(?:no|without(?:\s+any|\s+a\s+single)?|devoid\s+of|empty\s+of|free\s+of)\s+{_NO_NOUN}"
+    rf"(?:,?\s+(?:or|and|nor)\s+{_NO_NOUN})*\b",
+    re.IGNORECASE,
+)
+# Added to any prompt with people in it. FLUX follows positive descriptions better than "no ...": small,
+# backlit figures with faces in shadow have no identifiable face, and soft hands hide its anatomy mistakes.
+SOFT_PEOPLE = (
+    "only as many people as described, seen from behind or at a distance as soft-focus backlit silhouettes, "
+    "faces in shadow and not detailed, hands not in focus"
+)
 # A chatty opener such as "Here is your prompt:" or "Sure! Here's the image prompt:" (only these forms,
 # so a real prompt with a colon in it, like "A quiet room: soft light", is left alone).
 _LEAD_IN = re.compile(
@@ -135,7 +246,50 @@ def write_cover_prompt(
     body = _clean(reply, t.suffix)
     if not body:
         raise ServiceError("qwen", "bad_response", "the cover prompt reply was empty")
+    if mentions_people(body):
+        # People stay in the scene, drawn so faces aren't defined and hands aren't prominent.
+        body = re.sub(re.escape(SOFT_PEOPLE), "", body, flags=re.IGNORECASE)  # in case Qwen echoed it
+        body = re.sub(r"\s*,(?:\s*,)+\s*", ", ", body).strip(_EDGE_PUNCT)
+        body = f"{body}, {SOFT_PEOPLE}"
     return f"{body}, {t.suffix}"
+
+
+def mentions_people(text: str) -> bool:
+    """True if an image prompt describes people or body parts. FLUX draws them from the front with
+    detailed faces, and sometimes wrong hands or an extra arm (TC-04 dry run, 10/24)."""
+    text = _BIRDS_EYE.sub(" ", _MEASURE.sub(" ", _NO_PEOPLE.sub(" ", text)))
+    if _PEOPLE.search(text):
+        return True
+    for part in _HANDS.finditer(text):
+        before = text[max(0, part.start() - 80) : part.start()]  # bounded, so long prompts stay fast
+        if _A_PERSONS.search(before):  # before the thing check, so "her piano's" keys and hands stay hers
+            return True
+        if not (_A_THINGS.search(before) or _ITS.search(before) or _ANIMAL_WITH.search(before)):
+            return True
+    for part in _PARTS.finditer(text):
+        # An animal earlier in the sentence owns these ("a wolf howling at the moon, eyes glowing").
+        before = text[max(0, part.start() - 120) : part.start()]
+        if _A_PERSONS.search(before):  # "her face toward the rain"
+            return True
+        if _A_THINGS.search(before) or _faces_as_verb(text, part, before):
+            continue
+        sentence = before[max(before.rfind(end) for end in ".;!?") + 1 :]
+        if not (_ITS.search(before) or _ANIMAL_WORD.search(sentence)):
+            return True
+    return False
+
+
+def _faces_as_verb(text: str, part: re.Match[str], before: str) -> bool:
+    if not _FACE_VERB.match(text, part.start()):
+        return False
+    plural = part.group().lower() == "face"  # "windows face", "a cabin faces"
+    subject = (_SUBJECT if plural else _ONE_SUBJECT).search(before)
+    if not subject:
+        return False
+    word = subject.group(1).lower()
+    if word in _NOT_A_SUBJECT or word.endswith(("'s", "’s", "ed", "ing")):
+        return False
+    return word.endswith("s") == plural
 
 
 def _lyrics_block(vocal: bool, lyrics: str | None) -> str:

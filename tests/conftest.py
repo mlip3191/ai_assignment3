@@ -47,6 +47,15 @@ def isolate_git_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def no_background_dj_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Playing or opening a page asks the app's DJ prefetcher for intros; in tests that does nothing
+    unless the test replaces it, so no test reaches a class server from a background thread."""
+    import jukebox.services.dj as dj
+
+    monkeypatch.setattr(dj.PREFETCH, "prefetch", lambda track, previous=None, **_: None)
+
+
+@pytest.fixture(autouse=True)
 def isolate_gradio_upload_folder(monkeypatch: pytest.MonkeyPatch) -> None:
     """serve() sets GRADIO_TEMP_DIR for the app; undo it after each test so it can't leak into others."""
     monkeypatch.delenv("GRADIO_TEMP_DIR", raising=False)

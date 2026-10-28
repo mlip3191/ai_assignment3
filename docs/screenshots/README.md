@@ -11,6 +11,7 @@ terminal, or browser devtools (DL10).
 | `generate-vocal-song.png` | The Generate tab after a vocal song (pop, upbeat, 60 s, idea "road trip"): status, title, cover, lyrics, Play now and Add to queue | Using the app: Generate a song |
 | `cover-instrumental-result.png` | The result card of an instrumental song (lo-fi hip hop, mellow, 45 s) with its cover | Using the app: Cover art |
 | `library-song-cover.png` | The Library with the vocal song picked: its cover and details | Using the app: Cover art, Library |
+| `library-midnight-coffee-steam.png` | The Library with the second instrumental song ("Midnight Coffee Steam") picked: its own cover and details | TC-04 evidence |
 | `player-now-playing.png` | The player: Now playing with the song's cover, the audio player, and Up next with the next song's cover | Using the app: playback |
 | `error-cover-failed-retry.png` | Error state: FLUX unreachable, so the song keeps the placeholder cover, with the note and Retry cover | Using the app: Cover art; error state |
 
