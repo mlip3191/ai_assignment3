@@ -96,7 +96,9 @@ _TODO: DJ (D), playback controls (E)._
 ### Generate a song
 Open the **Generate** tab. Each choice has a one-line hint under its name.
 
-> **TODO (B9, on rc1):** screenshot of the Generate tab with the form filled in (`docs/screenshots/`, no credentials visible).
+![The Generate tab filled in for a vocal song (pop, upbeat, 60 s, song idea "road trip") and its result: title, cover, lyrics, Play now and Add to queue](docs/screenshots/generate-vocal-song.png)
+
+*The Generate tab after a vocal song (pop, upbeat, 60 s, idea "road trip"): the form, the status line, and the result card with its cover and lyrics.*
 
 **An instrumental**
 1. **Style:** pick a genre, for example **lo-fi hip hop**. You can add your own words under **Extra style tags** (instruments, an era, a feel), separated by commas.
@@ -111,7 +113,11 @@ Open the **Generate** tab. Each choice has a one-line hint under its name.
 
 Same steps, but choose **Vocal** in step 4. The first stage after **Queued** is **Writing lyrics…** instead of **Naming your track…**, and the result card also shows the lyrics, which the text model (Qwen) writes for each song. Vocal songs sound best at 30 seconds or more.
 
-> **TODO (B9, on rc1):** screenshots of an instrumental and a vocal result card, each with its cover, and the song playing after **Play now**.
+The vocal result card is in the screenshot above, and an instrumental one is under [Cover art](#cover-art).
+
+![The player: Now playing with the song's title and cover, the audio player, and Up next with the next song's cover](docs/screenshots/player-now-playing.png)
+
+*The player playing the vocal song, with the next song under **Up next**.*
 
 **What to expect**
 - **Wait:** about 5 to 10 seconds per song when the class servers are quiet. We measured 4.8 to 9.5 s in B5 (#32), 5.5 to 7 s in B6 (#36), and a reviewer saw 7 s. Most of it is the music model (ACE-Step, 4.4 to 8.4 s); the text model (Qwen) takes 0.4 to 1.5 s. The page says "usually about 10 s". It can take longer when many people use the class servers, and the status line keeps counting so you can see it hasn't frozen.
@@ -120,7 +126,15 @@ Same steps, but choose **Vocal** in step 4. The first stage after **Queued** is 
 - **If something fails,** the status line says what went wrong in plain words, your choices stay filled in, and **Retry** appears when trying again can help (a slow or unreachable class server). If your settings are wrong, it says to fix them and restart.
 - **Every song, samples included, is also listed in the Library tab.** Pick one to see its cover and details, then use the same **Play now** and **Add to queue** buttons. Generated songs stay there until you stop the app.
 
-> **TODO (B9, on rc1):** link the measured runs in [Test results](#test-results) (TC-01 instrumental, TC-02 vocal, TC-03 songs kept across tabs, TC-F1 bad credentials, TC-F2 a class server not answering).
+**Tested on `rc1`** (Windows 11, 2026-10-27; full rows in [`docs/TEST_EVIDENCE.md`](docs/TEST_EVIDENCE.md)):
+
+| Test | What we did | Result |
+|---|---|---|
+| TC-01 instrumental | lo-fi hip hop, mellow, 45 s | **Pass.** Added in 7 s, played 0:45, no vocals |
+| TC-02 vocal | pop, upbeat, 60 s, idea "road trip" | **Pass.** Added in 6 s, 10 lines of lyrics shown, all 10 sung |
+| TC-03 songs kept across tabs | Both songs, then Library → Generate → Library, then play the older one | **Partial.** Both stayed in the Library and played. But after the queue had finished, **Play now** didn't play the song until the page was reloaded (bug #72) |
+| TC-F1 bad credentials | A wrong API key for one run | **Pass.** "The Qwen service rejected our credentials…", choices kept, no Retry; works again after restarting with the right key |
+| TC-F2 a class server not answering | ACE-Step pointed at a port nothing listens on | **Pass.** "The ACE-Step service is unreachable right now…", **Retry** shown, choices kept |
 
 ### Cover art
 - **Every song gets its own cover.** After a song is saved, Qwen writes an image prompt from the song's
@@ -254,12 +268,11 @@ _TODO (D, task D7): one limitation or failure we investigated and what we learne
 | Open Road (B6) | 60 s | **10** | 8 | verse and chorus sung; the 2-line outro dropped |
 | Windows Down (sample_02, C6) | 60 s | **10** | 10 | every line sung, but "Together now" dropped from the chorus and the outro slurred |
 | Dust on the Gate (sample_03, C6) | 60 s | **10** | 9 | one chorus line skipped |
+| Miles of Sun (TC-02 on `rc1`) | 60 s | **10** | **10** | all sung |
 
-With 18 lines, three of the four songs lost about 8 lines or more, and the fourth lost 4 lines from the middle. With 10 lines, no song lost more than 2 lines or a whole section from the middle: one was sung in full, one dropped its 2-line outro, one dropped a few words and slurred its outro, and one skipped a single chorus line (the two C6 rows were counted by @gunnaroc against the lyrics while reviewing #51). So the fix greatly reduces what's lost, but doesn't make ACE-Step sing every word. Two songs weren't counted line by line: an earlier 60 s song with 18 lines (B5, *Static on the Road*) sounded clean to the listener, and a 10-line punk song (B6, *Debt Degree*) ran cleanly. Too few lines may have its own problem: in B2, a 60 s song with only a verse and a chorus stopped abruptly at about 58 s. The spike's likely cause was too few lyrics for the length (not tested on its own), so the 40–74 s plan adds a short outro. Because of the sample_02 spec result, we asked lane C to generate the shipped samples only after this fix; their generation log (`samples/GENERATION_LOG.md`) shows both vocal samples were sent the 10-line plan.
+With 18 lines, three of the four songs lost about 8 lines or more, and the fourth lost 4 lines from the middle. With 10 lines, no song lost more than 2 lines or a whole section from the middle: two were sung in full, one dropped its 2-line outro, one dropped a few words and slurred its outro, and one skipped a single chorus line (the two C6 rows were counted by @gunnaroc against the lyrics while reviewing #51, and the TC-02 row in the release-candidate test). So the fix greatly reduces what's lost, but doesn't make ACE-Step sing every word. Two songs weren't counted line by line: an earlier 60 s song with 18 lines (B5, *Static on the Road*) sounded clean to the listener, and a 10-line punk song (B6, *Debt Degree*) ran cleanly. Too few lines may have its own problem: in B2, a 60 s song with only a verse and a chorus stopped abruptly at about 58 s. The spike's likely cause was too few lyrics for the length (not tested on its own), so the 40–74 s plan adds a short outro. Because of the sample_02 spec result, we asked lane C to generate the shipped samples only after this fix; their generation log (`samples/GENERATION_LOG.md`) shows both vocal samples were sent the 10-line plan.
 
 **Trade-off.** Songs under 75 s have one verse and one chorus, not two. Songs of 75 s and up still get 18 lines, and the 120 s maximum hasn't been listened to line by line yet.
-
-> **TODO (B9, on rc1):** add the TC-02 vocal run (lines sent vs. sung) from [Test results](#test-results).
 
 ## Safeguards
 _TODO (A)._
