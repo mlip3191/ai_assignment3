@@ -37,8 +37,8 @@ def generate_image(
     """Generate one image and return its JPEG bytes, or raise ServiceError(service="flux").
 
     `client` and `config` are for tests and callers that already hold one. By default the shared FLUX
-    client is used, built from the app's settings on first use (the same pattern as the other clients)
-    and built again after a failed call, so a fixed setting takes effect on the next try.
+    client is used, built from the app's settings on first use (like the other clients). Unlike them,
+    it is built again after a failed call, so a fixed FLUX setting takes effect on the next try.
     """
     if not prompt or not prompt.strip():
         raise ValueError("prompt must not be empty")
