@@ -347,3 +347,96 @@ def test_the_shared_client_is_built_once_and_reused(
         flux.generate_image("a quiet forest")
     assert built["n"] == 1
     assert route.call_count == 2
+
+
+# ---- a failed call drops the shared client, so Retry cover reads the fixed settings (#74, TC-F5) ----
+
+DEAD_HOST = "127.0.0.1"
+DEAD_URL = f"http://{DEAD_HOST}:9006/v1/images/generations"
+
+
+def _settings_file(path: Path, flux_host: str) -> None:
+    """A settings file like the user's, with FLUX at `flux_host` and the other services on HOST."""
+    env = _env()
+    env["FLUX_BASE_URL"] = f"http://{flux_host}:{PORTS['flux']}"
+    path.write_bytes("".join(f"{k}={v}\n" for k, v in env.items()).encode("utf-8"))
+
+
+def test_retry_after_fixing_the_flux_address_uses_the_new_address_without_a_restart(
+    fresh_default, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """TC-F5: a dead FLUX address fails, the user fixes the settings file, and the next call works."""
+    from jukebox import config
+
+    settings = tmp_path / "settings"
+    _settings_file(settings, DEAD_HOST)
+    monkeypatch.setattr(config, "DEFAULT_ENV_FILE", settings)
+    for var in config.KNOWN_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(flux, "_make_default_client", lambda: ServiceClient("flux", sleep=lambda _s: None))
+    with respx.mock:
+        dead = respx.post(DEAD_URL).mock(side_effect=httpx.ConnectError("nothing listening"))
+        good = respx.post(FLUX_URL).respond(200, json=_reply())
+        with pytest.raises(ServiceError) as exc:
+            flux.generate_image("a calm lake")
+        assert (exc.value.service, exc.value.kind) == ("flux", "unavailable")
+
+        _settings_file(settings, HOST)  # fixed by hand; the app is not restarted
+        assert flux.generate_image("a calm lake") == JPEG
+    assert dead.call_count == 2  # one try and one retry, then the client was dropped
+    assert good.call_count == 1
+
+
+@pytest.mark.parametrize("status", [401, 404, 500])
+def test_any_failed_call_drops_the_shared_client(
+    fresh_default, monkeypatch: pytest.MonkeyPatch, cfg: Config, status: int
+) -> None:
+    """A wrong key (401) or path (404) is also a settings problem, so every failure starts afresh."""
+    built = {"n": 0}
+
+    def make() -> ServiceClient:
+        built["n"] += 1
+        return ServiceClient("flux", cfg, sleep=lambda _s: None)
+
+    monkeypatch.setattr(flux, "_make_default_client", make)
+    with respx.mock:
+        respx.post(FLUX_URL).mock(side_effect=[httpx.Response(status), httpx.Response(200, json=_reply())])
+        with pytest.raises(ServiceError):
+            flux.generate_image("a calm lake")
+        assert flux.generate_image("a calm lake") == JPEG
+    assert built["n"] == 2
+
+
+def test_a_failure_on_an_old_client_keeps_the_newer_one(fresh_default, cfg: Config) -> None:
+    """Two covers can fail at once: the second failure must not drop the client the first one rebuilt."""
+    old = ServiceClient("flux", cfg, sleep=lambda _s: None)
+    newer = ServiceClient("flux", cfg, sleep=lambda _s: None)
+    try:
+        flux._default = newer
+        flux._forget(old)
+        assert flux._default is newer
+        flux._forget(newer)
+        assert flux._default is None
+    finally:
+        old.close()
+        newer.close()
+
+
+def test_a_bad_prompt_does_not_drop_the_shared_client(
+    fresh_default, monkeypatch: pytest.MonkeyPatch, cfg: Config
+) -> None:
+    """A programming error (empty prompt) never reaches the server, so the client stays."""
+    built = {"n": 0}
+
+    def make() -> ServiceClient:
+        built["n"] += 1
+        return ServiceClient("flux", cfg, sleep=lambda _s: None)
+
+    monkeypatch.setattr(flux, "_make_default_client", make)
+    with respx.mock:
+        respx.post(FLUX_URL).respond(200, json=_reply())
+        flux.generate_image("a calm lake")
+        with pytest.raises(ValueError):
+            flux.generate_image("   ")
+        flux.generate_image("a quiet forest")
+    assert built["n"] == 1
