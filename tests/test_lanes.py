@@ -198,12 +198,39 @@ def test_submission_date_matches_project_md() -> None:
     assert milestone + timedelta(days=1) == submission_due(text)
 
 
-def test_no_feature_freeze_is_mentioned() -> None:
-    """The release lead dropped the feature freeze (10/27); teammates were holding work back for it."""
+# ---- no feature freeze (dropped 10/28) ------------------------------------------------------------
+# The release lead dropped the freeze; teammates were holding work back for it. The schedule must not
+# bring it back, but the decision log (section 2) may, and should, say why it was dropped.
+
+
+def _freeze_rows(text: str) -> list[str]:
+    """The table rows that mention a freeze (prose is allowed to)."""
+    return [line for line in text.splitlines() if line.startswith("|") and "freeze" in line.lower()]
+
+
+def test_no_freeze_row_in_the_schedule() -> None:
     spec, _ = load()
     for checkpoint in spec["checkpoints"]:
         assert "freeze" not in checkpoint["description"].lower(), checkpoint["title"]
-    assert "freeze" not in (ROOT / "PROJECT.md").read_text(encoding="utf-8").lower()
+    text = (ROOT / "PROJECT.md").read_text(encoding="utf-8")
+    section10 = text.split("## 10. Schedule & milestones", 1)[1].split("\n## 11.", 1)[0]
+    assert _freeze_rows(section10) == []
+
+
+def test_freeze_check_catches_the_old_row() -> None:
+    old_row = "| Feature freeze Tue 10/27, 9 pm — after this, only bug fixes and docs | All |"
+    assert _freeze_rows(f"| Task | Owner |\n|---|---|\n{old_row}") == [old_row]
+    assert _freeze_rows("We dropped the freeze, so D5 could merge.") == []
+    assert _freeze_rows("| Tag rc2; fix what the deploy test found | A |") == []
+
+
+def test_decision_log_records_dropping_the_freeze() -> None:
+    text = (ROOT / "PROJECT.md").read_text(encoding="utf-8")
+    section2 = text.split("## 2. Key decisions (decision log)", 1)[1].split("\n## 3.", 1)[0]
+    rows = [
+        line for line in section2.splitlines() if line.startswith("| 10/28 |") and "freeze" in line.lower()
+    ]
+    assert len(rows) == 1
 
 
 @pytest.mark.parametrize("path", ["PROJECT.md", "scripts/github/issues.json"])
