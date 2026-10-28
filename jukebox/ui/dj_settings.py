@@ -13,6 +13,7 @@ from pathlib import Path
 import gradio as gr
 from gradio.utils import get_upload_folder
 
+from jukebox.library import get_library
 from jukebox.services import dj
 
 log = logging.getLogger(__name__)
@@ -75,7 +76,11 @@ def on_reset() -> tuple[object, ...]:
 
 
 def on_load() -> tuple[object, ...]:
-    """A page opening (a reload or a second tab) shows the app-wide voice as it is now."""
+    """A page opening (a reload or a second tab) shows the app-wide voice as it is now, and warms
+    the first sample's DJ intro (D5): Play queue starts with it, before anything else can prefetch."""
+    first = next((track for track in get_library().list() if track.source == "sample"), None)
+    if first is not None:
+        dj.PREFETCH.prefetch(first)
     return _outputs(_current())
 
 

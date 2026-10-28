@@ -13,7 +13,7 @@ not generate anything.
 from __future__ import annotations
 
 import threading
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Literal
 
@@ -33,9 +33,18 @@ class PlayItem:
 
 
 class Player:
-    def __init__(self, songs: Mapping[str, str], dj_clips: Mapping[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        songs: Mapping[str, str],
+        dj_clips: Mapping[str, str] | None = None,
+        dj_failed: Callable[[str], bool] | None = None,
+    ) -> None:
+        """``dj_failed(track_id)`` says whether that song's DJ clip failed. With it, a song that has no
+        clip plays with the "DJ unavailable" notice only when it did; without it, a missing clip always
+        gets the notice."""
         self._songs = songs
         self._dj = dj_clips if dj_clips is not None else {}
+        self._dj_failed = dj_failed
         self._lock = threading.Lock()
         self._queue: list[str] = []
         self._current: PlayItem | None = None
@@ -113,7 +122,8 @@ class Player:
         dj_path = self._dj_path(track_id)
         if dj_path is None:
             self._current = PlayItem("song", track_id, self._songs[track_id])
-            self._notice = DJ_UNAVAILABLE
+            failed = self._dj_failed is None or self._dj_failed(track_id)
+            self._notice = DJ_UNAVAILABLE if failed else None
         else:
             self._current = PlayItem("dj", track_id, dj_path)
             self._notice = None

@@ -14,6 +14,9 @@ the audio that is playing.
 
 Under the audio, a Lyrics box shows the current song's lyrics, and Download song saves a copy named
 after the song (the served file's name carries the play token, so it cannot be the song's name).
+
+DJ intros (D5) come from ``dj.PREFETCH``: whenever an item starts or a song is added, the intro for
+the next queued song is made in the background, so it's ready when that song comes up.
 """
 
 from __future__ import annotations
@@ -21,7 +24,7 @@ from __future__ import annotations
 import re
 import shutil
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -29,6 +32,7 @@ import gradio as gr
 
 from jukebox.config import ROOT
 from jukebox.library import Library, get_library
+from jukebox.services import dj
 from jukebox.services.art import cover_for
 from jukebox.services.player import DJ_UNAVAILABLE, FINISHED, Player, PlayerError, PlayItem
 from jukebox.ui.markdown import escape
@@ -50,7 +54,7 @@ _RESERVED_NAMES = {
     *(f"{port}{n}" for port in ("COM", "LPT") for n in (*"0123456789", "¹", "²", "³")),
 }
 _TOKEN_IN_NAME = re.compile(r"^t(\d+)-")
-_CLIPS: dict[str, str] = {}
+_CLIPS = dj.PREFETCH.clips  # DJ intros in the voice in use now, filled in the background (D5)
 
 
 class LibrarySongs(Mapping[str, str]):
@@ -93,10 +97,15 @@ class PlayerView:
     download: str | None = None
 
 
-def open_player(library: Library, dj_clips: Mapping[str, str] | None = None) -> Player:
-    """A queue over this library. ``dj_clips`` is read live and may start empty."""
+def open_player(
+    library: Library,
+    dj_clips: Mapping[str, str] | None = None,
+    dj_failed: Callable[[str], bool] | None = None,
+) -> Player:
+    """A queue over this library. ``dj_clips`` is read live and may start empty. ``dj_failed`` says
+    whether a song's DJ intro failed; without it a missing clip always gets the notice."""
     clips = dj_clips if dj_clips is not None else {}
-    return Player(LibrarySongs(library), clips)
+    return Player(LibrarySongs(library), clips, dj_failed)
 
 
 _SESSIONS: dict[str, Player] = {}
@@ -114,7 +123,8 @@ def player_for(session_id: str, library: Library) -> tuple[Player, str]:
         if found is not None:
             return found, session_id
     new_id = uuid.uuid4().hex
-    player = open_player(library, _CLIPS)
+    # A song with no intro says "DJ unavailable" only if its intro failed (not when none was asked for).
+    player = open_player(library, _CLIPS, dj.PREFETCH.has_failed)
     _SESSIONS[new_id] = player
     return player, new_id
 
@@ -161,6 +171,7 @@ def on_add(player: Player, library: Library, token: int, track_id: str | None, r
         player.enqueue(_known_id(library, track_id))
     except PlayerError:
         return _unknown(player, library, token)
+    _prefetch_next(player, library)
     return replace(_view(player, library, token, audio=None, ignored=False), keep_audio=True)
 
 
@@ -313,6 +324,7 @@ def _show(
 ) -> PlayerView:
     if item is None:
         return _view(player, library, token, audio=None, ignored=False)
+    _prefetch_next(player, library)
     try:
         served = _serve(item.audio_path, token, runtime)
     except OSError:
@@ -333,6 +345,18 @@ def _show(
     except OSError:
         download = None  # the song still plays; only the button stays hidden
     return replace(_view(player, library, token, audio=str(served), ignored=False), download=download)
+
+
+def _prefetch_next(player: Player, library: Library) -> None:
+    """Start the next queued song's DJ intro in the background (D5). Never waits for it."""
+    waiting = player.queue
+    upcoming = library.get(waiting[0]) if waiting else None
+    if upcoming is None:
+        return
+    current = player.current
+    previous = library.get(current.track_id) if current is not None else None
+    # If the listener skips past this song before its turn comes, the intro is no longer needed.
+    dj.PREFETCH.prefetch(upcoming, previous=previous, still_wanted=lambda: player.queue[:1] == [upcoming.id])
 
 
 def _title(library: Library, track_id: str) -> str:

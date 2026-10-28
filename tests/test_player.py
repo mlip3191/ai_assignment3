@@ -60,6 +60,36 @@ def test_skip_during_a_song_moves_to_the_next_track():
     assert player.current == PlayItem("dj", "s2", "runtime/dj/s2.mp3")
 
 
+def test_a_missing_clip_that_did_not_fail_plays_the_song_with_no_notice():
+    """D5: no intro was asked for (Play now on a fresh song), so the DJ did not break."""
+    asked: list[str] = []
+    player = Player(SONGS, {}, dj_failed=lambda track_id: asked.append(track_id) or False)
+    player.enqueue("s1")
+
+    assert player.next_item() == PlayItem("song", "s1", SONGS["s1"])
+    assert player.notice is None
+    assert asked == ["s1"]
+
+
+def test_a_missing_clip_whose_intro_failed_says_dj_unavailable():
+    player = Player(SONGS, {}, dj_failed=lambda track_id: True)
+    player.enqueue("s1")
+
+    assert player.next_item() == PlayItem("song", "s1", SONGS["s1"])
+    assert player.notice == DJ_UNAVAILABLE
+
+
+def test_the_failure_check_is_not_asked_when_the_clip_is_there():
+    def boom(track_id: str) -> bool:
+        raise AssertionError("asked about a track whose clip exists")
+
+    player = Player(SONGS, {"s1": "runtime/dj/s1.mp3"}, dj_failed=boom)
+    player.enqueue("s1")
+
+    assert player.next_item() == PlayItem("dj", "s1", "runtime/dj/s1.mp3")
+    assert player.notice is None
+
+
 def test_skip_during_a_song_plays_the_next_song_when_its_dj_clip_is_missing():
     player = Player(SONGS, {"s1": "runtime/dj/s1.mp3"})
     player.enqueue("s1")
