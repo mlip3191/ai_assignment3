@@ -37,7 +37,8 @@ def generate_image(
     """Generate one image and return its JPEG bytes, or raise ServiceError(service="flux").
 
     `client` and `config` are for tests and callers that already hold one. By default the shared FLUX
-    client is used, built from the app's settings on first use (the same pattern as the other clients).
+    client is used, built from the app's settings on first use (like the other clients). Unlike them,
+    it is built again after a failed call, so a fixed FLUX setting takes effect on the next try.
     """
     if not prompt or not prompt.strip():
         raise ValueError("prompt must not be empty")
@@ -51,7 +52,12 @@ def generate_image(
     if config is not None:
         with ServiceClient("flux", config) as own_client:
             return _generate(own_client, prompt, width, height, seed)
-    return _generate(_get_default(), prompt, width, height, seed)
+    shared = _get_default()
+    try:
+        return _generate(shared, prompt, width, height, seed)
+    except ServiceError:
+        _forget(shared)  # the next call (Retry cover) reads the settings again (#74, TC-F5)
+        raise
 
 
 def _generate(flux_client: ServiceClient, prompt: str, width: int, height: int, seed: int | None) -> bytes:
@@ -82,6 +88,17 @@ def _get_default() -> ServiceClient:
             except ConfigError as e:
                 raise ServiceError("flux", "config", "; ".join(e.problems)[:300]) from None
         return _default
+
+
+def _forget(failed: ServiceClient) -> None:
+    """Drop the shared client after a failed call, so the next call builds one from the settings as they
+    are now: a FLUX address or key fixed in .env works on Retry cover without a restart. Only `failed` is
+    dropped, never a newer client another call already built. It is not closed here, because another
+    cover may still be using it; its connections are freed once nothing holds it any more."""
+    global _default
+    with _default_lock:
+        if _default is failed:
+            _default = None
 
 
 def _request_body(
