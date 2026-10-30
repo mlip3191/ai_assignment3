@@ -117,7 +117,7 @@ Same steps, but choose **Vocal** in step 4. The first stage after **Queued** is 
 
 The vocal result card is in the screenshot above, and an instrumental one is under [Cover art](#cover-art).
 
-![The player: Now playing with the song's title and cover, the audio player, and Up next with the next song's cover](docs/screenshots/player-now-playing.png)
+![The player: Now playing with the song's title and cover, the audio player, and Up next with the next song's cover](docs/screenshots/player-now-playing-dj.png)
 
 *The player playing a vocal sample song, with the next song under **Up next**.*
 
