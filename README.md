@@ -117,9 +117,9 @@ Same steps, but choose **Vocal** in step 4. The first stage after **Queued** is 
 
 The vocal result card is in the screenshot above, and an instrumental one is under [Cover art](#cover-art).
 
-![The player: Now playing with the song's title and cover, the audio player, and Up next with the next song's cover](docs/screenshots/player-now-playing.png)
+![The player: Now playing with the song's title and cover, the audio player, and Up next with the next song's cover](docs/screenshots/player-now-playing-dj.png)
 
-*The player playing the vocal song, with the next song under **Up next**.*
+*The player playing a vocal sample song, with the next song under **Up next**.*
 
 **What to expect**
 - **Wait:** about 5 to 10 seconds per song when the class servers are quiet. We measured 4.8 to 9.5 s in B5 (#32), 5.5 to 7 s in B6 (#36), and a reviewer saw 7 s. Most of it is the music model (ACE-Step, 4.4 to 8.4 s); the text model (Qwen) takes 0.4 to 1.5 s. The page says "usually about 10 s". It can take longer when many people use the class servers, and the status line keeps counting so you can see it hasn't frozen.
@@ -249,6 +249,9 @@ _TODO: other lanes' entries._
 - **An intro can name the wrong song before it.** Each intro is written while the song before it plays, and the script may add a short transition from that song. If you press **Play now** on a different song first, the intro that comes next can still refer to the song that was playing when it was written.
 - **A new DJ voice starts with the next intro.** A new voice applies only to intros made after the change. The intro already made for the next song was in the old voice and is dropped, so that song plays without an intro, and your voice speaks from the song after it.
 - **A song can start before its intro is ready.** Intros are made in the background, and one takes about 4 to 5 seconds when the class servers are idle (measured: 3.75 to 4.94 s). If you press **Play queue** right after the page opens, or skip quickly, the song plays without an intro. If that intro then fails, nothing tells you.
+
+**Player (E)**
+- **Play now may do nothing once the queue has finished.** Seen on Windows 11 on `rc1` and on `main` (`3fb136a`): after the player says "Queue finished", pressing **Play now** on a song briefly shows "Now playing … 0:00 / 0:00" and then goes back to "Queue finished", with no sound. On `rc1`, **Add to queue** then **Play queue** also started a song at its end (0:45 of 0:45), so it ended at once. **Workaround:** reload the page. Your songs stay in the Library, and **Play now** then plays from 0:00. A reload also clears the Play queue case. We could not reproduce this on macOS on current `main` with the DJ on (10/28). (#72)
 
 ## Design judgment
 _TODO (D, task D7): one limitation or failure we investigated and what we learned._
