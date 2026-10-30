@@ -320,11 +320,11 @@ With 18 lines, three of the four songs lost about 8 lines or more, and the fourt
 
 **What we heard.** The default voice was clear, sounded like a DJ, and matched its song. Both custom voices gave an intro that sounded like the speaker and was clearly different from the default voice. The built-in microphone recording sounded good, the iPhone one sounded clean, and the two sounded the same.
 
-**What we learned.** We did not see the muffled result again, and we heard no gain from the iPhone recording over the laptop one. This is not a like-for-like re-test of the spike: the person running it (@dilloncsmart then, @mlip3191 now), the machine, the OS (Windows 11 then, macOS now) and the recording all differ, and the speaker probably does too. We also compared two good recordings and never tried a deliberately poor one, so we haven't shown that recording quality doesn't matter. We don't know why the spike's recording sounded muffled, and we didn't check its file format or try it again, so the cause is still open. If a custom voice sounds wrong, click **Reset to default** and try another recording.
+**What we learned.** We did not see the muffled result again, and we heard no gain from the iPhone recording over the laptop one. This is not a like-for-like re-test of the spike: the person running it (@dilloncsmart then, @mlip3191 now), the machine, the OS (Windows 11 then, macOS now) and the recording all differ, and the speaker probably does too. We also compared two good recordings and never tried a deliberately poor one, so we haven't shown that recording quality doesn't matter. We don't know why the spike's recording sounded muffled, and we didn't test whether its format (a 44.1 kHz stereo WAV, or an MP3) caused it, or try it again, so the cause is still open. If a custom voice sounds wrong, click **Reset to default** and try another recording.
 
-**How far to trust this.** One speaker, one listener, one listen per voice, not blind, with different songs in each comparison, on macOS only. These are ears, not measurements. The spike's result is in [`docs/spikes/D1-chatterbox.md`](docs/spikes/D1-chatterbox.md).
+**How far to trust this.** One speaker, one listener, one intro heard per voice, not blind, with different songs in each comparison, on macOS only. These are ears, not measurements. The spike's result is in [`docs/spikes/D1-chatterbox.md`](docs/spikes/D1-chatterbox.md).
 
-**Related, from the same session.** A new voice applies from the next intro, so the first song after a change has no intro, and skipping within a few seconds of starting a song can also skip its intro (see [Known issues](#known-issues)).
+**Related.** A new voice applies from the next intro, so the first song after a change has no intro, and skipping within a few seconds of starting a song can also skip its intro (see [Known issues](#known-issues)).
 
 ## Safeguards
 _TODO (A)._
