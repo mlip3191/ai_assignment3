@@ -253,9 +253,6 @@ _TODO: other lanes' entries._
 **Player (E)**
 - **Play now may do nothing once the queue has finished.** Seen on Windows 11 on `rc1` and on `main` (`3fb136a`): after the player says "Queue finished", pressing **Play now** on a song briefly shows "Now playing … 0:00 / 0:00" and then goes back to "Queue finished", with no sound. On `rc1`, **Add to queue** then **Play queue** also started a song at its end (0:45 of 0:45), so it ended at once. **Workaround:** reload the page. Your songs stay in the Library, and **Play now** then plays from 0:00. A reload also clears the Play queue case. We could not reproduce this on macOS on current `main` with the DJ on (10/28). (#72)
 
-**Cover art (C)**
-- **Retry cover doesn't pick up a fixed FLUX setting until the app restarts.** If the FLUX service can't be reached, the song is saved with a placeholder cover and a **Retry cover** button. If you then correct `FLUX_BASE_URL` in `.env`, **Retry cover** keeps failing with "The FLUX service is unreachable right now" until you stop the app and start it again. Generated songs are not kept after a restart, so generate the song again. A fix (#77) is approved and will be in `v1.0`. (#74)
-
 ## Design judgment
 _TODO (D, task D7): one limitation or failure we investigated and what we learned._
 
