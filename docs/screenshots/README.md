@@ -3,13 +3,13 @@
 Taken by @felcervino with Claude Code on Windows 11, running `python app.py` against the class services, in a
 headless Microsoft Edge at 1280 px wide, light theme. Most are from the `rc1` tag (`a1a8846`, 2026-10-26).
 The DJ shots, `main-screen.png` and `player-now-playing-dj.png` were taken on 2026-10-29 from `main` at
-`690b406`, the commit `rc2` will be tagged from, because `rc1` had no DJ.
+`690b406`, the commit `rc2` was tagged from, because `rc1` had no DJ.
 Each was checked for credentials before it was committed: none shows `.env`, a key, a server address, a
 terminal, or browser devtools (DL10).
 
 | File | Shows | For |
 |---|---|---|
-| `main-screen.png` | The whole app: How to use, the Generate tab, and the player playing a sample song with two more under Up next | README Overview (not written yet, A9) |
+| `main-screen.png` | The top of the app (one 1280 px window): How to use, the Generate tab, and the player playing a sample song with two more under Up next | README Overview (not written yet, A9) |
 | `generate-vocal-song.png` | The Generate tab after a vocal song (pop, upbeat, 60 s, idea "road trip"): status, title, cover, lyrics, Play now and Add to queue | Using the app: Generate a song |
 | `cover-instrumental-result.png` | The result card of an instrumental song (lo-fi hip hop, mellow, 45 s) with its cover | Using the app: Cover art |
 | `library-song-cover.png` | The Library with the vocal song picked: its cover and details | Using the app: Cover art, Library |
