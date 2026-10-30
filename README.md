@@ -117,9 +117,9 @@ Same steps, but choose **Vocal** in step 4. The first stage after **Queued** is 
 
 The vocal result card is in the screenshot above, and an instrumental one is under [Cover art](#cover-art).
 
-![The player: Now playing with the song's title and cover, the audio player, and Up next with the next song's cover](docs/screenshots/player-now-playing.png)
+![The player: Now playing with the song's title and cover, the audio player, and Up next with the next song's cover](docs/screenshots/player-now-playing-dj.png)
 
-*The player playing the vocal song, with the next song under **Up next**.*
+*The player playing a vocal sample song, with the next song under **Up next**.*
 
 **What to expect**
 - **Wait:** about 5 to 10 seconds per song when the class servers are quiet. We measured 4.8 to 9.5 s in B5 (#32), 5.5 to 7 s in B6 (#36), and a reviewer saw 7 s. Most of it is the music model (ACE-Step, 4.4 to 8.4 s); the text model (Qwen) takes 0.4 to 1.5 s. The page says "usually about 10 s". It can take longer when many people use the class servers, and the status line keeps counting so you can see it hasn't frozen.
