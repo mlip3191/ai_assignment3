@@ -43,6 +43,7 @@ All the AI work is done by four class services, and nothing else: Qwen3.6-35B-A3
 - **The app ZIP:** from the Canvas submission, or from the repository's **Tags** page on GitHub: open the
   newest tag (the final one is `v1.0`) and click **Source code (zip)**. There is no GitHub Release page.
 - **A browser.** Browsers block sound until you click on the page, so start playback with **Play queue**.
+- **Nothing else.** No ffmpeg, Docker, Node or paid services. The Python packages install by themselves from `requirements.txt` (every version is pinned) the first time you start the app.
 
 ## Setup
 The launcher does the technical work: on the first start it creates your settings file and opens it for
@@ -295,7 +296,7 @@ The app is one Python program. The page you see is built by `jukebox/ui`, which 
 |---|---|---|
 | The three sample songs, their covers, and how they were made | `samples/` (`audio/`, `covers/`, `manifest.json`, `GENERATION_LOG.md`) | Yes |
 | Songs, covers and DJ clips you generate | `runtime/generated/` | No (`runtime/` is ignored by git and rejected by the ZIP check) |
-| A voice recording you upload for the DJ | `runtime/uploads/`, one file with a random name. It is deleted when you replace or reset the voice, and any left over from an earlier run is deleted when the app starts on its usual port (7860). | No |
+| A voice recording you upload for the DJ | `runtime/uploads/`, one file with a random name, plus the copy Gradio makes of it under `runtime/uploads/gradio/`. The named file is deleted when you replace or reset the voice, and anything left over from an earlier run (including the Gradio copy) is deleted when the app starts on its usual port (7860). | No |
 | The song list (the library and the queue) | The app's memory | No: it lasts until you stop the app. After a restart you have the three samples again, though the files you made stay in `runtime/generated/`. |
 | Your settings and key | `.env` | No |
 
@@ -410,11 +411,11 @@ The assignment's safeguards are in [`docs/STARTER_PROMPT.md`](docs/STARTER_PROMP
 - **A review agent corrected a draft of this README (#85).** A draft of the DJ section said the three sample songs were "already in the queue" (**Play queue** fills an empty queue), listed test details that nobody had confirmed, and compared a new voice test with an earlier one without saying that the speaker, machine and operating system had changed. All three were fixed before the change was pushed.
 
 ## Team & contributions
-Counts are from GitHub on 2026-10-30. "Authored" includes open and closed-unmerged pull requests; "reviewed" counts other people's pull requests that the person reviewed in any way (comment or approval). Each count links to the GitHub list behind it.
+Counts are from GitHub on 2026-10-30. "Authored" includes open and closed-unmerged pull requests; "reviewed" counts other people's pull requests that the person reviewed with a formal GitHub review (approval, requested changes or a review comment); plain comments on a pull request are not counted. Each count links to the GitHub list behind it.
 
 | Member | Role | What they built | PRs authored | PRs reviewed |
 |---|---|---|---|---|
-| Michael Lippert ([@mlip3191](https://github.com/mlip3191)), macOS | A: Platform & Release (release lead); D: AI DJ & Launchers from #65 | Project plan, scaffold and guardrails; the settings loader, shared HTTP client and error model; the track library and job store; the pre-push gate; wiring Generate and Library to the player; the DJ voice upload and the prefetched DJ intros; the release candidates and their ZIP checks; the reliability pass | [29](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+author%3Amlip3191) | [45](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+reviewed-by%3Amlip3191+-author%3Amlip3191) |
+| Michael Lippert ([@mlip3191](https://github.com/mlip3191)), macOS | A: Platform & Release (release lead); D: AI DJ & Launchers from #65 | Project plan, scaffold and guardrails; the settings loader, shared HTTP client and error model; the track library and job store; the pre-push gate; wiring Generate and Library to the player; the DJ voice upload and the prefetched DJ intros; the release candidates and their ZIP checks; ran the reliability tests (TC-12, TC-14) | [29](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+author%3Amlip3191) | [45](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+reviewed-by%3Amlip3191+-author%3Amlip3191) |
 | Gunnar O'Connor ([@gunnaroc](https://github.com/gunnaroc)) | B: Song Generation | The Qwen and ACE-Step clients, the title and lyrics prompts, the song pipeline, the artist-name screen, the Generate tab, and the song-generation README | [13](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+author%3Agunnaroc) | [23](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+reviewed-by%3Agunnaroc+-author%3Agunnaroc) |
 | Felipe ([@felcervino](https://github.com/felcervino)) | C: Cover Art, Samples & Evidence | The FLUX client, the cover prompt, the placeholder, the cover service and **Retry cover**, the three sample songs and how they were made, the screenshots, the Setup and cover-art README sections, and **Surprise me** and **More like this** | [24](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+author%3Afelcervino) | [25](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+reviewed-by%3Afelcervino+-author%3Afelcervino) |
 | Adam Fondale ([@afondale](https://github.com/afondale)), Windows | E: Player, UX & QA | The player spike, the app shell, the queue, the player panel, and the failure-case evidence | [9](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+author%3Aafondale) | [27](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+reviewed-by%3Aafondale+-author%3Aafondale) |
