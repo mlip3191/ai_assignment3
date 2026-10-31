@@ -91,7 +91,7 @@ browser, usually at **http://127.0.0.1:7860** (if that port is busy, the launche
 | No sound | Click on the page first, then check your volume and output device. |
 
 ## Using the app
-_TODO: DJ (D), playback controls (E)._
+_TODO: playback controls (E)._ The DJ is under [The AI DJ](#the-ai-dj).
 
 ### Generate a song
 Open the **Generate** tab. Each choice has a one-line hint under its name.
@@ -172,6 +172,35 @@ Screenshots from `rc1` (Windows 11):
 ![A failed cover: the placeholder, the note that the FLUX service is unreachable, and Retry cover](docs/screenshots/error-cover-failed-retry.png)
 
 *A failed cover (here FLUX was unreachable): the song keeps the placeholder, with the note and **Retry cover**.*
+
+### The AI DJ
+Before each song in the queue, a DJ speaks a short intro about that song (30 to 45 words, about 10 seconds). The text model (Qwen) writes it from the song's title, style and mood, and the speech model (Chatterbox) says it. The next intro is made while the current song plays, so you usually don't wait for it.
+
+**Hear the DJ in the default voice**
+1. Click **Play queue**, under the player. With an empty queue, it fills the queue with the three sample songs.
+2. The player says **DJ speaking…** with the song's title and what's **Up next**. When the intro ends, the song plays. The same happens before every song after it.
+3. Under **Skip**, the **DJ voice** box says "Default DJ voice. Upload a recording (MP3 or WAV, 5 to 30 seconds, up to 10 MB) to use your own."
+
+![The DJ speaking before the first sample song, in the default voice: "DJ speaking…", Up next, and the DJ voice box saying Default DJ voice](docs/screenshots/dj-default-voice.png)
+
+*The DJ speaking in the default voice. The **DJ voice** box at the bottom shows the default is in use.*
+
+**Use your own voice**
+1. Get a clear recording of one person talking, MP3 or WAV, **5 to 30 seconds** long and **up to 10 MB**. In our test, a recording from a MacBook's built-in microphone and one from an iPhone both sounded like the speaker (see [Design judgment](#limitation-we-investigated-custom-voice-quality-d)).
+2. Drop the file on the **DJ voice** box, or click it and choose the file.
+3. The box now says **Custom voice active.** "New DJ intros use your recording." and a **Reset to default** button appears.
+4. Click **Play queue** (or add songs with **Add to queue**). Intros made from now on use your voice. The intro already made for the next song was in the old voice, so that song plays without an intro and your voice starts one song later (see [Known issues](#known-issues)).
+5. To go back, click **Reset to default**. The app also forgets your voice when it stops: the next start uses the default voice.
+
+![The DJ speaking in an uploaded voice: "Custom voice active", the DJ voice box, and Reset to default](docs/screenshots/dj-custom-voice.png)
+
+*After a recording was uploaded: **Custom voice active** and **Reset to default**.*
+
+**Where your recording goes.** The app keeps it in `runtime/uploads/` on your computer, which is not part of the repository or the submission ZIP. It sends the recording to the class speech service with each intro and doesn't save it there; the service keeps a small in-memory cache of recent recordings. Replacing or resetting the voice deletes the old recording.
+
+**If a file is rejected.** The box says why and which voice is still in use, for example "That file is empty. Choose an MP3 or WAV recording. Still using the default voice." or "Clip must be between 5 and 30 seconds (this one is 300.0). Still using the default voice." The other reasons are a file that is too big, one that can't be read as audio, and one that isn't an MP3 or WAV (the upload box turns those away itself, with its own wording). In test TC-F3 (@afondale, Windows 11, recorded in [PR #81](https://github.com/mlip3191/ai_assignment3/pull/81)) the bad files were rejected as described, but the default voice wasn't heard afterwards, so that test is marked Partial.
+
+**If the DJ can't speak.** The song still plays. The player shows "DJ unavailable for this track" and the next song carries on (test TC-F4, Chatterbox switched off for the run: the songs kept playing, with no intro).
 
 ## Sample songs
 
@@ -254,7 +283,6 @@ _TODO: other lanes' entries._
 - **Play now may do nothing once the queue has finished.** Seen on Windows 11 on `rc1` and on `main` (`3fb136a`): after the player says "Queue finished", pressing **Play now** on a song briefly shows "Now playing … 0:00 / 0:00" and then goes back to "Queue finished", with no sound. On `rc1`, **Add to queue** then **Play queue** also started a song at its end (0:45 of 0:45), so it ended at once. **Workaround:** reload the page. Your songs stay in the Library, and **Play now** then plays from 0:00. A reload also clears the Play queue case. We could not reproduce this on macOS on current `main` with the DJ on (10/28). (#72)
 
 ## Design judgment
-_TODO (D, task D7): one limitation or failure we investigated and what we learned._
 
 ### Design choice: lyrics sized to what ACE-Step will sing (B)
 **The choice.** The lyrics prompt asks Qwen for only as many lines as ACE-Step actually sings at the requested length (`plan_sections` in `jukebox/services/songs.py`):
@@ -284,6 +312,19 @@ _TODO (D, task D7): one limitation or failure we investigated and what we learne
 With 18 lines, three of the four songs lost about 8 lines or more, and the fourth lost 4 lines from the middle. With 10 lines, no song lost more than 2 lines or a whole section from the middle: two were sung in full, one dropped its 2-line outro, one dropped a few words and slurred its outro, and one skipped a single chorus line (@gunnaroc counted the two C6 rows against the lyrics while reviewing #51, and the TC-02 row during the `rc1` test). So the fix greatly reduces what's lost, but doesn't make ACE-Step sing every word. Two songs weren't counted line by line: an earlier 60 s song with 18 lines (B5, *Static on the Road*) sounded clean to the listener, and a 10-line punk song (B6, *Debt Degree*) ran cleanly. Too few lines may have its own problem: in B2, a 60 s song with only a verse and a chorus stopped abruptly at about 58 s. The spike's likely cause was too few lyrics for the length (not tested on its own), so the 40–74 s plan adds a short outro. Because of the sample_02 spec result, we asked lane C to generate the shipped samples only after this fix; their generation log (`samples/GENERATION_LOG.md`) shows both vocal samples were sent the 10-line plan.
 
 **Trade-off.** Songs under 75 s have one verse and one chorus, not two. Songs of 75 s and up still get 18 lines, and the 120 s maximum hasn't been listened to line by line yet.
+
+### Limitation we investigated: custom voice quality (D)
+**What we saw first.** The D1 spike was run by @dilloncsmart on Windows 11 on 2026-10-16. The custom-voice clips made from a team member's recording (about 11.6 s, recorded on a laptop microphone) came out muffled and didn't sound much like the speaker, while the default voice was clear but flatter than a real radio DJ. Voice cloning copies the quality of its reference, so the spike's note was that a cleaner recording should help, and it listed that re-test as a follow-up.
+
+**What we did.** On 2026-10-30, on macOS in Chrome, running `main` at `6382b97` (the code is the same as `rc2`; the commits since then are docs only), @mlip3191 first heard a DJ intro in the default voice. Then @mlip3191 read the same sentence twice, once into the Mac's built-in microphone and once into an iPhone. Both recordings were converted to WAV with `afconvert` (a tool that comes with macOS) and uploaded through the **DJ voice** box, one at a time. After each upload we played the sample queue and @mlip3191 listened to a DJ intro.
+
+**What we heard.** The default voice was clear, sounded like a DJ, and matched its song. Both custom voices gave an intro that sounded like the speaker and was clearly different from the default voice. The built-in microphone recording sounded good, the iPhone one sounded clean, and the two sounded the same.
+
+**What we learned.** We did not see the muffled result again, and we heard no gain from the iPhone recording over the laptop one. This is not a like-for-like re-test of the spike: the person running it (@dilloncsmart then, @mlip3191 now), the machine, the OS (Windows 11 then, macOS now) and the recording all differ, and the speaker probably does too. We also compared two good recordings and never tried a deliberately poor one, so we haven't shown that recording quality doesn't matter. We don't know why the spike's recording sounded muffled, and we didn't test whether its format (a 44.1 kHz stereo WAV, or an MP3) caused it, or try it again, so the cause is still open. If a custom voice sounds wrong, click **Reset to default** and try another recording.
+
+**How far to trust this.** One speaker, one listener, one intro heard per voice, not blind, with different songs in each comparison, on macOS only. These are ears, not measurements. The spike's result is in [`docs/spikes/D1-chatterbox.md`](docs/spikes/D1-chatterbox.md).
+
+**Related.** A new voice applies from the next intro, so the first song after a change has no intro, and skipping within a few seconds of starting a song can also skip its intro (see [Known issues](#known-issues)).
 
 ## Safeguards
 _TODO (A)._
