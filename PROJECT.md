@@ -1560,7 +1560,7 @@ Rules for code that has to work on both (also in CLAUDE.md):
 | `bash: ...run_py.sh: $'\r': command not found` | — | The file got Windows line endings. Delete `.claude/hooks/run_py.sh`, then `git checkout -- .claude/hooks/run_py.sh` |
 | `pip install` fails with "path too long" | — | Move the clone to `C:\dev\ai-jukebox`; or run `git config --global core.longpaths true` |
 | `.venv` broken after copying the folder between machines/OSes | Delete `.venv`, re-run `python3 scripts/setup_dev.py` | Delete `.venv`, re-run `py scripts\setup_dev.py` |
-| Gradio page won't load | Check the URL is `http://127.0.0.1:7860`; another app may own the port, so change `APP_PORT` in `.env` | Same; also allow Python through Windows Defender Firewall if prompted (local only) |
+| Gradio page won't load | Open the address the terminal prints after "Open" (usually `http://127.0.0.1:7860`; if another app owns that port the app uses 7861 instead) | Same; also allow Python through Windows Defender Firewall if prompted (local only) |
 | No sound in the browser | Click the page once (browsers block autoplay until you interact); check output device | Same |
 
 ---
