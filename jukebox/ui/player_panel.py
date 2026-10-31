@@ -55,6 +55,41 @@ _RESERVED_NAMES = {
 }
 _TOKEN_IN_NAME = re.compile(r"^t(\d+)-")
 _CLIPS = dj.PREFETCH.clips  # DJ intros in the voice in use now, filled in the background (D5)
+# Chrome leaves the audio element at the end of the file that just finished. Loading another file of
+# that same length then fires "ended" at once, so Play now after "Queue finished" snaps back (#72).
+# A DJ clip is a different length and plays, which is why that path did not show it. Seek back to 0
+# while the old file is still loaded, before its source is replaced.
+ENDED_AUDIO_RESTART_JS = """
+const proto = HTMLMediaElement.prototype;
+function jukeboxAtEnd(media) {
+  const duration = media.duration;
+  return media.ended || (
+    Number.isFinite(duration) && duration > 0 && media.currentTime >= duration - 0.05
+  );
+}
+function jukeboxRewind(media) {
+  if (!jukeboxAtEnd(media)) return;
+  try { media.currentTime = 0; } catch (err) { /* no media loaded yet */ }
+}
+if (!proto.play.__jukebox) {
+  const play = proto.play;
+  function jukeboxPlay() {
+    jukeboxRewind(this);
+    return play.call(this);
+  }
+  jukeboxPlay.__jukebox = true;
+  proto.play = jukeboxPlay;
+}
+if (!proto.removeAttribute.__jukebox) {
+  const remove = proto.removeAttribute;
+  function jukeboxRemove(name) {
+    if (name === "src") jukeboxRewind(this);
+    return remove.call(this, name);
+  }
+  jukeboxRemove.__jukebox = true;
+  proto.removeAttribute = jukeboxRemove;
+}
+"""
 
 
 class LibrarySongs(Mapping[str, str]):
@@ -159,8 +194,11 @@ def on_end(
     audio_value: object,
     runtime: Path,
 ) -> PlayerView:
-    """Advance when the file that ended is the one this token started."""
-    if token_from_audio(audio_value) != token:
+    """Advance when the file that ended is the one this token started.
+
+    With nothing playing, a second end (the element is still at the end of the last file) is ignored.
+    """
+    if player.current is None or token_from_audio(audio_value) != token:
         return _view(player, library, token, audio=None, ignored=True)
     return _show(player, library, player.next_item(), token + 1, runtime)
 
@@ -248,6 +286,14 @@ def render(*, library: Library | None = None) -> PlayerPanel:
     """Wire Play queue, Skip, and the end event to this session's player, and return the panel handle."""
     library = get_library() if library is None else library
     runtime = ROOT / "runtime" / "player"
+    # Installed on page load, before a later Play now replaces the finished file (#72).
+    gr.HTML(
+        "",
+        visible="hidden",
+        elem_id="player-audio-restart",
+        js_on_load=ENDED_AUDIO_RESTART_JS,
+        padding=False,
+    )
     status = gr.Markdown(_idle_text(), elem_id="player-panel")
     cover = gr.Image(
         label="Cover",
