@@ -397,9 +397,9 @@ The assignment's safeguards are in [`docs/STARTER_PROMPT.md`](docs/STARTER_PROMP
 **What we used.** The team's coding agent was Claude Code, set up with team rules in [`CLAUDE.md`](CLAUDE.md) and shared commands (`/start-session`, `/check`, `/finish-session`, `/review-pr`, `/log-test`). The exception is Adam Fondale, who used Grok. Every pull request has an "AI assistance" note that says which assistant was used and who checked the work. The assignment's starter prompt, word for word, and our additions to it are in [`docs/STARTER_PROMPT.md`](docs/STARTER_PROMPT.md); the additions were added early in the build (C0, #16). The AI models inside the app are a separate matter: they are the four class services only (see [Safeguards](#safeguards)).
 
 **How we checked it.**
-1. One task per branch, and the test cases are written first. The full test suite runs before every push (`pre-push` gate) and again in CI.
-2. Before a push, a separate review agent reads the whole change and every blocking finding is fixed. Then a person gives a clear yes.
-3. A teammate other than the author reviews and approves the pull request, and the owner of the changed files merges it. Nobody merges their own unreviewed work.
+1. One task per branch. Code changes must come with test changes, and the full test suite runs before every push (the `pre-push` gate, once it's set up) and again in CI. Our rule was to write the test cases first.
+2. In the Claude Code workflow, a separate review agent reads the whole change before a push, every blocking finding is fixed, and then a person gives a clear yes. Every pull request, whichever assistant was used, also goes through CI and a teammate's review (next step).
+3. A teammate other than the author reviews and approves the pull request, and the owner of the changed files merges it. Nobody merges their own unreviewed work. GitHub requires one approval and a passing check before anything merges to `main`.
 4. Audio, covers and the DJ voice need a human to look or listen, so a result is logged in `docs/TEST_EVIDENCE.md` only if someone ran it and says what they saw. What was not checked is written in the row.
 
 **Mistakes we caught.** Each of these was found by testing, CI or review, and fixed:
