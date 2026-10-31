@@ -20,7 +20,18 @@ Full instructions with a macOS and a Windows column: PROJECT.md §16.1. Short ve
 Never commit `.env`.
 
 ## Overview
-_TODO (A): what the app does + main screenshot._
+AI Jukebox runs on your own computer and opens in your browser. It does three things:
+- **Makes songs.** Pick a style, a mood, a length (10 to 120 seconds) and instrumental or vocal. A vocal song gets original lyrics written for it. A song takes about 5 to 10 seconds when the class servers are quiet.
+- **Paints a cover for every song,** from the song's style and mood. If the cover fails, the song is kept with a placeholder and **Retry cover** tries again.
+- **Plays a queue with a DJ.** Before each song, the DJ normally speaks a short intro about it, in the default voice or one you upload. Three sample songs are included, so you can press **Play queue** and hear it before making anything.
+
+All the AI work is done by four class services, and nothing else: Qwen3.6-35B-A3B for text, FLUX.2 klein 4B for covers, ACE-Step 1.5 XL Turbo for music, and Chatterbox Multilingual V3 for the DJ's voice. Your class key stays on your computer (see [The settings file](#the-settings-file-env)).
+
+![The main screen: the How to use text, the Generate and Library tabs, and the player playing a sample song with two more under Up next](docs/screenshots/main-screen.png)
+
+*The top of the app on Windows 11, running `rc2`: how to use it, the Generate tab, and the player.*
+
+**Status.** The release candidate is `rc2`; the submitted version will be `v1.0`. It has been run on Windows 11 and on macOS; the results are under [Test results](#test-results).
 
 ## Requirements
 - **A computer:** Windows 10 or 11, or macOS 13 or newer.
@@ -29,9 +40,10 @@ _TODO (A): what the app does + main screenshot._
   home network.
 - **The class credentials** in `class-endpoints.txt`, from the course materials (ask the instructors if you
   don't have it).
-- **The app ZIP:** from the Canvas submission, or from the repository's **Releases** page on GitHub
-  (**Source code (zip)**).
+- **The app ZIP:** from the Canvas submission, or from the repository's **Tags** page on GitHub: open the
+  newest tag (the final one is `v1.0`) and click **Source code (zip)**. There is no GitHub Release page.
 - **A browser.** Browsers block sound until you click on the page, so start playback with **Play queue**.
+- **Nothing else.** No ffmpeg, Docker, Node or paid services. The Python packages install by themselves from `requirements.txt` (every version is pinned) the first time you start the app.
 
 ## Setup
 The launcher does the technical work: on the first start it creates your settings file and opens it for
@@ -40,7 +52,7 @@ browser, usually at **http://127.0.0.1:7860** (if that port is busy, the launche
 
 ### Windows
 1. **Install Python** from **python.org/downloads** (3.12 recommended). On the installer's first screen,
-   tick **Add python.exe to PATH**, then click **Install Now**.
+   tick **Add python.exe to PATH**, then click **Install Now**. The installer can take several minutes.
 2. **Unblock the ZIP before you extract it.** Right-click the downloaded ZIP, choose **Properties**, and at
    the bottom of the General tab tick **Unblock**, then click **OK** (no Unblock box means it's already
    unblocked). Without this, Windows' Smart App Control blocks `run.bat` ("Smart App Control blocked a file
@@ -60,7 +72,7 @@ browser, usually at **http://127.0.0.1:7860** (if that port is busy, the launche
    black launcher window open while you use the app; **close that window to stop the app**.
 
 ### macOS
-1. **Install Python** from **python.org/downloads** (3.12 recommended, the `.pkg` installer).
+1. **Install Python** from **python.org/downloads** (3.12 recommended, the `.pkg` installer). The installer can take several minutes.
 2. **Extract the ZIP:** double-click it in Downloads, then drag the folder it creates into your home folder
    (Finder > Go > Home). Open the folder until you see `run.sh` and `README.md`: that's the **app folder**.
    Don't put it inside iCloud Drive.
@@ -76,6 +88,24 @@ browser, usually at **http://127.0.0.1:7860** (if that port is busy, the launche
 5. **Start the app:** run `bash run.sh` again the same way. The first time, it installs what the app needs,
    which takes a few minutes. Then it checks the class servers and opens the app in your browser. Keep the
    Terminal window open while you use the app; close it or press **Ctrl+C** to stop the app.
+
+### The settings file (`.env`)
+The launcher creates `.env` from `.env.example`. These are the settings. Only the first five need your values.
+
+| Setting | What it's for | Port | Example (placeholder only) |
+|---|---|---|---|
+| `CLASS_API_KEY` | The class key, sent to the four class services | | `your-class-api-key-here` |
+| `QWEN_BASE_URL` | Text: titles, lyrics, cover prompts, DJ scripts (Qwen3.6-35B-A3B) | 9001 | `http://CLASS_HOST:9001` |
+| `FLUX_BASE_URL` | Cover art (FLUX.2 klein 4B) | 9006 | `http://CLASS_HOST:9006` |
+| `ACESTEP_BASE_URL` | Music (ACE-Step 1.5 XL Turbo) | 9007 | `http://CLASS_HOST:9007` |
+| `CHATTERBOX_BASE_URL` | DJ speech (Chatterbox Multilingual V3) | 9008 | `http://CLASS_HOST:9008` |
+| `QWEN_MODEL`, `FLUX_MODEL`, `ACESTEP_MODEL`, `CHATTERBOX_MODEL` | The model names the services expect. Already filled in; leave them. | | |
+| `QWEN_TIMEOUT_S`, `FLUX_TIMEOUT_S`, `ACESTEP_TIMEOUT_S`, `CHATTERBOX_TIMEOUT_S` | How long to wait for each service. Optional; leave them. | | |
+| `APP_HOST`, `APP_PORT` | Not used yet: the app always listens on `127.0.0.1:7860`, or on `7861` if that port is busy. Leave them. | | |
+
+Enter only `http://host:port`: if `class-endpoints.txt` shows a trailing `/v1`, leave it out. **Port 9000 is never used**: the launcher stops and names the setting if any address uses it, or if a service's address uses another service's port. To check your settings without showing them, run `python scripts/check_config.py`.
+
+**Keeping the key safe.** `.env` is ignored by git, so it can't be committed, and the release ZIP check fails if one is inside. Only the app's server code reads the key (`jukebox/config.py`) and sends it to the class services; the page in your browser never receives it, and the app removes it from its logs. Never email `.env`, paste it into a chat or an issue, or put it in a screenshot. **If a key leaks** (committed, posted or emailed): get a replacement by following the class instructions, put the new value in `.env`, and remove the leaked copy from where it went. For a commit, that means purging it from the repository's history, not only deleting the file.
 
 ### If something goes wrong
 | What you see | What to do |
@@ -198,7 +228,7 @@ Before each song in the queue, a DJ speaks a short intro about that song (30 to 
 
 **Where your recording goes.** The app keeps it in `runtime/uploads/` on your computer, which is not part of the repository or the submission ZIP. It sends the recording to the class speech service with each intro and doesn't save it there; the service keeps a small in-memory cache of recent recordings. Replacing or resetting the voice deletes the old recording.
 
-**If a file is rejected.** The box says why and which voice is still in use, for example "That file is empty. Choose an MP3 or WAV recording. Still using the default voice." or "Clip must be between 5 and 30 seconds (this one is 300.0). Still using the default voice." The other reasons are a file that is too big, one that can't be read as audio, and one that isn't an MP3 or WAV (the upload box turns those away itself, with its own wording). In test TC-F3 (@afondale, Windows 11, recorded in [PR #81](https://github.com/mlip3191/ai_assignment3/pull/81)) the bad files were rejected as described, but the default voice wasn't heard afterwards, so that test is marked Partial.
+**If a file is rejected.** The box says why and which voice is still in use, for example "That file is empty. Choose an MP3 or WAV recording. Still using the default voice." or "Clip must be between 5 and 30 seconds (this one is 300.0). Still using the default voice." The other reasons are a file that is too big, one that can't be read as audio, and one that isn't an MP3 or WAV (the upload box turns those away itself, with its own wording). In test TC-F3 (@afondale, Windows 11, recorded in [`docs/TEST_EVIDENCE.md`](docs/TEST_EVIDENCE.md)) the bad files were rejected as described, but the default voice wasn't heard afterwards, so that test is marked Partial.
 
 **If the DJ can't speak.** The song still plays. The player shows "DJ unavailable for this track" and the next song carries on (test TC-F4, Chatterbox switched off for the run: the songs kept playing, with no intro).
 
@@ -248,7 +278,29 @@ in `samples/manifest.json`, which the app loads at startup.
   prompt, and the human listening, cover and originality checks.
 
 ## Architecture
-_TODO (A)._
+```
+ Your browser  <---->  Gradio server on your computer (127.0.0.1:7860)
+                               |
+        jukebox/ui  ->  jukebox/services  ->  jukebox/clients  ---->  Qwen         :9001  (text)
+        (the page)      (songs, art,          (the only code         FLUX         :9006  (covers)
+                         dj, player)           that calls the         ACE-Step     :9007  (music)
+                                               class servers)         Chatterbox   :9008  (DJ speech)
+```
+
+The app is one Python program. The page you see is built by `jukebox/ui`, which only calls the services. The services (`jukebox/services`: songs, art, dj, player) decide what to make and in what order. Only `jukebox/clients` talks to the class servers: one client per service, each with its own address and port. A check (`scripts/check_models.py`) fails if any other code makes a network call, if a feature uses a client that isn't its own (songs use Qwen and ACE-Step, covers use Qwen and FLUX, the DJ uses Qwen and Chatterbox, the player and the page use none), or if any other AI model, SDK or port appears.
+
+**Why your key never reaches the browser.** Only `jukebox/config.py` reads the key from `.env`, and the clients add it to each request on the server side. The page is plain Gradio, so it receives text and files, never the key. The app listens only on `127.0.0.1`, so nobody else on your network can open it, and Gradio's public share links are switched off. Logs name the service and the address, never the key or the request headers.
+
+**Where things are stored.**
+| What | Where | In git or the ZIP? |
+|---|---|---|
+| The three sample songs, their covers, and how they were made | `samples/` (`audio/`, `covers/`, `manifest.json`, `GENERATION_LOG.md`) | Yes |
+| Songs, covers and DJ clips you generate | `runtime/generated/` | No (`runtime/` is ignored by git and rejected by the ZIP check) |
+| A voice recording you upload for the DJ | `runtime/uploads/`, one file with a random name, plus the copy Gradio makes of it under `runtime/uploads/gradio/`. The named file is deleted when you replace or reset the voice, and anything left over from an earlier run (including the Gradio copy) is deleted when the app starts on its usual port (7860). | No |
+| The song list (the library and the queue) | The app's memory | No: it lasts until you stop the app. After a restart you have the three samples again, though the files you made stay in `runtime/generated/`. |
+| Your settings and key | `.env` | No |
+
+A song is saved before its cover is made, so a failed cover never loses the song. A failed DJ intro is skipped and the song plays. There is no fallback to any other model: on a failure the app shows a plain message and offers **Retry**.
 
 ## Test results
 _TODO (E): from docs/TEST_EVIDENCE.md. Separate completed tests from unchecked claims._
@@ -326,8 +378,47 @@ With 18 lines, three of the four songs lost about 8 lines or more, and the fourt
 
 **Related.** A new voice applies from the next intro, so the first song after a change has no intro, and skipping within a few seconds of starting a song can also skip its intro (see [Known issues](#known-issues)).
 
+## Documentation verification
+_TODO (B and D, tasks B10 and D9): which README steps we followed on which OS, what was wrong, and what was fixed._
+
 ## Safeguards
-_TODO (A)._
+The assignment's safeguards are in [`docs/STARTER_PROMPT.md`](docs/STARTER_PROMPT.md), word for word. This is how each one is enforced, and by what.
+
+| Safeguard | What we do | Enforced by |
+|---|---|---|
+| **Credentials stay out of GitHub, the ZIP, the browser, logs and docs** | The key lives only in `.env`. Examples and docs use placeholders (`.env.example`). The browser never receives the key, and logs scrub it. | `.gitignore` (`.env`, `.env.*`); `scripts/scan_secrets.py`, which fails on a committed or zipped env file, on key-like strings, and on any value from your own `.env` found in a file, and runs in `/check`, in the pre-push gate and in CI; `jukebox/config.py`, where the key is a secret value that is never printed; log scrubbing in `jukebox/clients/base.py`; a guard hook that stops Claude Code from reading, printing or staging `.env` |
+| **No uploads or voice recordings in GitHub or the ZIP** | An uploaded voice is saved only in `runtime/uploads/` under a random name. It is deleted when you replace or reset the voice, and left-over recordings are deleted when the app starts. It is sent to the voice service with each intro, never saved there as a named voice. | `.gitignore` (`runtime/`, `*.zip`); `scan_secrets.py` fails on anything under `runtime/` and on audio outside `samples/audio/`, in the repo and in a downloaded ZIP (`--zip`); only the one folder is ever written to for uploads (`jukebox/services/dj.py`) |
+| **No third-party music, lyrics, cover art or voice samples** | The three sample songs, their lyrics and their covers were all made through the app's own Qwen, FLUX and ACE-Step clients, and `samples/GENERATION_LOG.md` records how. The prompts ask for original work and never an artist; phrases that name an artist in your style text are removed before they reach the models. | The sample list and log, reviewed in pull requests; the audio-location rule in `scan_secrets.py`; the prompts in `jukebox/prompts/` |
+| **Only the four class models; never port 9000** | Qwen (9001), FLUX (9006), ACE-Step (9007) and Chatterbox (9008) each do one job. A failure shows a message and offers **Retry**, never a different model. | `scripts/check_models.py` with `scripts/model_policy.json` (fails on other AI libraries, hosted services, a network call outside `jukebox/clients/`, or a feature using the wrong client), in `/check` and in CI on Linux (every pull request and every push to `main`); `jukebox/config.py` and `scripts/check_config.py`, which refuse a port-9000 address or a service on another service's port; `scan_secrets.py`, which flags port 9000 in app code |
+| **Every change is checked before it merges** | One task per branch, never a commit on `main`; the pre-push gate runs lint, format, the secret scan, the models check, the config check and the whole pytest suite; commits must be written by the person pushing them; someone other than the author approves, and the owner of the changed files merges. | `.githooks/pre-push` and `scripts/prepush.py`; `scripts/check_authors.py`; `.github/CODEOWNERS`; a Claude Code guard hook that blocks commits and pushes to `main`, force pushes and skipped checks |
+
+**What we have and haven't checked.** The secret scan passes on the repository and on the `rc2` ZIP (GitHub's download of the tag), and the models check passes on every pull request. The full inspection of the ZIP, the browser's network tab, the logs and the screenshots (test TC-11), and the request log showing only the four services (TC-15), are part of the full test run, which isn't finished yet: see [Test results](#test-results).
+
+## How we used AI and checked its work
+**What we used.** The team's coding agent was Claude Code, set up with team rules in [`CLAUDE.md`](CLAUDE.md) and shared commands (`/start-session`, `/check`, `/finish-session`, `/review-pr`, `/log-test`). The exception is Adam Fondale, who used Grok. Every pull request has an "AI assistance" note that says which assistant was used and who checked the work. The assignment's starter prompt, word for word, and our additions to it are in [`docs/STARTER_PROMPT.md`](docs/STARTER_PROMPT.md); the additions were added early in the build (C0, #16). The AI models inside the app are a separate matter: they are the four class services only (see [Safeguards](#safeguards)).
+
+**How we checked it.**
+1. One task per branch. Code changes must come with test changes, and the full test suite runs before every push (the `pre-push` gate, once it's set up) and again in CI. Our rule was to write the test cases first.
+2. In the Claude Code workflow, a separate review agent reads the whole change before a push, every blocking finding is fixed, and then a person gives a clear yes. Every pull request, whichever assistant was used, also goes through CI and a teammate's review (next step).
+3. A teammate other than the author reviews and approves the pull request, and the owner of the changed files merges it. Nobody merges their own unreviewed work. GitHub requires one approval and a passing check before anything merges to `main`.
+4. Audio, covers and the DJ voice need a human to look or listen, so a result is logged in `docs/TEST_EVIDENCE.md` only if someone ran it and says what they saw. What was not checked is written in the row.
+
+**Mistakes we caught.** Each of these was found by testing, CI or review, and fixed:
+- **Retry cover kept a dead address (#74, fixed in #77).** After the FLUX address was corrected in the settings file, **Retry cover** still used the old one until a restart. The failure test TC-F5 found it, and the same test passed after the fix (see both TC-F5 rows in `docs/TEST_EVIDENCE.md`).
+- **Retry cover was hard to see (#66, fixed in #78).** On a failed cover the button rendered as small plain text and didn't look clickable. It was filed as an issue and became a full-size button, like **Play now**.
+- **CI caught a Windows-only test failure (#73).** The Windows CI job was red on every `main` run from 10/24 to 10/27 because one test ran WSL's `bash` instead of Git Bash. The problem was in the test, and #73 fixed it.
+- **Our local check and CI disagreed (#26, fixed in #31).** The pre-push gate ran `python -m pytest` while CI ran `pytest`, so the two could give different results. #31 makes the gate run the tests the way CI does.
+- **A review agent corrected a draft of this README (#85).** A draft of the DJ section said the three sample songs were "already in the queue" (**Play queue** fills an empty queue), listed test details that nobody had confirmed, and compared a new voice test with an earlier one without saying that the speaker, machine and operating system had changed. All three were fixed before the change was pushed.
 
 ## Team & contributions
-_TODO (A): member → role → PRs authored / reviewed._
+Counts are from GitHub on 2026-10-30. "Authored" includes open and closed-unmerged pull requests; "reviewed" counts other people's pull requests that the person reviewed with a formal GitHub review (approval, requested changes or a review comment); plain comments on a pull request are not counted. Each count links to the GitHub list behind it.
+
+| Member | Role | What they built | PRs authored | PRs reviewed |
+|---|---|---|---|---|
+| Michael Lippert ([@mlip3191](https://github.com/mlip3191)), macOS | A: Platform & Release (release lead); D: AI DJ & Launchers from #65 | Project plan, scaffold and guardrails; the settings loader, shared HTTP client and error model; the track library and job store; the pre-push gate; wiring Generate and Library to the player; the DJ voice upload and the prefetched DJ intros; the release candidates and their ZIP checks; ran the reliability tests (TC-12, TC-14) | [29](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+author%3Amlip3191) | [45](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+reviewed-by%3Amlip3191+-author%3Amlip3191) |
+| Gunnar O'Connor ([@gunnaroc](https://github.com/gunnaroc)) | B: Song Generation | The Qwen and ACE-Step clients, the title and lyrics prompts, the song pipeline, the artist-name screen, the Generate tab, and the song-generation README | [13](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+author%3Agunnaroc) | [23](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+reviewed-by%3Agunnaroc+-author%3Agunnaroc) |
+| Felipe ([@felcervino](https://github.com/felcervino)) | C: Cover Art, Samples & Evidence | The FLUX client, the cover prompt, the placeholder, the cover service and **Retry cover**, the three sample songs and how they were made, the screenshots, the Setup and cover-art README sections, and **Surprise me** and **More like this** | [24](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+author%3Afelcervino) | [25](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+reviewed-by%3Afelcervino+-author%3Afelcervino) |
+| Adam Fondale ([@afondale](https://github.com/afondale)), Windows | E: Player, UX & QA | The player spike, the app shell, the queue, the player panel, and the failure-case evidence | [9](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+author%3Aafondale) | [27](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+reviewed-by%3Aafondale+-author%3Aafondale) |
+| Dillon Smart ([@dilloncsmart](https://github.com/dilloncsmart)) | D: AI DJ & Launchers, until it was reassigned to Michael (#65) | The Chatterbox spike and client, the DJ commentary prompt and service, the `run.sh` and `run.bat` launchers, and the full-size **Retry cover** button | [7](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+author%3Adilloncsmart) | [12](https://github.com/mlip3191/ai_assignment3/pulls?q=is%3Apr+reviewed-by%3Adilloncsmart+-author%3Adilloncsmart) |
+
+The test runs recorded in `docs/TEST_EVIDENCE.md` were done by the people named in each row.
