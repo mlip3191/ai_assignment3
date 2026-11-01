@@ -330,6 +330,11 @@ _TODO: other lanes' entries._
 - **The music model doesn't always sing every word.** Even with lyrics sized to the length, 60 s songs have dropped their 2-line outro, a few words, or one line of the chorus (see [Design judgment](#design-judgment)). The lyrics on the result card are what was sent, not a transcript.
 - **One song at a time.** The Generate button runs one request at a time. A second browser tab's request waits silently until the first finishes. The app is meant for one person on their own computer.
 
+**Cover art (C)**
+- **Nothing checks the finished cover.** Every image prompt ends with "no text, no letters, no logos, no real people", and when the prompt describes people, the app asks for soft-focus silhouettes seen from behind or at a distance, with faces in shadow. FLUX doesn't always follow it: a cover can show text on signs or letter-like shapes, and in an early test (10/24) it drew detailed faces and wrong hands. The sample covers were checked by eye; covers made while you use the app are not.
+- **A song played before its cover is ready keeps the placeholder in the player** until the song ends; see [Cover art](#cover-art).
+- **Generated songs, covers and DJ clips stay on disk after you stop the app.** They leave the Library when the app stops, but the files stay in `runtime/generated/` in the app folder, and nothing deletes them (a cover is about 0.15 MB). To free the space, stop the app and delete the files in that folder. Don't delete `samples/`.
+
 **AI DJ (D)**
 - **An intro can name the wrong song before it.** Each intro is written while the song before it plays, and the script may add a short transition from that song. If you press **Play now** on a different song first, the intro that comes next can still refer to the song that was playing when it was written.
 - **A new DJ voice starts with the next intro.** A new voice applies only to intros made after the change. The intro already made for the next song was in the old voice and is dropped, so that song plays without an intro, and your voice speaks from the song after it.
