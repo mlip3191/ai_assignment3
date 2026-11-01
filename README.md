@@ -395,12 +395,12 @@ Testers who didn't write a section follow it literally and report what didn't ma
 
 *What didn't match, and what we did.*
 1. **The settings step.** The placeholders (`http://CLASS_HOST:9001`) look like real addresses, so the tester thought the settings were already filled in. The step now names the placeholders and says to replace the whole value after the `=`, including `CLASS_HOST`. Fixed.
-2. **The Overview's song time** said 5 to 10 seconds. A 60 s vocal song took 11 s, and the app's own hint says "usually about 10 s". The Overview now says "usually about 10 seconds". Fixed.
+2. **The Overview's song time** said 5 to 10 seconds. A 60 s vocal song took 11 s, and the app's own text under the Generate tab says a song "usually takes about 10 seconds". The Overview now says "usually about 10 seconds". Fixed.
 3. **Where Gradio's copy of an uploaded voice goes.** This README said it stays until the next start. The code deletes it as soon as the upload is saved or rejected, so the README was wrong. Fixed.
 4. **Known issues** listed the Play now bug (#72) after it was fixed. Removed.
 5. **`.env.example`**: its first line says "copy to `.env`" after the launcher has already made the copy, and it points to PROJECT.md section numbers that mean nothing to a reader. Not fixed yet.
 
-*Not checked.* macOS (D9, below). Installing Python from scratch. The "Windows protected your PC" and Smart App Control prompts (neither appeared). The "already running in another window" row. Architecture, Safeguards and AI use were read against the code but not run. The settings file section (the table of every setting) is not covered by his reports, and Test results (E8) is not written yet. The three fixes above were made after pass 2, and nobody has followed the changed text since.
+*Not checked.* macOS (D9, below). Installing Python from scratch. The "Windows protected your PC" and Smart App Control prompts (neither appeared). The "already running in another window" row. Architecture, Safeguards and AI use were read against the code but not run. The settings file section (the table of every setting) is not covered by these reports, and Test results (E8) is not written yet. The three fixes above were made after pass 2. On 2026-11-01 the tester re-read the changed Setup steps and the Overview line against the settings file filled in on pass 2, and said that with the new wording they would not have thought the file was already filled in. Nobody has re-run the steps.
 
 **macOS: @mlip3191 (D9).** _TODO: follow the sections you didn't write on a Mac, and list what matched and what didn't._
 
