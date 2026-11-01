@@ -21,7 +21,7 @@ Never commit `.env`.
 
 ## Overview
 AI Jukebox runs on your own computer and opens in your browser. It does three things:
-- **Makes songs.** Pick a style, a mood, a length (10 to 120 seconds) and instrumental or vocal. A vocal song gets original lyrics written for it. A song usually takes about 10 seconds, a little longer for long vocal songs or when the class servers are busy.
+- **Makes songs.** Pick a style, a mood, a length (10 to 120 seconds) and instrumental or vocal. A vocal song gets original lyrics written for it. A song usually takes about 10 seconds, a little longer for vocal songs or when the class servers are busy.
 - **Paints a cover for every song,** from the song's style and mood. If the cover fails, the song is kept with a placeholder and **Retry cover** tries again.
 - **Plays a queue with a DJ.** Before each song, the DJ normally speaks a short intro about it, in the default voice or one you upload. Three sample songs are included, so you can press **Play queue** and hear it before making anything.
 
