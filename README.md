@@ -21,7 +21,7 @@ Never commit `.env`.
 
 ## Overview
 AI Jukebox runs on your own computer and opens in your browser. It does three things:
-- **Makes songs.** Pick a style, a mood, a length (10 to 120 seconds) and instrumental or vocal. A vocal song gets original lyrics written for it. A song takes about 5 to 10 seconds when the class servers are quiet.
+- **Makes songs.** Pick a style, a mood, a length (10 to 120 seconds) and instrumental or vocal. A vocal song gets original lyrics written for it. A song usually takes about 10 seconds, a little longer for long vocal songs or when the class servers are busy.
 - **Paints a cover for every song,** from the song's style and mood. If the cover fails, the song is kept with a placeholder and **Retry cover** tries again.
 - **Plays a queue with a DJ.** Before each song, the DJ normally speaks a short intro about it, in the default voice or one you upload. Three sample songs are included, so you can press **Play queue** and hear it before making anything.
 
@@ -64,8 +64,10 @@ browser, usually at **http://127.0.0.1:7860** (if that port is busy, the launche
    PC", click **More info**, then **Run anyway**. The launcher creates a settings file called `.env`, opens
    it in Notepad, and waits: press any key or close its window.
 5. **Fill in the settings:** change only the first 5 settings, `CLASS_API_KEY` and the four lines ending in
-   `_BASE_URL`. For each one, replace the placeholder text after the `=` with the value from
-   `class-endpoints.txt`, with no spaces or quotes. Leave the other lines as they are. Save, close Notepad,
+   `_BASE_URL`. The file comes with placeholders such as `your-class-api-key-here` and
+   `http://CLASS_HOST:9001`, which look like real values but aren't. For each one, replace the whole
+   value after the `=`, including `CLASS_HOST`, with the value from `class-endpoints.txt`, with no spaces
+   or quotes. Leave the other lines as they are. Save, close Notepad,
    and keep the name `.env`. This file stays on your computer: never email it or upload it.
 6. **Start the app:** double-click **`run.bat`** again. The first time, it installs what the app needs,
    which takes a few minutes. Then it checks the class servers and opens the app in your browser. Keep the
@@ -80,8 +82,10 @@ browser, usually at **http://127.0.0.1:7860** (if that port is busy, the launche
    folder into the Terminal window, and press **Enter**. The launcher creates a settings file called `.env`,
    opens it in TextEdit, and stops.
 4. **Fill in the settings:** change only the first 5 settings, `CLASS_API_KEY` and the four lines ending in
-   `_BASE_URL`. For each one, replace the placeholder text after the `=` with the value from
-   `class-endpoints.txt`, with no spaces or quotes. Leave the other lines as they are. Save and keep the
+   `_BASE_URL`. The file comes with placeholders such as `your-class-api-key-here` and
+   `http://CLASS_HOST:9001`, which look like real values but aren't. For each one, replace the whole
+   value after the `=`, including `CLASS_HOST`, with the value from `class-endpoints.txt`, with no spaces
+   or quotes. Leave the other lines as they are. Save and keep the
    name `.env`. Finder hides files
    whose names begin with a dot: press **Cmd+Shift+.** to see it. This file stays on your computer: never
    email it or upload it.
@@ -296,7 +300,7 @@ The app is one Python program. The page you see is built by `jukebox/ui`, which 
 |---|---|---|
 | The three sample songs, their covers, and how they were made | `samples/` (`audio/`, `covers/`, `manifest.json`, `GENERATION_LOG.md`) | Yes |
 | Songs, covers and DJ clips you generate | `runtime/generated/` | No (`runtime/` is ignored by git and rejected by the ZIP check) |
-| A voice recording you upload for the DJ | `runtime/uploads/`, one file with a random name, plus the copy Gradio makes of it under `runtime/uploads/gradio/`. The named file is deleted when you replace or reset the voice, and anything left over from an earlier run (including the Gradio copy) is deleted when the app starts on its usual port (7860). | No |
+| A voice recording you upload for the DJ | `runtime/uploads/`, one file with a random name. Gradio also keeps a temporary copy while the file is uploaded, under `runtime/uploads/gradio/`, and the app deletes that copy as soon as the upload has been saved or rejected. The saved file is deleted when you replace or reset the voice. Anything left over from an earlier run, for example if a delete failed, is deleted when the app starts on its usual port (7860). | No |
 | The song list (the library and the queue) | The app's memory | No: it lasts until you stop the app. After a restart you have the three samples again, though the files you made stay in `runtime/generated/`. |
 | Your settings and key | `.env` | No |
 
@@ -384,7 +388,7 @@ The assignment's safeguards are in [`docs/STARTER_PROMPT.md`](docs/STARTER_PROMP
 | Safeguard | What we do | Enforced by |
 |---|---|---|
 | **Credentials stay out of GitHub, the ZIP, the browser, logs and docs** | The key lives only in `.env`. Examples and docs use placeholders (`.env.example`). The browser never receives the key, and logs scrub it. | `.gitignore` (`.env`, `.env.*`); `scripts/scan_secrets.py`, which fails on a committed or zipped env file, on key-like strings, and on any value from your own `.env` found in a file, and runs in `/check`, in the pre-push gate and in CI; `jukebox/config.py`, where the key is a secret value that is never printed; log scrubbing in `jukebox/clients/base.py`; a guard hook that stops Claude Code from reading, printing or staging `.env` |
-| **No uploads or voice recordings in GitHub or the ZIP** | An uploaded voice is saved only in `runtime/uploads/` under a random name. It is deleted when you replace or reset the voice (Gradio's temporary copy stays until the app next starts on its usual port, 7860), and left-over recordings are deleted when the app starts. It is sent to the voice service with each intro, never saved there as a named voice. | `.gitignore` (`runtime/`, `*.zip`); `scan_secrets.py` fails on anything under `runtime/` and on audio outside `samples/audio/`, in the repo and in a downloaded ZIP (`--zip`); only the one folder is ever written to for uploads (`jukebox/services/dj.py`) |
+| **No uploads or voice recordings in GitHub or the ZIP** | An uploaded voice is saved only in `runtime/uploads/` under a random name. Gradio's temporary copy of the upload is deleted as soon as the voice is saved or rejected. The saved file is deleted when you replace or reset the voice, and left-over recordings are deleted when the app starts. It is sent to the voice service with each intro, never saved there as a named voice. | `.gitignore` (`runtime/`, `*.zip`); `scan_secrets.py` fails on anything under `runtime/` and on audio outside `samples/audio/`, in the repo and in a downloaded ZIP (`--zip`); only the one folder is ever written to for uploads (`jukebox/services/dj.py`) |
 | **No third-party music, lyrics, cover art or voice samples** | The three sample songs, their lyrics and their covers were all made through the app's own Qwen, FLUX and ACE-Step clients, and `samples/GENERATION_LOG.md` records how. The prompts ask for original work and never an artist; phrases that name an artist in your style text are removed before they reach the models. | The sample list and log, reviewed in pull requests; the audio-location rule in `scan_secrets.py`; the prompts in `jukebox/prompts/` |
 | **Only the four class models; never port 9000** | Qwen (9001), FLUX (9006), ACE-Step (9007) and Chatterbox (9008) each do one job. A failure shows a message and offers **Retry**, never a different model. | `scripts/check_models.py` with `scripts/model_policy.json` (fails on other AI libraries, hosted services, a network call outside `jukebox/clients/`, or a feature using the wrong client), in `/check` and in CI on Linux (every pull request and every push to `main`); `jukebox/config.py` and `scripts/check_config.py`, which refuse a port-9000 address or a service on another service's port; `scan_secrets.py`, which flags port 9000 in app code |
 | **Every change is checked before it merges** | One task per branch, never a commit on `main`; the pre-push gate runs lint, format, the secret scan, the models check, the config check and the whole pytest suite; commits must be written by the person pushing them; someone other than the author approves, and the owner of the changed files merges. | `.githooks/pre-push` and `scripts/prepush.py`; `scripts/check_authors.py`; `.github/CODEOWNERS`; a Claude Code guard hook that blocks commits and pushes to `main`, force pushes and skipped checks |
