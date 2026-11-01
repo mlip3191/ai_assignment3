@@ -380,7 +380,7 @@ With 18 lines, three of the four songs lost about 8 lines or more, and the fourt
 **Related.** A new voice applies from the next intro, so the first song after a change has no intro, and skipping within a few seconds of starting a song can also skip its intro (see [Known issues](#known-issues)).
 
 ## Documentation verification
-Two people who didn't write a section followed it literally and reported what didn't match (PROJECT.md §11). Findings are listed by tester and OS.
+Testers who didn't write a section follow it literally and report what didn't match (PROJECT.md §11 asks for two, on two OSes). So far one has: the Windows pass below. The macOS pass is still to do. Findings are listed by tester and OS.
 
 **Windows 11, in Chrome: @gunnaroc (B10), 2026-11-01.** There were two passes.
 - **Pass 1** followed Cover art, The AI DJ and Sample songs, on `main` at `c915595`.
@@ -395,7 +395,7 @@ Two people who didn't write a section followed it literally and reported what di
 4. **Known issues** listed the Play now bug (#72) after it was fixed. Removed.
 5. **`.env.example`**: its first line says "copy to `.env`" after the launcher has already made the copy, and it points to PROJECT.md section numbers that mean nothing to a reader. Not fixed yet.
 
-*Not checked.* macOS (D9, below). Installing Python from scratch. The "Windows protected your PC" and Smart App Control prompts (neither appeared). The "already running in another window" row. Architecture, Safeguards and AI use were read against the code but not run. The three fixes above were made after pass 2, and nobody has followed the changed text since.
+*Not checked.* macOS (D9, below). Installing Python from scratch. The "Windows protected your PC" and Smart App Control prompts (neither appeared). The "already running in another window" row. Architecture, Safeguards and AI use were read against the code but not run. The settings file section (the table of every setting) is not covered by his reports, and Test results (E8) is not written yet. The three fixes above were made after pass 2, and nobody has followed the changed text since.
 
 **macOS: @mlip3191 (D9).** _TODO: follow the sections you didn't write on a Mac, and list what matched and what didn't._
 
