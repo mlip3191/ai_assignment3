@@ -380,7 +380,24 @@ With 18 lines, three of the four songs lost about 8 lines or more, and the fourt
 **Related.** A new voice applies from the next intro, so the first song after a change has no intro, and skipping within a few seconds of starting a song can also skip its intro (see [Known issues](#known-issues)).
 
 ## Documentation verification
-_TODO (B and D, tasks B10 and D9): which README steps we followed on which OS, what was wrong, and what was fixed._
+Two people who didn't write a section followed it literally and reported what didn't match (PROJECT.md §11). Findings are listed by tester and OS.
+
+**Windows 11, in Chrome: @gunnaroc (B10), 2026-11-01.** There were two passes.
+- **Pass 1** followed Cover art, The AI DJ and Sample songs, on `main` at `c915595`.
+- **Pass 2** followed Requirements, Setup (Windows), the Overview and the troubleshooting table, on this README at `278d201`. It started from the `rc2` ZIP downloaded from **Tags**, unblocked and extracted to a new `C:\jukebox`. `run.bat` was run twice, with the settings filled in between.
+
+*What matched.* Cover art, the AI DJ (default voice, a voice upload, **Reset** and a rejected file) and Sample songs, including `samples/manifest.json` and `GENERATION_LOG.md`. The Windows steps (Unblock, Extract All, the first `run.bat` creating the settings file and opening it in Notepad). The second `run.bat`: the first install took about 3 minutes, all four services showed PASS (9001, 9006, 9007, 9008), and the app opened. Closing the black window stopped the app, and the browser then couldn't connect, as the troubleshooting table says. The Overview matches the screen. Every message the troubleshooting table quotes exists in the launcher or the app, and the 7861 fallback matches `jukebox/ui/launch.py`.
+
+*What didn't match, and what we did.*
+1. **The settings step.** The placeholders (`http://CLASS_HOST:9001`) look like real addresses, so the tester thought the settings were already filled in. The step now names the placeholders and says to replace the whole value after the `=`, including `CLASS_HOST`. Fixed.
+2. **The Overview's song time** said 5 to 10 seconds. A 60 s vocal song took 11 s, and the app's own hint says "usually about 10 s". The Overview now says "usually about 10 seconds". Fixed.
+3. **Where Gradio's copy of an uploaded voice goes.** This README said it stays until the next start. The code deletes it as soon as the upload is saved or rejected, so the README was wrong. Fixed.
+4. **Known issues** listed the Play now bug (#72) after it was fixed. Removed.
+5. **`.env.example`**: its first line says "copy to `.env`" after the launcher has already made the copy, and it points to PROJECT.md section numbers that mean nothing to a reader. Not fixed yet.
+
+*Not checked.* macOS (D9, below). Installing Python from scratch. The "Windows protected your PC" and Smart App Control prompts (neither appeared). The "already running in another window" row. Architecture, Safeguards and AI use were read against the code but not run. The three fixes above were made after pass 2, and nobody has followed the changed text since.
+
+**macOS: @mlip3191 (D9).** _TODO: follow the sections you didn't write on a Mac, and list what matched and what didn't._
 
 ## Safeguards
 The assignment's safeguards are in [`docs/STARTER_PROMPT.md`](docs/STARTER_PROMPT.md), word for word. This is how each one is enforced, and by what.
