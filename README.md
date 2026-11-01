@@ -169,7 +169,7 @@ The vocal result card is in the screenshot above, and an instrumental one is und
 |---|---|---|
 | TC-01 instrumental | lo-fi hip hop, mellow, 45 s | **Pass.** Added in 7 s, 0:45 long, no vocals |
 | TC-02 vocal | pop, upbeat, 60 s, idea "road trip" | **Pass.** Added in 6 s, 10 lines of lyrics shown, all 10 sung |
-| TC-03 songs kept across tabs | Both songs, then Library → Generate → Library, then play the older one | **Partial.** Both stayed in the Library and played. But after the queue had finished, **Play now** didn't play the song until the page was reloaded (bug #72, fixed after `rc2` in #95) |
+| TC-03 songs kept across tabs | Both songs, then Library → Generate → Library, then play the older one | **Partial.** Both stayed in the Library and played. But after the queue had finished, **Play now** didn't play the song until the page was reloaded (bug #72, fixed after `rc2` in #95). **Re-run on `main` after the fix** (2026-11-01, Windows 11, Chrome, three 10 s instrumentals): **Pass.** **Play now** played the song in full after "Queue finished", and **Add to queue** then **Play queue** played its DJ intro in full, with no reload. Not checked: macOS, or a vocal song |
 | TC-F1 bad credentials | A wrong API key for one run | **Pass.** "The Qwen service rejected our credentials…", choices kept, no Retry; works again after restarting with the right key |
 | TC-F2 a class server not answering | ACE-Step pointed at a port nothing listens on | **Pass.** "The ACE-Step service is unreachable right now…", **Retry** shown, choices kept |
 
