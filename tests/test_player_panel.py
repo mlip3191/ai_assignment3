@@ -19,6 +19,7 @@ from jukebox.services.player import DJ_UNAVAILABLE, FINISHED  # noqa: E402
 from jukebox.ui.player_panel import (  # noqa: E402
     _CLIPS,
     _SESSIONS,
+    ENDED_AUDIO_RESTART_JS,
     NO_LYRICS,
     NOW_PLAYING,
     PRESS_PLAY,
@@ -193,6 +194,38 @@ def test_a_missing_clip_plays_the_song_and_says_so(tmp_path: Path, make_track) -
     assert view.notice == DJ_UNAVAILABLE
     assert DJ_UNAVAILABLE in panel_text(view)
     assert view.cover == _cover(library, "sample_02")
+
+
+def test_an_end_after_the_queue_is_finished_does_not_move_the_token(tmp_path: Path, make_track) -> None:
+    """#72: the browser can fire end again while the element is still at the last file."""
+    library, _clips = _library(tmp_path, make_track, clips_for=set())
+    player = open_player(library, {})
+    runtime = tmp_path / "served"
+    view = on_play_now(player, library, 0, "sample_01", runtime)
+    done = on_end(player, library, view.token, view.audio, runtime)
+    assert done.label == FINISHED
+    assert player.current is None
+    again = on_end(player, library, done.token, f"t{done.token}-abc-sample_01.wav", runtime)
+    assert again.ignored is True
+    assert again.token == done.token
+    assert player.current is None
+    assert player.notice == FINISHED
+
+
+def test_render_restarts_audio_stuck_at_the_end_of_the_last_file() -> None:
+    """#72: the restart script is on the page, and it is mounted before the audio element."""
+    with gr.Blocks() as demo:
+        render()
+    order = [getattr(block, "elem_id", None) for block in demo.blocks.values()]
+    assert order.index("player-audio-restart") < order.index("now-playing")
+    script = next(
+        block.js_on_load
+        for block in demo.blocks.values()
+        if getattr(block, "elem_id", None) == "player-audio-restart"
+    )
+    assert script == ENDED_AUDIO_RESTART_JS
+    assert "currentTime = 0" in script
+    assert 'name === "src"' in script
 
 
 def test_a_stale_end_token_does_not_advance(tmp_path: Path, make_track) -> None:
