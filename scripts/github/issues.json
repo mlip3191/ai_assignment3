@@ -243,9 +243,9 @@
           "key": "A5",
           "title": "Answer the section 14 open questions (Hermes, due date, repo access, network, Claude access)",
           "milestone": "M0",
-          "goal": "Remove the biggest unknowns: Claude Code vs Hermes, due date, network access, grader environment. Repo visibility (Q5) is left open as a follow-up.",
+          "goal": "Remove the biggest unknowns: Claude Code vs Hermes, due date, network access, grader environment. Repo visibility (Q5) was answered 10/21 and changed 11/01: the repo stays public and the professor is a collaborator.",
           "criteria": [
-            "Q1, Q2, Q6, Q7, Q8, Q9 answered by the release lead (not the professor) and recorded in section 14; Q5 (public repo, or add the professor) is left open as a follow-up that must be settled before A10",
+            "Q1, Q2, Q6, Q7, Q8, Q9 answered by the release lead (not the professor) and recorded in section 14; Q5 (public repo, or add the professor) was answered 10/21 and changed 11/01: the repo stays public and the professor is a collaborator",
             "Schedule in section 10 and section 0.1 status updated to the confirmed due date",
             "The Hermes contingency in section 2 stays off because Q1 was answered 'Claude Code is acceptable'; if that changes, activate it and tell the team how the workflow changes"
           ],
@@ -363,7 +363,7 @@
             "Full 40-character commit ID recorded (git rev-list -n 1 v1.0) and matches the tag",
             "Professor has repo access (accepted invite)",
             "Canvas submission: repo link + full commit ID + that exact ZIP",
-            "Team told: no deleting, renaming, force-pushing, or moving the v1.0 tag until grades are posted; the repo goes private only at submission, once the professor and any other grader are invited (DL12)",
+            "Team told: no deleting, renaming, force-pushing, or moving the v1.0 tag until grades are posted; the repo stays public, with the professor invited as a collaborator (DL12, decided 11/01)",
             "check_models.py passes on the tagged release commit"
           ],
           "reqs": [
