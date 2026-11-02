@@ -307,6 +307,8 @@ def test_heading_end_label_reads_ranges_and_rejects_bad_headings() -> None:
 
 # ---- the repo-visibility decision (section 14 Q5, DL12) -------------------------------------------
 # Decided 10/21: the repo stays public until we submit, then goes private and the professor is invited.
+# Changed 11/01 by the release lead: the repo stays public and the professor is a collaborator. The decision log
+# in PROJECT.md (DL12, Q5) keeps the 10/21 wording next to that change.
 
 
 def _contradicts_visibility_decision(text: str) -> list[str]:
@@ -328,7 +330,7 @@ def test_visibility_check_catches_the_old_wording() -> None:
     assert _contradicts_visibility_decision("accepted invite; private only at submission (DL12)") == []
 
 
-def test_dl12_and_q5_say_private_only_at_submission() -> None:
+def test_dl12_and_q5_keep_the_10_21_wording_in_the_decision_log() -> None:
     text = (ROOT / "PROJECT.md").read_text(encoding="utf-8")
     dl12 = next(line for line in text.splitlines() if line.startswith("| DL12 |"))
     q5 = next(line for line in text.splitlines() if line.startswith("| Q5 |"))
@@ -343,4 +345,30 @@ def test_a10_requires_an_accepted_invite_for_the_professor() -> None:
     a10 = next(t for lane in spec["lanes"] for t in lane["tasks"] if t["key"] == "A10")
     criteria = "\n".join(a10["criteria"])
     assert "Professor has repo access (accepted invite)" in criteria
-    assert "goes private only at submission" in criteria
+    # The repo stays public (decided 11/01); `bootstrap.py --refresh` renders these criteria into lane issue #2.
+    assert "the repo stays public, with the professor invited as a collaborator" in criteria
+
+
+# Wording from before 11/01 that `bootstrap.py --refresh` would render into the lane issues: the repo going or
+# being made private, and Q5 still being open as a follow-up.
+_STALE_VISIBILITY = re.compile(
+    r"\b(?:go|goes|going|make|makes|made|making)\b[^\".\n]{0,25}\bprivate\b|left open as a follow-up",
+    re.IGNORECASE,
+)
+
+
+def test_issues_json_has_no_wording_from_before_the_public_repo_decision() -> None:
+    text = (ROOT / "scripts" / "github" / "issues.json").read_text(encoding="utf-8")
+    assert _STALE_VISIBILITY.findall(text) == []
+
+
+def test_stale_visibility_wording_is_caught() -> None:
+    for old in (
+        "the repo goes private only at submission",
+        "Goes private at the end",
+        "then we make it private",
+        "the repo was made private",
+        "Q5 is left open as a follow-up that must be settled before A10",
+    ):
+        assert _STALE_VISIBILITY.search(old), old
+    assert _STALE_VISIBILITY.search("the repo stays public, with the professor invited") is None
