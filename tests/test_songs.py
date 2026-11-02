@@ -373,6 +373,26 @@ def test_escaped_text_with_no_section_tags_is_still_bad_response() -> None:
     assert_bad_response(json.dumps({"title": "Open Road", "lyrics": "Windows down\\nRadio on"}))
 
 
+def test_plain_text_reply_with_escaped_breaks_and_a_sign_off() -> None:
+    reply = "Title: Open Road\n[verse]\\nline a\\n[chorus]\\nline c\\nHope you enjoy this song!"
+    assert songs.parse_song_reply(reply, vocal=True) == SongText(
+        "Open Road", "[intro]\n\n[verse]\nline a\n\n[chorus]\nline c"
+    )
+
+
+def test_plain_text_reply_escaped_from_the_title_on() -> None:
+    reply = "Title: Open Road\\n\\nLyrics:\\n[verse]\\nline a\\nline b\\n\\n[chorus]\\nline c"
+    assert songs.parse_song_reply(reply, vocal=True) == SongText(
+        "Open Road", "[intro]\n\n[verse]\nline a\nline b\n\n[chorus]\nline c"
+    )
+
+
+def test_a_title_with_an_escaped_break_keeps_only_its_first_line() -> None:
+    assert songs.clean_title("Open Road\\nA subtitle") == "Open Road"
+    reply = json.dumps({"title": "Open Road\\nA subtitle", "lyrics": GOOD_LYRICS})
+    assert songs.parse_song_reply(reply, vocal=True) == SongText("Open Road", GOOD_LYRICS)
+
+
 # ---- cleanup -------------------------------------------------------------------------------------
 
 

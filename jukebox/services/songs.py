@@ -638,7 +638,7 @@ def _parse_plain_text(text: str) -> dict[str, str]:
     text after the fence are not sung. A last single line that reads like chat ("Hope you enjoy this
     song!") is the model's sign-off and is dropped too; blank lines inside the lyrics change nothing.
     """
-    cleaned = qwen.strip_think(text)
+    cleaned = _ESCAPED_BREAK.sub("\n", qwen.strip_think(text))
     match = _TITLE_LINE.search(cleaned)
     if not match:
         raise _bad_response("the reply was neither JSON nor 'Title: ...' text")
@@ -672,7 +672,7 @@ def clean_title(raw: object) -> str:
     """The title's first line, without quotes, markdown or a "Title:" label, capped at a word boundary."""
     if not isinstance(raw, str):
         return ""
-    lines = [line for line in raw.splitlines() if line.strip()]
+    lines = [line for line in _ESCAPED_BREAK.sub("\n", raw).splitlines() if line.strip()]
     title = " ".join(lines[0].split()) if lines else ""
     title = re.sub(r"^title\s*[:\-]\s*", "", title.strip("#*_ "), flags=re.IGNORECASE)
     title = title.strip("\"'“”‘’*_ .").strip()
