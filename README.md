@@ -256,6 +256,8 @@ The full wording is in [docs/TEST_EVIDENCE.md](docs/TEST_EVIDENCE.md). Every row
 
 ### Completed tests
 
+The six `rc1` rows (TC-01, TC-02, the `rc1` TC-03, TC-04, the `rc1` TC-F1, and the `rc1` TC-F2) were run by Claude Code. TC-04 used headless Edge. The other five used Claude's in-app browser.
+
 | ID | Feature | Input | Expected | Actual | Status | Tester | OS | Date | Commit |
 |---|---|---|---|---|---|---|---|---|---|
 | TC-01 | F1 instrumental | Lo-fi hip hop, mellow, 45 s, Instrumental | Playable audio about 45 s, no vocals, added to the library | Added in 7 s and played | Pass | @gunnaroc | Windows 11 | 2026-10-27 | `rc1` (`a1a8846`) |
@@ -304,6 +306,8 @@ No matrix row is blank. These are the checks a completed row explicitly left out
 - **Bad uploads are Partial (TC-F3).** The three bad files were rejected. The default voice was not heard afterward.
 - **The ZIP installs are Partial (TC-10a, TC-10b).** The three features worked on Windows and on macOS. Neither install was a clean no-help run, so the deploy test (E6) is still open.
 - **The Play now fix is on `main` and not in the `rc2` ZIP.** #72 was fixed by #95. The Windows re-run passed. `rc2` (`690b406`) does not contain that fix.
+- **The Releases page this README names has no releases (TC-13).** Requirements tells the reader to get the ZIP from the repository's Releases page. On the `rc2` check, that page had no releases.
+- **Add to queue then Play queue after "Queue finished" jumped the first DJ intro on `rc2` (TC-13).** The song still started at 0:00. After a page reload the first intro played in full. That jump was not checked by ear.
 
 ## Known issues
 _TODO: other lanes' entries._
