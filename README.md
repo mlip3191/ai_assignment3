@@ -31,7 +31,7 @@ All the AI work is done by four class services, and nothing else: Qwen3.6-35B-A3
 
 *The top of the app on Windows 11, running `rc2`: how to use it, the Generate tab, and the player.*
 
-**Status.** The release candidate is `rc2`; the submitted version will be `v1.0`. It has been run on Windows 11 and on macOS; the results are under [Test results](#test-results).
+**Status.** The submitted version is `v1.0`, cut from `main`. The live tests ran on the release candidate `rc2` (`690b406`, 10/29), on Windows 11 and on macOS; the results are under [Test results](#test-results). Two app files changed after `rc2`: `jukebox/ui/player_panel.py` (the Play now fix, #95) and `jukebox/services/songs.py` (the lyrics line-break fix, #105). A re-run of TC-03 on `main` covers the first, and unit tests cover the second. Everything else that changed since `rc2` is documentation.
 
 ## Requirements
 - **A computer:** Windows 10 or 11, or macOS 13 or newer.
@@ -332,7 +332,7 @@ A song is saved before its cover is made, so a failed cover never loses the song
 
 ## Test results
 
-The full wording is in [docs/TEST_EVIDENCE.md](docs/TEST_EVIDENCE.md). Every row of the §12.2 matrix has been run. None is marked Not tested. **Pass** means the expected result happened. **Partial** means the run happened and did not meet it cleanly. Where a row was run again, both runs are listed.
+The full wording is in [docs/TEST_EVIDENCE.md](docs/TEST_EVIDENCE.md). Every row of the §12.2 matrix has been run. None is marked Not tested. The runs were made on `rc2` unless a row names another commit; the two app files that changed after `rc2` are listed under Status in the [Overview](#overview). **Pass** means the expected result happened. **Partial** means the run happened and did not meet it cleanly. Where a row was run again, both runs are listed.
 
 ### Completed tests
 
