@@ -135,7 +135,7 @@ The vocal result card is in the screenshot above, and an instrumental one is und
 |---|---|---|
 | TC-01 instrumental | lo-fi hip hop, mellow, 45 s | **Pass.** Added in 7 s, 0:45 long, no vocals |
 | TC-02 vocal | pop, upbeat, 60 s, idea "road trip" | **Pass.** Added in 6 s, 10 lines of lyrics shown, all 10 sung |
-| TC-03 songs kept across tabs | Both songs, then Library → Generate → Library, then play the older one | **Partial.** Both stayed in the Library and played. But after the queue had finished, **Play now** didn't play the song until the page was reloaded (bug #72) |
+| TC-03 songs kept across tabs | Both songs, then Library → Generate → Library, then play the older one | **Partial** on this `rc1` run. Both songs stayed in the Library and played. After the queue finished, **Play now** did nothing until a reload (#72). That is fixed on `main` (#95). The Windows re-run is in [Test results](#test-results). |
 | TC-F1 bad credentials | A wrong API key for one run | **Pass.** "The Qwen service rejected our credentials…", choices kept, no Retry; works again after restarting with the right key |
 | TC-F2 a class server not answering | ACE-Step pointed at a port nothing listens on | **Pass.** "The ACE-Step service is unreachable right now…", **Retry** shown, choices kept |
 
@@ -251,7 +251,59 @@ in `samples/manifest.json`, which the app loads at startup.
 _TODO (A)._
 
 ## Test results
-_TODO (E): from docs/TEST_EVIDENCE.md. Separate completed tests from unchecked claims._
+
+The full wording is in [docs/TEST_EVIDENCE.md](docs/TEST_EVIDENCE.md). Every row of the §12.2 matrix has been run. None is marked Not tested. **Pass** means the expected result happened. **Partial** means the run happened and did not meet it cleanly. Where a row was run again, both runs are listed.
+
+### Completed tests
+
+| ID | Feature | Input | Expected | Actual | Status | Tester | OS | Date | Commit |
+|---|---|---|---|---|---|---|---|---|---|
+| TC-01 | F1 instrumental | Lo-fi hip hop, mellow, 45 s, Instrumental | Playable audio about 45 s, no vocals, added to the library | Added in 7 s and played | Pass | @gunnaroc | Windows 11 | 2026-10-27 | `rc1` (`a1a8846`) |
+| TC-02 | F1 vocal + lyrics | Pop, upbeat, 60 s, Vocal, idea "road trip" | Lyrics shown, audio has vocals, added to the library | "Miles of Sun" showed lyrics and was added in 6 s | Pass | @gunnaroc | Windows 11 | 2026-10-27 | `rc1` (`a1a8846`) |
+| TC-03 | R2 session persistence | Two songs, switch tabs, play the older one | Both remain in the library and play | Both stayed in the library. Play now did nothing after the queue finished (#72) | Partial | @gunnaroc | Windows 11 | 2026-10-27 | `rc1` (`a1a8846`); Play now also checked on `main` (`3fb136a`) |
+| TC-03 | R2 session persistence | Re-run after the Play now fix (#95), three short instrumentals, then Play now | Both remain in the library and play | The songs stayed in the library and played. Play now and the following DJ intro played in full. macOS and a vocal song were not checked | Pass | @gunnaroc | Windows 11, Chrome | 2026-11-01 | `c915595` |
+| TC-04 | F2 cover art | After the instrumental and vocal generations | A distinct cover for each track | Three songs each got their own cover | Pass | @felcervino | Windows 11 | 2026-10-26 | `rc1` (`a1a8846`) |
+| TC-05 | F3 DJ default voice | Queue 3 samples and press Play | A DJ intro before each song, naming that song, no overlap | An intro played before each of the three samples, named that song, and did not overlap | Pass | @mlip3191 | macOS, Chrome | 2026-10-30 | `rc2` (`690b406`); the code is `main` at `6382b97`, which differs from `rc2` only in docs |
+| TC-06 | F3b custom voice | Upload a short WAV the team recorded, queue 2 songs | Intros use the new voice | "Custom voice active." One intro in the new voice was heard per recording, not a clean two-song pair | Partial | @mlip3191 | macOS, Chrome | 2026-10-30 | `rc2` (`690b406`); the code is `main` at `6382b97`, which differs from `rc2` only in docs |
+| TC-07 | F3b MP3 upload | Same, with an MP3 | Accepted, and it works | The MP3 was accepted. A later intro used that voice and named the song. A non-variable-bit-rate MP3 was not checked | Pass | @mlip3191 | macOS, Chrome | 2026-10-30 | `rc2` (`690b406`); the code is `main` at `6382b97`, which differs from `rc2` only in docs |
+| TC-08 | R3 controls | Pause, resume, and skip during the DJ intro and during the song | Behaves as specified for the player | Pause and resume worked on the intro and on the song. Skip during the intro went to the song. Skip during the song went to the next intro | Pass | @afondale | Windows 11, Chrome | 2026-10-30 | `rc2` (`690b406`) |
+| TC-09 | R4 auto-advance | Queue 3 samples, press Play once | Plays to the end with no further clicks | Midnight Notes Fade, Windows Down, and Dust on the Gate each played through, with a DJ intro before each and no silent gap | Pass | @afondale | Windows 11, Chrome | 2026-10-30 | `rc2` (`690b406`) |
+| TC-10a | Fresh deploy, Windows | GitHub ZIP, README Windows section only, `run.bat` | All 3 core features work | The three features worked. This was not a clean no-help install on a machine that had never had the repo | Partial | @afondale | Windows 11 | 2026-10-30 | `rc2` (`690b406`) |
+| TC-10b | Fresh deploy, macOS | GitHub ZIP, README macOS section only, `bash run.sh` | All 3 core features work | The three features worked. The browser download did not finish, and the run was not a no-help install | Partial | @mlip3191 | macOS, Chrome | 2026-10-30 | `rc2` (`690b406`) |
+| TC-11 | Safeguards | Inspect the rc2 ZIP, the source, the browser Network tab, the launcher log, and the screenshots | No key, no uploads, no `.env`, no absolute path to a developer's files | The ZIP scan passed. The browser showed only 127.0.0.1, with no authorization line and no Bearer. The screenshots show the app only | Pass | @afondale | Windows 11, browser | 2026-11-01 | `rc2` (`690b406`) |
+| TC-12 | Reliability: generate while playing | Start the queue, then generate a 60 s vocal song | Playback continues. The new song joins the library | Playback kept moving. "Neon Pulse" was added in 7 s | Pass | @mlip3191 | macOS, Chrome | 2026-10-29 | `rc2` (`690b406`) |
+| TC-13 | Usability: non-technical first run | A person who did not build the app follows only the README | All 3 features, and every point of confusion recorded | She completed the three features, and the Windows setup in a separate folder. Python install and the second `run.bat` felt slow | Pass | G. C., observed by @felcervino | Windows 11, Chrome | 2026-10-30 | `rc2` (`690b406`); the feature run used a folder copy with the same app code |
+| TC-14 | Reliability: repeated use | Generate 5 songs, queue them, play to the end, then restart | No errors. After restart only the 3 samples remain | Five songs were added. After restart only the three samples remained | Pass | @mlip3191 | macOS, Chrome | 2026-10-29 | `rc2` (`690b406`) |
+| TC-15 | Models used | `check_models.py`, then one vocal song and a 2-song queue with the DJ | The check passes. The request log shows only ports 9001, 9006, 9007, and 9008 | The check passed. Neon Rain, then Midnight Notes Fade, each with a DJ intro. The log used only those four ports | Pass | @afondale | Windows 11, browser | 2026-11-01 | `rc2` (`690b406`) |
+| TC-F1 | Failure: bad credentials | Invalid key, then Generate | A clear message. The app works again after the key is fixed | "The Qwen service rejected our credentials. Check the API key in `.env`." | Pass | @gunnaroc | Windows 11 | 2026-10-27 | `rc1` (`a1a8846`) |
+| TC-F1 | Failure: bad credentials | Same, on Windows | A clear message. The app works again after the key is fixed | The same credentials message. The app worked again after the key was fixed | Pass | @afondale | Windows 11 | 2026-10-27 | `51fd78e` |
+| TC-F2 | Failure: service unreachable | ACE-Step pointed at a closed local port | A clear message and Retry. The page is not stuck | ACE-Step unreachable, with Retry. The page was not stuck | Pass | @gunnaroc | Windows 11 | 2026-10-27 | `rc1` (`a1a8846`) |
+| TC-F2 | Failure: service unreachable | Qwen pointed at a closed local port | A clear message and Retry. The page is not stuck | Qwen unreachable, with the choices kept | Pass | @afondale | Windows 11 | 2026-10-27 | `51fd78e` |
+| TC-F2 | Failure: service unreachable | ACE-Step pointed at a closed local port, on macOS | A clear message and Retry. The page is not stuck | The unreachable message appeared within about 1 s | Pass | @mlip3191 | macOS, Chrome | 2026-10-29 | `rc2` (`690b406`) |
+| TC-F3 | Failure: bad upload | Upload a .ogg, an empty file, and a 5-minute file | Rejected with a reason. The default voice still works | Each file was rejected with a reason, and the page said it was still using the default voice. The spoken default voice was not heard on this run | Partial | @afondale | Windows 11 | 2026-10-27 | `51fd78e` |
+| TC-F4 | Failure: DJ down mid-queue | Chatterbox pointed at a closed local port, then Play queue | The songs still play, and a notice is shown | The song played with "DJ unavailable for this track" | Pass | @mlip3191 | macOS, Chrome | 2026-10-29 | `rc2` (`690b406`) |
+| TC-F4 | Failure: DJ down mid-queue | Same, on Windows | The songs still play, and a notice is shown | Midnight Notes Fade played with no intro, and the player said the DJ was unavailable | Pass | @afondale | Windows 11, Chrome | 2026-10-29 | `86ef497` |
+| TC-F5 | Failure: cover fails | FLUX pointed at a closed local port, then Generate | The song is saved with a placeholder. Retry cover works after the fix | "Rainy Window Jazz" was saved with the placeholder message. Retry cover did not change the image in that same run | Partial | @afondale | Windows 11 | 2026-10-27 | `51fd78e` |
+| TC-F5 | Failure: cover fails | Same, after the retry fix | The song is saved with a placeholder. Retry cover works after the fix | "Rainy Window Pane" was saved with the placeholder. Retry cover replaced it after the real address was restored, with no restart | Pass | @afondale | Windows 11 | 2026-10-28 | `1b6c710` |
+| TC-F5 | Failure: cover fails | Same, on macOS | The song is saved with a placeholder. Retry cover works after the fix | "Neon Pulse" was saved with the placeholder. Retry cover replaced it after the real address was restored | Pass | @mlip3191 | macOS, Chrome | 2026-10-29 | `rc2` (`690b406`) |
+
+### Not checked
+
+No matrix row is blank. These are the checks a completed row explicitly left out.
+
+| Claim | Why it is not checked |
+|---|---|
+| A clean no-help install from the GitHub ZIP, on a machine that never had the repo, on Windows and on macOS | TC-10a and TC-10b are Partial. Both runs had help or an existing setup. |
+| The Play now re-run on macOS, and with a vocal song | The Windows re-run (TC-03, `c915595`) passed. That row says macOS and a vocal song were not checked. |
+| An MP3 that is not variable bit rate, as a DJ voice | TC-07 passed with the MP3 that was uploaded. That case was not checked. |
+| The spoken default voice after a rejected upload | TC-F3 rejected the three bad files. The default voice was not heard speaking on that run. |
+
+### Unresolved problems
+
+- **Custom voice is Partial (TC-06).** A new voice was heard, but not as a clean intro before each song of a two-song queue.
+- **Bad uploads are Partial (TC-F3).** The three bad files were rejected. The default voice was not heard afterward.
+- **The ZIP installs are Partial (TC-10a, TC-10b).** The three features worked on Windows and on macOS. Neither install was a clean no-help run, so the deploy test (E6) is still open.
+- **The Play now fix is on `main` and not in the `rc2` ZIP.** #72 was fixed by #95. The Windows re-run passed. `rc2` (`690b406`) does not contain that fix.
 
 ## Known issues
 _TODO: other lanes' entries._
@@ -280,7 +332,7 @@ _TODO: other lanes' entries._
 - **A song can start before its intro is ready.** Intros are made in the background, and one takes about 4 to 5 seconds when the class servers are idle (measured: 3.75 to 4.94 s). If you press **Play queue** right after the page opens, or skip quickly, the song plays without an intro. If that intro then fails, nothing tells you.
 
 **Player (E)**
-- **Play now may do nothing once the queue has finished.** Seen on Windows 11 on `rc1` and on `main` (`3fb136a`): after the player says "Queue finished", pressing **Play now** on a song briefly shows "Now playing … 0:00 / 0:00" and then goes back to "Queue finished", with no sound. On `rc1`, **Add to queue** then **Play queue** also started a song at its end (0:45 of 0:45), so it ended at once. **Workaround:** reload the page. Your songs stay in the Library, and **Play now** then plays from 0:00. A reload also clears the Play queue case. We could not reproduce this on macOS on current `main` with the DJ on (10/28). (#72)
+- **Play now after the queue has finished is fixed on `main`.** On `rc1` and on `main` at `3fb136a`, **Play now** did nothing after "Queue finished" (#72). The fix is #95. A Windows re-run (TC-03, `c915595`) played the song and the following DJ intro in full. The fix is not in the `rc2` ZIP (`690b406`).
 
 ## Design judgment
 
