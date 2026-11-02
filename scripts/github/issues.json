@@ -363,7 +363,7 @@
             "Full 40-character commit ID recorded (git rev-list -n 1 v1.0) and matches the tag",
             "Professor has repo access (accepted invite)",
             "Canvas submission: repo link + full commit ID + that exact ZIP",
-            "Team told: no deleting, renaming, force-pushing, or moving the v1.0 tag until grades are posted; the repo goes private only at submission, once the professor and any other grader are invited (DL12)",
+            "Team told: no deleting, renaming, force-pushing, or moving the v1.0 tag until grades are posted; the repo stays public, with the professor invited as a collaborator (DL12, decided 11/01)",
             "check_models.py passes on the tagged release commit"
           ],
           "reqs": [

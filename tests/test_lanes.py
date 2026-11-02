@@ -343,4 +343,11 @@ def test_a10_requires_an_accepted_invite_for_the_professor() -> None:
     a10 = next(t for lane in spec["lanes"] for t in lane["tasks"] if t["key"] == "A10")
     criteria = "\n".join(a10["criteria"])
     assert "Professor has repo access (accepted invite)" in criteria
-    assert "goes private only at submission" in criteria
+    # The repo stays public (decided 11/01); `bootstrap.py --refresh` renders these criteria into lane issue #2.
+    assert "the repo stays public, with the professor invited as a collaborator" in criteria
+    assert "goes private" not in criteria
+
+
+def test_issues_json_never_says_the_repo_goes_private() -> None:
+    text = (ROOT / "scripts" / "github" / "issues.json").read_text(encoding="utf-8")
+    assert "goes private" not in text
