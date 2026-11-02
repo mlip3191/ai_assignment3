@@ -31,7 +31,7 @@ All the AI work is done by four class services, and nothing else: Qwen3.6-35B-A3
 
 *The top of the app on Windows 11, running `rc2`: how to use it, the Generate tab, and the player.*
 
-**Status.** The submitted version is `v1.0`, cut from `main`. The live tests ran on the release candidate `rc2` (`690b406`, 10/29), on Windows 11 and on macOS; the results are under [Test results](#test-results). Two app files changed after `rc2`: `jukebox/ui/player_panel.py` (the Play now fix, #95) and `jukebox/services/songs.py` (the lyrics line-break fix, #105). A re-run of TC-03 on `main` covers the first, and unit tests cover the second. Everything else that changed since `rc2` is documentation.
+**Status.** The submitted version is `v1.0`, cut from `main`. The live tests ran on the release candidate `rc2` (`690b406`, 10/29), on Windows 11 and on macOS; the results are under [Test results](#test-results). Two app files changed after `rc2`: `jukebox/ui/player_panel.py` (the Play now fix, #95) and `jukebox/services/songs.py` (the lyrics line-break fix, #105). A re-run of TC-03 on `main` covers the first, and unit tests cover the second. The rest is documentation and screenshots, the tests for those two fixes, and the professor's GitHub handle in `.github/team.json`, which the app does not read.
 
 ## Requirements
 - **A computer:** Windows 10 or 11, or macOS 13 or newer.
