@@ -326,6 +326,53 @@ def test_unparseable_reply_is_bad_response() -> None:
     assert_bad_response('["not", "an", "object"]', vocal=False)
 
 
+# ---- escaped line breaks (issue #104) ------------------------------------------------------------
+
+ESCAPED_VERSE = (
+    "[chorus]\nCarter tiger walks so slow\nGentle paws where shadows go\n"
+    "[verse]\\nJagged drops cut through the night\nSynthetic fire burning bright"
+)
+
+
+def test_a_literal_backslash_n_after_a_tag_becomes_a_real_section() -> None:
+    """Qwen sometimes writes a line break as two characters, a backslash and an n."""
+    lyrics = songs.normalize_lyrics(ESCAPED_VERSE)
+    assert lyrics == (
+        "[intro]\n\n"
+        "[chorus]\nCarter tiger walks so slow\nGentle paws where shadows go\n\n"
+        "[verse]\nJagged drops cut through the night\nSynthetic fire burning bright"
+    )
+    assert "\\" not in lyrics
+
+
+def test_a_double_escaped_lyrics_string_is_read_as_lines() -> None:
+    """The whole string escaped twice used to find no section tags and fail the song."""
+    reply = json.dumps({"title": "Open Road", "lyrics": GOOD_LYRICS.replace("\n", "\\n")})
+    assert songs.parse_song_reply(reply, vocal=True) == SongText("Open Road", GOOD_LYRICS)
+
+
+def test_title_repeated_at_the_top_of_a_double_escaped_string_is_not_sung() -> None:
+    reply = json.dumps({"title": "Open Road", "lyrics": ("Open Road\n\n" + GOOD_LYRICS).replace("\n", "\\n")})
+    assert songs.parse_song_reply(reply, vocal=True).lyrics == GOOD_LYRICS
+
+
+@pytest.mark.parametrize("break_", ["\\n", "\\r\\n", "\\r"])
+def test_each_escaped_line_break_form_is_read(break_: str) -> None:
+    text = break_.join(["[verse]", "Windows down", "Radio on", "", "[chorus]", "Keep it rolling"])
+    assert songs.normalize_lyrics(text) == (
+        "[intro]\n\n[verse]\nWindows down\nRadio on\n\n[chorus]\nKeep it rolling"
+    )
+
+
+def test_a_backslash_that_is_not_a_line_break_is_left_alone() -> None:
+    lyrics = songs.normalize_lyrics("[verse]\nHold me close \\ never go\nHeld in a tender light")
+    assert "Hold me close \\ never go" in lyrics
+
+
+def test_escaped_text_with_no_section_tags_is_still_bad_response() -> None:
+    assert_bad_response(json.dumps({"title": "Open Road", "lyrics": "Windows down\\nRadio on"}))
+
+
 # ---- cleanup -------------------------------------------------------------------------------------
 
 

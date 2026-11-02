@@ -58,6 +58,8 @@ _PARENTHESIZED = re.compile(r"^\(([^)]*)\)$")
 _REPEAT_MARK = re.compile(r"\s*[(\[]\s*(?:x\s*\d+|\d+\s*x|repeat\b[^)\]]*)\s*[)\]]\s*$", re.IGNORECASE)
 _BARE_REPEAT = re.compile(r"^x\s*\d+$", re.IGNORECASE)
 _LENIENT_JSON = json.JSONDecoder(strict=False)  # allows real line breaks inside strings
+# A line break the model wrote as two characters, a backslash and an n (an escape written twice, #104).
+_ESCAPED_BREAK = re.compile(r"\\r\\n|\\n|\\r")
 # A closing chat line such as "Hope you enjoy this song!": a phrase aimed at the listener and a word about
 # the song. Single words like "hope" or "like" are too common in lyrics to count.
 _SIGN_OFF = re.compile(
@@ -657,7 +659,7 @@ def _without_leading_title(lyrics: str, title: str) -> str:
 
     Only when a section header comes next, so a first sung line that matches the title is kept.
     """
-    lines = lyrics.splitlines()
+    lines = _ESCAPED_BREAK.sub("\n", lyrics).splitlines()
     while lines and not lines[0].strip():
         lines.pop(0)
     following = [line for line in lines[1:] if line.strip()]
@@ -688,12 +690,13 @@ def normalize_lyrics(text: str) -> str:
     `## Hook`, `(Bridge)`, `Chorus (x2)`) become lowercase tags; other bracketed lines (`[Guitar Solo]`)
     and repeat marks (`(x2)`, `(Repeat chorus)`) are dropped. Lines before the first tag become a verse,
     and empty sections are dropped. The song always starts with an empty `[intro]`.
-    Raises `ServiceError(kind="bad_response")` if there are no section tags or no sung lines.
+    A backslash-n written as text counts as a line break. Raises `ServiceError(kind="bad_response")` if
+    there are no section tags or no sung lines.
     """
     sections: list[tuple[str, list[str]]] = []
     loose: list[str] = []
     found_tag = False
-    for raw_line in text.splitlines():
+    for raw_line in _ESCAPED_BREAK.sub("\n", text).splitlines():
         line = _REPEAT_MARK.sub("", raw_line).strip()
         if not line or _BARE_REPEAT.match(line):
             continue
