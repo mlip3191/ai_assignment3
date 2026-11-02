@@ -140,12 +140,12 @@ Enter only `http://host:port`: if `class-endpoints.txt` shows a trailing `/v1`, 
 ## Using the app
 The player is on the right. It plays one thing at a time, a DJ intro or a song. The DJ is under [The AI DJ](#the-ai-dj).
 
-- **Play queue** starts the queue. With an empty queue it first fills it with the three sample songs. Press it once: every DJ intro and song then follows the one before it with no more clicks, until the player says **Queue finished**. Pressing it again while something plays does nothing.
+- **Play queue** starts the queue. With an empty queue it first fills it with the three sample songs. Press it once: every song then follows the one before it with no more clicks, with its DJ intro when that is ready, until the player says **Queue finished**. Pressing it again while something plays does nothing.
 - **Play now** (on a new song's card and in the Library) stops what is playing and starts that song at once, with its DJ intro first when one is ready.
 - **Add to queue** puts the song at the end of the queue and leaves what is playing alone.
-- **Skip** ends what is playing. During a DJ intro it goes to that song. During a song it goes to the next song's DJ intro, or to the song itself if that intro isn't ready. With nothing playing, it does nothing.
+- **Skip** ends what is playing. During a DJ intro it goes to that song. During a song it goes to the next song's DJ intro, or to the song itself if that intro isn't ready, or to **Queue finished** if nothing is queued. With nothing playing, it does nothing.
 - **Pause and resume** use the play/pause button on the audio bar under **Now playing**.
-- **Up next** lists the songs still waiting. A vocal song's lyrics show under the audio, and **Download song** saves a copy named after the song.
+- **Up next** lists the songs still waiting. Open **Lyrics** under the audio to read a vocal song's lyrics (an instrumental says "Instrumental, no lyrics."). **Download song** saves a copy named after the song.
 
 The queue belongs to the page. After a reload it is empty, your songs are still in the Library, and **Play queue** fills the queue with the three samples. To play your own songs, add them with **Add to queue** first.
 
@@ -421,7 +421,7 @@ No matrix row is blank. These are the checks a completed row explicitly left out
 
 **Player (E)**
 - **Play queue plays only the three samples after a reload.** A new page starts with an empty queue, and **Play queue** then fills it with the sample songs, not the songs you made (TC-09). Your songs stay in the Library until you stop the app. Add them with **Add to queue** first.
-- **One Skip press once skipped a whole song.** On macOS (TC-05, the `rc2` code, default voice), one **Skip** about 17 s into the first song went straight to the intro for the third song: the second song was skipped, **Up next** was empty, and no intro for the second song was heard. It did not happen in the clean run or in the TC-06 and TC-07 runs, and its cause is unknown. Skipping within a few seconds can also lose the next intro (see **AI DJ** above).
+- **One Skip press once skipped a whole song.** On macOS (TC-05, `rc2`-equivalent code, default voice), one **Skip** about 17 s into the first song went straight to the intro for the third song: the second song was skipped, **Up next** was empty, and no intro for the second song was heard. It did not happen in the clean run or in the TC-06 and TC-07 runs, and its cause is unknown. Skipping within a few seconds can also lose the next intro (see **AI DJ** above).
 
 ## Design judgment
 
