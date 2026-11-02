@@ -328,6 +328,17 @@ def test_qwen_failure_fails_the_job_with_no_track_and_no_audio_call(env: dict) -
 
 
 @respx.mock
+def test_escaped_line_breaks_never_reach_the_card_or_acestep(env: dict) -> None:
+    """Issue #104: a literal backslash-n from Qwen is turned into a real line break first."""
+    mock_qwen(lyrics=LYRICS.replace("\n", "\\n"))
+    submit, _ = mock_acestep()
+    updates = run(env)
+    assert updates[-1].status == "succeeded"
+    assert json.loads(submit.calls[0].request.content)["lyrics"] == LYRICS
+    assert env["library"].get(updates[-1].track_id).lyrics == LYRICS
+
+
+@respx.mock
 def test_unusable_lyrics_fail_the_song(env: dict) -> None:
     respx.post(QWEN_URL).respond(200, json=qwen_says("I'd rather not."))
     submit, _ = mock_acestep()
