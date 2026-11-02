@@ -377,8 +377,9 @@ No matrix row is blank. These are the checks a completed row explicitly left out
 
 | Claim | Why it is not checked |
 |---|---|
+| An `rc3` install by someone who did not write the setup steps | Both `rc3` runs were by the release lead, who maintains the README Setup section and the launchers and edited the Setup text. The comparison runs are Windows only: on `rc2`, TC-13 (G. C., Pass) and TC-10a (@afondale, Partial). No ZIP install on macOS was run by anyone but the release lead. |
 | An install that includes installing Python, on Windows and on macOS | Both `rc3` runs (TC-10a, TC-10b) used a machine that already had Python. |
-| The DJ voice upload and a failure path on the `rc3` ZIP, and Safari | Neither `rc3` run checked them. |
+| The DJ voice upload and a failure path on the `rc3` ZIP, and Safari | The macOS run (TC-10b) did not check them. The Windows run (TC-10a) does not say. |
 | A no-help ZIP install on macOS, with the ZIP opened in Finder | TC-10b on `rc3` passed, but Claude Code ran the steps, the pip cache was warm, and the ZIP was extracted by command. |
 | The Play now re-run on macOS, and with a vocal song | The Windows re-run (TC-03, `c915595`) passed. That row says macOS and a vocal song were not checked. |
 | An MP3 that is not variable bit rate, as a DJ voice | TC-07 passed with the MP3 that was uploaded. That case was not checked. |
@@ -388,7 +389,7 @@ No matrix row is blank. These are the checks a completed row explicitly left out
 
 - **Custom voice is Partial (TC-06).** A new voice was heard, but not as a clean intro before each song of a two-song queue.
 - **Bad uploads are Partial (TC-F3).** The three bad files were rejected. The default voice was not heard afterward.
-- **The ZIP installs were Partial on `rc2` and passed on `rc3` (TC-10a, TC-10b).** The `rc2` runs were not clean no-help installs. On `rc3`, Windows was a no-help run on a PC that had never held the repo, and macOS had Claude Code run the terminal and browser steps. Neither machine installed Python during the run. See [Not checked](#not-checked).
+- **The ZIP installs were Partial on `rc2` and passed on `rc3` (TC-10a, TC-10b).** The `rc2` runs were not clean no-help installs. On `rc3`, Windows was a no-help run on a PC that had never held the repo, and macOS had Claude Code run the terminal and browser steps. Neither machine installed Python during the run, and both `rc3` runs were by the release lead, who maintains and edited the setup steps, so neither is an independent install. See [Not checked](#not-checked).
 - **The Play now fix is on `main` and not in the `rc2` ZIP.** #72 was fixed by #95. The Windows re-run passed. `rc2` (`690b406`) does not contain that fix.
 - **The Releases page this README named had no releases (TC-13), and that is fixed.** On the `rc2` check, Requirements sent the reader to the repository's Releases page for the ZIP, and that page had no releases. Requirements now points to the Tags page.
 - **Add to queue then Play queue after "Queue finished" jumped the first DJ intro on `rc2` (TC-13).** The song still started at 0:00. After a page reload the first intro played in full. That jump was not checked by ear. The Windows re-run on `main` after the Play now fix (TC-03, `c915595`) did the same steps without a reload, and the DJ intro played first, in full.
