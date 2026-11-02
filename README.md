@@ -101,7 +101,7 @@ The launcher is the way we tested. These are the steps it does for you, for when
 | 1. Make the environment (one time) | `python3.12 -m venv .venv` | `py -3.12 -m venv .venv` |
 | 2. Install what the app needs | `.venv/bin/python -m pip install -r requirements.txt -c constraints.txt` | `.venv\Scripts\python.exe -m pip install -r requirements.txt -c constraints.txt` |
 | 3. Make the settings file (one time) | `cp .env.example .env` | `copy .env.example .env` |
-| 4. Fill in the settings | Open `.env` in a text editor and fill in the first five settings, as in the steps above | The same |
+| 4. Fill in the settings | `open -e .env` opens it (Finder hides it; **Cmd+Shift+.** shows it). Fill in the first five settings, as in the steps above | `notepad .env` opens it. Fill in the first five settings, as in the steps above |
 | 5. Start the app | `.venv/bin/python app.py` | `.venv\Scripts\python.exe app.py` |
 
 The app prints the address to open, usually **http://127.0.0.1:7860**. Open it in your browser yourself; only the launcher does that for you. To stop the app, press **Ctrl+C** in the same window. These commands call the environment's own Python, so you don't need to activate it.
@@ -413,7 +413,7 @@ Testers who didn't write a section follow it literally and report what didn't ma
 4. **Known issues** listed the Play now bug (#72) after it was fixed. Removed.
 5. **`.env.example`**: its first line says "copy to `.env`" after the launcher has already made the copy, and it points to PROJECT.md section numbers that mean nothing to a reader. Not fixed yet.
 
-*Not checked.* macOS (D9, below). Installing Python from scratch. The "Windows protected your PC" and Smart App Control prompts (neither appeared). The "already running in another window" row. Architecture, Safeguards and AI use were read against the code but not run, as they stood at `278d201`. The TC-11 and TC-15 paragraph and the uploads wording in Safeguards, and the "Starting by hand" steps in Setup, were added after pass 2, so these reports don't cover them. The settings file section (the table of every setting) is not covered by these reports, and Test results (E8) is not written yet. The three fixes above were made after pass 2. On 2026-11-01 the tester re-read the changed Setup steps and the Overview line against the settings file filled in on pass 2, and said that with the new wording they would not have thought the file was already filled in. Nobody has re-run the steps.
+*Not checked.* macOS (D9, below). Installing Python from scratch. The "Windows protected your PC" and Smart App Control prompts (neither appeared). The "already running in another window" row. Architecture, Safeguards and AI use were read against the code but not run, as they stood at `278d201`. The TC-11 and TC-15 paragraph and the uploads wording in Safeguards, the uploads row in Architecture, and the "Starting by hand" steps in Setup were added or changed after pass 2, so these reports don't cover them. The settings file section (the table of every setting) is not covered by these reports, and Test results (E8) is not written yet. The three fixes above were made after pass 2. On 2026-11-01 the tester re-read the changed Setup steps and the Overview line against the settings file filled in on pass 2, and said that with the new wording they would not have thought the file was already filled in. Nobody has re-run the steps.
 
 **macOS: @mlip3191 (D9).** _TODO: follow the sections you didn't write on a Mac, and list what matched and what didn't._
 
