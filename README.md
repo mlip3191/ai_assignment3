@@ -70,7 +70,7 @@ browser, usually at **http://127.0.0.1:7860** (if that port is busy, the launche
    or quotes. Leave the other lines as they are. Save, close Notepad,
    and keep the name `.env`. This file stays on your computer: never email it or upload it.
 6. **Start the app:** double-click **`run.bat`** again. The first time, it installs what the app needs,
-   which takes a few minutes. Then it checks the class servers and opens the app in your browser. Keep the
+   which takes a few minutes (less if your computer has installed them before). Then it checks the class servers and opens the app in your browser. Keep the
    black launcher window open while you use the app; **close that window to stop the app**.
 
 ### macOS
@@ -90,7 +90,7 @@ browser, usually at **http://127.0.0.1:7860** (if that port is busy, the launche
    whose names begin with a dot: press **Cmd+Shift+.** to see it. This file stays on your computer: never
    email it or upload it.
 5. **Start the app:** run `bash run.sh` again the same way. The first time, it installs what the app needs,
-   which takes a few minutes. Then it checks the class servers and opens the app in your browser. Keep the
+   which takes a few minutes (less if your computer has installed them before). Then it checks the class servers and opens the app in your browser. Keep the
    Terminal window open while you use the app; close it or press **Ctrl+C** to stop the app.
 
 ### Starting by hand
@@ -235,7 +235,7 @@ Screenshots from `rc1` (Windows 11):
 Before each song in the queue, a DJ speaks a short intro about that song (30 to 45 words, about 10 seconds). The text model (Qwen) writes it from the song's title, style and mood, and the speech model (Chatterbox) says it. The next intro is made while the current song plays, so you usually don't wait for it.
 
 **Hear the DJ in the default voice**
-1. Click **Play queue**, under the player. With an empty queue, it fills the queue with the three sample songs.
+1. Wait about 5 seconds after the page opens (longer if the class servers are busy), so the first intro is ready. Then click **Play queue**, under the player. With an empty queue, it fills the queue with the three sample songs.
 2. The player says **DJ speaking…** with the song's title and what's **Up next**. When the intro ends, the song plays. The same happens before every song after it.
 3. Under **Skip**, the **DJ voice** box says "Default DJ voice. Upload a recording (MP3 or WAV, 5 to 30 seconds, up to 10 MB) to use your own."
 
@@ -468,7 +468,7 @@ With 18 lines, three of the four songs lost about 8 lines or more, and the fourt
 **Related.** A new voice applies from the next intro, so the first song after a change has no intro, and skipping within a few seconds of starting a song can also skip its intro (see [Known issues](#known-issues)).
 
 ## Documentation verification
-Testers who didn't write a section follow it literally and report what didn't match (tasks B10 and D9 ask for two people, one on each OS). So far one has: the Windows pass below. The macOS pass is still to do. Findings are listed by tester and OS.
+Testers who didn't write a section follow it literally and report what didn't match (tasks B10 and D9 ask for two people, one on each OS). Two have: the Windows pass and the macOS pass, both below. Findings are listed by tester and OS.
 
 **Windows 11, in Chrome: @gunnaroc (B10), 2026-11-01.** There were two passes.
 - **Pass 1** followed Cover art, The AI DJ and Sample songs, on `main` at `c915595`.
@@ -483,9 +483,18 @@ Testers who didn't write a section follow it literally and report what didn't ma
 4. **Known issues** listed the Play now bug (#72) after it was fixed. Removed.
 5. **`.env.example`**: its first line says "copy to `.env`" after the launcher has already made the copy, and it points to PROJECT.md section numbers that mean nothing to a reader. Not fixed yet.
 
-*Not checked.* macOS (D9, below). Installing Python from scratch. The "Windows protected your PC" and Smart App Control prompts (neither appeared). The "already running in another window" row. Architecture, Safeguards and AI use were read against the code but not run, as they stood at `278d201`. The TC-11 and TC-15 paragraph and the uploads wording in Safeguards, the uploads row in Architecture, and the "Starting by hand" steps in Setup were added or changed after pass 2, so these reports don't cover them. The settings file section (the table of every setting) is not covered by these reports, and neither is the Test results section (E8), which was written after them. The three fixes above were made after pass 2. On 2026-11-01 the tester re-read the changed Setup steps and the Overview line against the settings file filled in on pass 2, and said that with the new wording they would not have thought the file was already filled in. Nobody has re-run the steps.
+*Not checked.* macOS (a separate pass, below). Installing Python from scratch. The "Windows protected your PC" and Smart App Control prompts (neither appeared). The "already running in another window" row. Architecture, Safeguards and AI use were read against the code but not run, as they stood at `278d201`. The TC-11 and TC-15 paragraph and the uploads wording in Safeguards, the uploads row in Architecture, and the "Starting by hand" steps in Setup were added or changed after pass 2, so these reports don't cover them. The settings file section (the table of every setting) is not covered by these reports, and neither is the Test results section (E8), which was written after them. The three fixes above were made after pass 2. On 2026-11-01 the tester re-read the changed Setup steps and the Overview line against the settings file filled in on pass 2, and said that with the new wording they would not have thought the file was already filled in. Nobody has re-run the steps.
 
-**macOS: @mlip3191 (D9).** _TODO: follow the sections you didn't write on a Mac, and list what matched and what didn't._
+**macOS: @mlip3191 (D9), 2026-11-01.** On a Mac (macOS 26.6.2, Chrome), I followed the sections I didn't write against the `rc2` ZIP from the Tags page, using this README at `b210d9a`. Python 3.12 was already installed, so I did not install it from python.org, and I ran the app from my Downloads folder.
+
+*What matched.* Requirements and the macOS Setup steps: the first `bash run.sh` opened the settings file in TextEdit and stopped, filling in the first five settings worked as described, and the second start opened the app by itself at http://127.0.0.1:7860/. Stopping the app made the page unreachable, as the troubleshooting table says, and starting it again worked. I generated an instrumental and a vocal song, each in under 10 seconds with a cover that matched its song, and **Surprise me** worked. The three sample songs matched the table (title, style, length).
+
+*What didn't match, and what we did.*
+1. **Install time.** The README said the first start installs "which takes a few minutes". For me it took about 20 seconds, probably because the packages were already on this Mac. The step now says "a few minutes (less if your computer has installed them before)". Fixed.
+2. **The first DJ intro.** On my first run, song 1 had no DJ intro, because I pressed **Play queue** before the first intro was ready. The Known issues entry already says that can happen, but the DJ walkthrough did not tell the reader to wait. After a restart, with a few seconds' wait, song 1 had its intro. Step 1 of the walkthrough now says to wait about 5 seconds after the page opens. Fixed.
+3. **Where the folder goes.** The README says to drag the extracted folder into the home folder. I ran it from Downloads and it worked, so I left the wording alone.
+
+*Not checked.* Installing Python from python.org. The Library tab, **More like this**, and the artist-name note. The failure paths (Retry cover, a service that is down). The VPN and campus-network wording. "Starting by hand" (nobody has run it yet). I did not follow Test results, Known issues, Design judgment, the settings-file table, the playback controls, or the DJ voice-upload steps. So D9 covers Requirements, Setup, Generate a song, Cover art and Sample songs, plus steps 1 and 2 of the default-voice DJ walkthrough (a section I wrote, so that part is not independent).
 
 ## Safeguards
 The assignment's safeguards are in [`docs/STARTER_PROMPT.md`](docs/STARTER_PROMPT.md), word for word. This is how each one is enforced, and by what.
